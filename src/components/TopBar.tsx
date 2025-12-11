@@ -24,7 +24,7 @@ interface TopBarProps {
  */
 const BrandLogo: React.FC = () => (
   <div className="group flex cursor-pointer select-none flex-col justify-center">
-    <h1 className="relative text-xl font-black leading-none tracking-tight">
+    <h1 className="relative text-xl font-bold leading-none tracking-tight">
       {/* Gradient layer (always rendered, provides layout) */}
       <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent [backface-visibility:hidden]">
         Facilitate

@@ -450,6 +450,13 @@ describe('RightSidebar', () => {
       expect(screen.getByTestId('duplicate-button')).toBeInTheDocument();
       expect(screen.getByTestId('delete-button')).toBeInTheDocument();
     });
+
+    it('delete button has visible red text styling', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const deleteButton = screen.getByTestId('delete-button');
+      // Uses secondary variant (not glass) so text-red-500 is visible
+      expect(deleteButton).toHaveClass('text-red-500');
+    });
   });
 
   describe('Different Object Types', () => {

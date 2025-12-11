@@ -123,4 +123,11 @@ describe('TopBar', () => {
     expect(header).toHaveClass('backdrop-blur-xl');
     expect(header).toHaveClass('rounded-[32px]');
   });
+
+  it('brand logo uses font-bold to match app typography', () => {
+    render(<TopBar {...defaultProps} />);
+    // Find the h1 that contains the brand name
+    const brandHeading = screen.getByRole('heading', { level: 1 });
+    expect(brandHeading).toHaveClass('font-bold');
+  });
 });

@@ -228,6 +228,15 @@ describe('DebugMenu', () => {
     });
   });
 
+  describe('z-index layering', () => {
+    it('has z-index higher than other UI panels to appear on top', () => {
+      const { container } = render(<DebugMenu {...defaultProps} />);
+      const outerDiv = container.firstChild as HTMLElement;
+      // z-[100] ensures debug menu appears above RightSidebar (z-[60]) and TopBar (z-50)
+      expect(outerDiv).toHaveClass('z-[100]');
+    });
+  });
+
   describe('pointer events', () => {
     it('outer container has pointer-events-none to allow 3D interaction', () => {
       const { container } = render(<DebugMenu {...defaultProps} />);
