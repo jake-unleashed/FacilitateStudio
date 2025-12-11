@@ -1,12 +1,14 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { MainCanvas } from './components/MainCanvas';
 import { NavigationHelp } from './components/NavigationHelp';
 import { DebugMenu } from './components/DebugMenu';
+import { CameraResetButton } from './components/CameraResetButton';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from './constants';
 import { SceneObject, SidebarSection } from './types';
+import CameraControlsImpl from 'camera-controls';
 
 function App() {
   const [activeTab, setActiveTab] = useState<SidebarSection | null>(null);
@@ -15,9 +17,40 @@ function App() {
   const [steps] = useState(INITIAL_STEPS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
 
+  // Use ref for camera controls to avoid stale closures
+  const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
+  // Force re-render when controls become available
+  const [, setControlsReady] = useState(false);
+
+  const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
+    cameraControlsRef.current = controls;
+    setControlsReady(true);
+  }, []);
+
   const handleSelectObject = (id: string | null) => {
     setSelectedObjectId(id);
   };
+
+  const handleFocusObject = useCallback((object: SceneObject) => {
+    const controls = cameraControlsRef.current;
+    if (controls) {
+      // Calculate object position in Three.js coordinates
+      const x = object.transform.x / 100;
+      const y = object.transform.y / 100;
+      const z = -object.transform.z / 100;
+
+      // Smoothly focus camera on object
+      controls.setLookAt(
+        x + 5,
+        y + 3,
+        z + 5, // Camera position offset
+        x,
+        y,
+        z, // Target (object center)
+        true // Enable smooth transition
+      );
+    }
+  }, []);
 
   const handleUpdateObject = (updated: SceneObject) => {
     setObjects((prev) => prev.map((obj) => (obj.id === updated.id ? updated : obj)));
@@ -67,6 +100,7 @@ function App() {
         selectedObjectId={selectedObjectId}
         onSelectObject={handleSelectObject}
         onUpdateObject={handleUpdateObject}
+        onCameraControlsReady={handleCameraControlsReady}
       />
 
       {/* Floating UI Layer */}
@@ -79,6 +113,7 @@ function App() {
         objects={objects}
         onSelectObject={handleSelectObject}
         selectedObjectId={selectedObjectId}
+        onFocusObject={handleFocusObject}
       />
 
       {selectedObject && (
@@ -91,6 +126,8 @@ function App() {
       )}
 
       <NavigationHelp offsetForSidebar={!!selectedObject} />
+
+      <CameraResetButton cameraControlsRef={cameraControlsRef} />
 
       <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={!!selectedObject} />
     </div>

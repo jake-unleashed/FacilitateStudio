@@ -18,6 +18,7 @@ interface LeftSidebarProps {
   objects: SceneObject[];
   onSelectObject: (id: string) => void;
   selectedObjectId: string | null;
+  onFocusObject?: (object: SceneObject) => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -27,6 +28,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   objects,
   onSelectObject,
   selectedObjectId,
+  onFocusObject,
 }) => {
   const NavItem = ({
     id,
@@ -196,7 +198,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     return (
                       <div
                         key={obj.id}
-                        onClick={() => onSelectObject(obj.id)}
+                        onClick={() => {
+                          onSelectObject(obj.id);
+                          // Focus camera on the object when clicked
+                          if (onFocusObject) {
+                            onFocusObject(obj);
+                          }
+                        }}
                         className={`
                                     flex cursor-pointer items-center gap-3 rounded-[20px] p-3 text-sm transition-all duration-200
                                     ${

@@ -13,3 +13,7 @@ export const OBJECT_ICONS: Record<string, LucideIcon> = {
   'text-popup': MessageSquareText,
   wire: Cable,
 };
+
+// Camera default position and target for 3D navigation
+export const DEFAULT_CAMERA_POSITION: [number, number, number] = [12, 8, 12];
+export const DEFAULT_CAMERA_TARGET: [number, number, number] = [0, 0, 0];

@@ -15,7 +15,9 @@ describe('TopBar', () => {
 
   it('renders the brand name', () => {
     render(<TopBar {...defaultProps} />);
-    expect(screen.getByText('Facilitate')).toBeInTheDocument();
+    // Facilitate text appears twice (gradient and solid overlay)
+    const facilitateElements = screen.getAllByText('Facilitate');
+    expect(facilitateElements.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Studio')).toBeInTheDocument();
   });
 

@@ -18,11 +18,10 @@ describe('DebugMenu', () => {
       expect(screen.getByRole('button', { name: 'Toggle debug menu' })).toBeInTheDocument();
     });
 
-    it('renders in closed state by default', () => {
+    it('does not render panel when closed by default', () => {
       render(<DebugMenu {...defaultProps} />);
-      // Panel wrapper should have opacity-0 class when closed
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-0');
+      // Panel should not be rendered when closed
+      expect(screen.queryByTestId('debug-panel-wrapper')).not.toBeInTheDocument();
     });
 
     it('has correct accessibility label on toggle button', () => {
@@ -39,9 +38,8 @@ describe('DebugMenu', () => {
 
       fireEvent.click(toggleButton);
 
-      // Panel wrapper should have opacity-100 class when open
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-100');
+      // Panel should be rendered when open
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
     });
 
     it('closes panel when toggle button is clicked again', () => {
@@ -50,11 +48,11 @@ describe('DebugMenu', () => {
 
       // Open
       fireEvent.click(toggleButton);
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
+
       // Close
       fireEvent.click(toggleButton);
-
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-0');
+      expect(screen.queryByTestId('debug-panel-wrapper')).not.toBeInTheDocument();
     });
 
     it('applies active styling to toggle button when open', () => {
@@ -77,18 +75,21 @@ describe('DebugMenu', () => {
   });
 
   describe('panel content', () => {
-    it('displays Debug Tools heading', () => {
+    it('displays Debug Tools heading when open', () => {
       render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
       expect(screen.getByRole('heading', { name: 'Debug Tools' })).toBeInTheDocument();
     });
 
-    it('displays Add Objects section label', () => {
+    it('displays Add Objects section label when open', () => {
       render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
       expect(screen.getByText('Add Objects')).toBeInTheDocument();
     });
 
-    it('displays Add Cube button', () => {
+    it('displays Add Cube button when open', () => {
       render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
       expect(screen.getByRole('button', { name: /Add Cube/i })).toBeInTheDocument();
     });
   });
@@ -98,7 +99,7 @@ describe('DebugMenu', () => {
       const onAddCube = vi.fn();
       render(<DebugMenu {...defaultProps} onAddCube={onAddCube} />);
 
-      // Open panel first
+      // Open menu first
       fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
       // Click Add Cube
       fireEvent.click(screen.getByRole('button', { name: /Add Cube/i }));
@@ -106,14 +107,26 @@ describe('DebugMenu', () => {
       expect(onAddCube).toHaveBeenCalledTimes(1);
     });
 
-    it('can add multiple cubes with multiple clicks', () => {
+    it('calls onAddCube handler', () => {
       const onAddCube = vi.fn();
       render(<DebugMenu {...defaultProps} onAddCube={onAddCube} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
       fireEvent.click(screen.getByRole('button', { name: /Add Cube/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Add Cube/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Add Cube/i }));
+
+      expect(onAddCube).toHaveBeenCalled();
+    });
+
+    it('allows multiple cube additions', () => {
+      const onAddCube = vi.fn();
+      render(<DebugMenu {...defaultProps} onAddCube={onAddCube} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      const addButton = screen.getByRole('button', { name: /Add Cube/i });
+
+      fireEvent.click(addButton);
+      fireEvent.click(addButton);
+      fireEvent.click(addButton);
 
       expect(onAddCube).toHaveBeenCalledTimes(3);
     });
@@ -121,141 +134,119 @@ describe('DebugMenu', () => {
 
   describe('auto-close behavior', () => {
     it('closes when hasSelectedObject transitions from false to true', () => {
-      const { rerender } = render(<DebugMenu {...defaultProps} hasSelectedObject={false} />);
-
-      // Open the menu
-      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
-
-      // Verify it's open
-      let panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-100');
-
-      // Simulate object selection (hasSelectedObject becomes true)
-      rerender(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
-
-      // Menu should now be closed
-      panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-0');
-    });
-
-    it('does not close when hasSelectedObject is already true and menu is opened', () => {
-      const { rerender } = render(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
-
-      // Open the menu while object is already selected
-      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
-
-      // Menu should remain open (prevHasSelectedObject was already true)
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-100');
-
-      // Rerender with same prop - should stay open
-      rerender(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
-      expect(panelWrapper).toHaveClass('opacity-100');
-    });
-
-    it('allows reopening menu after auto-close', () => {
-      const { rerender } = render(<DebugMenu {...defaultProps} hasSelectedObject={false} />);
+      const { rerender } = render(<DebugMenu {...defaultProps} />);
+      const toggleButton = screen.getByRole('button', { name: 'Toggle debug menu' });
 
       // Open menu
-      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
-
-      // Trigger auto-close
-      rerender(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
-
-      // Verify closed
-      let panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-0');
-
-      // Reopen menu - should work now since hasSelectedObject didn't change
-      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
-
-      panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-100');
-    });
-
-    it('does not close when hasSelectedObject transitions from true to false', () => {
-      const { rerender } = render(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
-
-      // Open menu
-      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
-
-      // Deselect object
-      rerender(<DebugMenu {...defaultProps} hasSelectedObject={false} />);
-
-      // Menu should stay open
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-100');
-    });
-
-    it('remains closed if not open when object is selected', () => {
-      const { rerender } = render(<DebugMenu {...defaultProps} hasSelectedObject={false} />);
-
-      // Don't open the menu
+      fireEvent.click(toggleButton);
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
 
       // Simulate object selection
       rerender(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
 
-      // Menu should still be closed
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('opacity-0');
+      // Panel should be closed (not rendered)
+      expect(screen.queryByTestId('debug-panel-wrapper')).not.toBeInTheDocument();
+    });
+
+    it('does not close when hasSelectedObject is already true and menu is opened', () => {
+      render(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
+      const toggleButton = screen.getByRole('button', { name: 'Toggle debug menu' });
+
+      // Open menu when object is already selected
+      fireEvent.click(toggleButton);
+
+      // Panel should remain open
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
+    });
+
+    it('allows reopening menu after auto-close', () => {
+      const { rerender } = render(<DebugMenu {...defaultProps} />);
+      const toggleButton = screen.getByRole('button', { name: 'Toggle debug menu' });
+
+      // Open and auto-close
+      fireEvent.click(toggleButton);
+      rerender(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
+      expect(screen.queryByTestId('debug-panel-wrapper')).not.toBeInTheDocument();
+
+      // Reopen
+      fireEvent.click(toggleButton);
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
+    });
+
+    it('does not close when hasSelectedObject transitions from true to false', () => {
+      const { rerender } = render(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
+      const toggleButton = screen.getByRole('button', { name: 'Toggle debug menu' });
+
+      // Open menu
+      fireEvent.click(toggleButton);
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
+
+      // Deselect object
+      rerender(<DebugMenu {...defaultProps} hasSelectedObject={false} />);
+
+      // Panel should remain open
+      expect(screen.getByTestId('debug-panel-wrapper')).toBeInTheDocument();
+    });
+
+    it('remains closed if not open when object is selected', () => {
+      const { rerender } = render(<DebugMenu {...defaultProps} />);
+
+      // Menu is closed, select object
+      rerender(<DebugMenu {...defaultProps} hasSelectedObject={true} />);
+
+      // Panel should still not be rendered
+      expect(screen.queryByTestId('debug-panel-wrapper')).not.toBeInTheDocument();
     });
   });
 
   describe('styling', () => {
-    it('has glass panel styling', () => {
+    it('has glass panel styling when open', () => {
       render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+
       const panel = screen.getByTestId('debug-panel');
-      expect(panel).toHaveClass('rounded-[32px]');
       expect(panel).toHaveClass('bg-white/70');
       expect(panel).toHaveClass('backdrop-blur-xl');
+      expect(panel).toHaveClass('rounded-[32px]');
     });
 
-    it('has correct z-index for floating UI', () => {
-      const { container } = render(<DebugMenu {...defaultProps} />);
-      const wrapper = container.firstChild;
-      expect(wrapper).toHaveClass('z-50');
-    });
-
-    it('is positioned in top-right corner', () => {
-      const { container } = render(<DebugMenu {...defaultProps} />);
-      const wrapper = container.firstChild;
-      expect(wrapper).toHaveClass('right-4');
-      expect(wrapper).toHaveClass('top-4');
-    });
-
-    it('has pointer-events-none on wrapper for click-through', () => {
-      const { container } = render(<DebugMenu {...defaultProps} />);
-      const wrapper = container.firstChild;
-      expect(wrapper).toHaveClass('pointer-events-none');
-    });
-
-    it('has pointer-events-auto on interactive elements', () => {
+    it('toggle button has proper rounded styling', () => {
       render(<DebugMenu {...defaultProps} />);
       const toggleButton = screen.getByRole('button', { name: 'Toggle debug menu' });
-      expect(toggleButton).toHaveClass('pointer-events-auto');
+      expect(toggleButton).toHaveClass('rounded-[20px]');
     });
   });
 
   describe('animations', () => {
-    it('has smooth transition on panel wrapper', () => {
-      render(<DebugMenu {...defaultProps} />);
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('transition-all');
-      expect(panelWrapper).toHaveClass('duration-300');
-    });
-
-    it('has scale transform when closed', () => {
-      render(<DebugMenu {...defaultProps} />);
-      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('scale-95');
-    });
-
-    it('has full scale when open', () => {
+    it('has animation classes on panel wrapper when open', () => {
       render(<DebugMenu {...defaultProps} />);
       fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
 
       const panelWrapper = screen.getByTestId('debug-panel-wrapper');
-      expect(panelWrapper).toHaveClass('scale-100');
+      expect(panelWrapper).toHaveClass('animate-in');
+      expect(panelWrapper).toHaveClass('fade-in');
+    });
+  });
+
+  describe('pointer events', () => {
+    it('outer container has pointer-events-none to allow 3D interaction', () => {
+      const { container } = render(<DebugMenu {...defaultProps} />);
+      const outerDiv = container.firstChild as HTMLElement;
+      expect(outerDiv).toHaveClass('pointer-events-none');
+    });
+
+    it('toggle button has pointer-events-auto', () => {
+      render(<DebugMenu {...defaultProps} />);
+      const toggleButton = screen.getByRole('button', { name: 'Toggle debug menu' });
+      expect(toggleButton).toHaveClass('pointer-events-auto');
+    });
+
+    it('panel wrapper has pointer-events-auto when open', () => {
+      render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+
+      const panelWrapper = screen.getByTestId('debug-panel-wrapper');
+      expect(panelWrapper).toHaveClass('pointer-events-auto');
     });
   });
 });

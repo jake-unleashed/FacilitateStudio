@@ -14,6 +14,7 @@ vi.mock('./components/MainCanvas', () => ({
     selectedObjectId: string | null;
     onSelectObject: (id: string | null) => void;
     onUpdateObject: (obj: unknown) => void;
+    onCameraControlsReady?: (controls: unknown) => void;
   }) => (
     <div data-testid="main-canvas" onClick={() => onSelectObject(null)}>
       {objects.map((obj) => (
@@ -36,7 +37,9 @@ vi.mock('./components/MainCanvas', () => ({
 describe('App', () => {
   it('renders the main application', () => {
     render(<App />);
-    expect(screen.getByText('Facilitate')).toBeInTheDocument();
+    // Facilitate text appears twice in TopBar (gradient and solid overlay)
+    const facilitateElements = screen.getAllByText('Facilitate');
+    expect(facilitateElements.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Studio')).toBeInTheDocument();
   });
 

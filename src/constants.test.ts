@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { INITIAL_OBJECTS, INITIAL_STEPS, OBJECT_ICONS } from './constants';
+import {
+  INITIAL_OBJECTS,
+  INITIAL_STEPS,
+  OBJECT_ICONS,
+  DEFAULT_CAMERA_POSITION,
+  DEFAULT_CAMERA_TARGET,
+} from './constants';
 
 describe('Constants', () => {
   describe('INITIAL_OBJECTS', () => {
@@ -35,6 +41,41 @@ describe('Constants', () => {
         // Lucide icons are forwardRef components which are objects with $$typeof
         expect(icon).toBeDefined();
         expect(icon.$$typeof).toBeDefined();
+      });
+    });
+  });
+
+  describe('Camera Constants', () => {
+    describe('DEFAULT_CAMERA_POSITION', () => {
+      it('should be a tuple of 3 numbers', () => {
+        expect(DEFAULT_CAMERA_POSITION).toHaveLength(3);
+        expect(typeof DEFAULT_CAMERA_POSITION[0]).toBe('number');
+        expect(typeof DEFAULT_CAMERA_POSITION[1]).toBe('number');
+        expect(typeof DEFAULT_CAMERA_POSITION[2]).toBe('number');
+      });
+
+      it('should have expected default values', () => {
+        expect(DEFAULT_CAMERA_POSITION).toEqual([12, 8, 12]);
+      });
+
+      it('should position camera above and away from origin', () => {
+        const [x, y, z] = DEFAULT_CAMERA_POSITION;
+        expect(x).toBeGreaterThan(0); // Positive X
+        expect(y).toBeGreaterThan(0); // Above ground
+        expect(z).toBeGreaterThan(0); // Positive Z
+      });
+    });
+
+    describe('DEFAULT_CAMERA_TARGET', () => {
+      it('should be a tuple of 3 numbers', () => {
+        expect(DEFAULT_CAMERA_TARGET).toHaveLength(3);
+        expect(typeof DEFAULT_CAMERA_TARGET[0]).toBe('number');
+        expect(typeof DEFAULT_CAMERA_TARGET[1]).toBe('number');
+        expect(typeof DEFAULT_CAMERA_TARGET[2]).toBe('number');
+      });
+
+      it('should target the origin', () => {
+        expect(DEFAULT_CAMERA_TARGET).toEqual([0, 0, 0]);
       });
     });
   });

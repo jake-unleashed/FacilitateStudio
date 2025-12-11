@@ -37,44 +37,42 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({ onAddCube, hasSelectedObje
         <Bug size={18} strokeWidth={2} />
       </button>
 
-      {/* Debug Panel */}
-      <div
-        data-testid="debug-panel-wrapper"
-        className={`pointer-events-auto origin-top-right transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${
-          isOpen
-            ? 'translate-y-0 scale-100 opacity-100'
-            : 'pointer-events-none -translate-y-2 scale-95 opacity-0'
-        }`}
-      >
+      {/* Debug Panel - only rendered when open to avoid blocking */}
+      {isOpen && (
         <div
-          data-testid="debug-panel"
-          className="rounded-[32px] border border-white/40 bg-white/70 p-5 shadow-glass backdrop-blur-xl"
+          data-testid="debug-panel-wrapper"
+          className="animate-in fade-in slide-in-from-top-1 pointer-events-auto origin-top-right duration-200"
         >
-          {/* Panel Header */}
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-[12px] bg-slate-100 text-slate-500">
-              <Bug size={14} />
+          <div
+            data-testid="debug-panel"
+            className="rounded-[32px] border border-white/40 bg-white/70 p-5 shadow-glass backdrop-blur-xl"
+          >
+            {/* Panel Header */}
+            <div className="mb-4 flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-[12px] bg-slate-100 text-slate-500">
+                <Bug size={14} />
+              </div>
+              <h3 className="text-sm font-bold text-slate-700">Debug Tools</h3>
             </div>
-            <h3 className="text-sm font-bold text-slate-700">Debug Tools</h3>
-          </div>
 
-          {/* Debug Actions */}
-          <div className="flex flex-col gap-2">
-            <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Add Objects
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onAddCube}
-              className="justify-start gap-2 rounded-[16px] border-white/50 bg-white/60 px-4 text-left hover:bg-white/80"
-            >
-              <Box size={14} className="text-blue-500" />
-              <span className="text-slate-700">Add Cube</span>
-            </Button>
+            {/* Debug Actions */}
+            <div className="flex flex-col gap-2">
+              <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Add Objects
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onAddCube}
+                className="justify-start gap-2 rounded-[16px] border-white/50 bg-white/60 px-4 text-left hover:bg-white/80"
+              >
+                <Box size={14} className="text-blue-500" />
+                <span className="text-slate-700">Add Cube</span>
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
