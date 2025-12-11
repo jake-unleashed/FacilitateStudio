@@ -1,3 +1,4 @@
+import React, { memo, useCallback } from 'react';
 import {
   Plus,
   ListOrdered,
@@ -11,6 +12,10 @@ import {
 import { SidebarSection, SimStep, SceneObject } from '../types';
 import { OBJECT_ICONS } from '../constants';
 
+// ============================================================================
+// Types
+// ============================================================================
+
 interface LeftSidebarProps {
   activeTab: SidebarSection | null;
   setActiveTab: (tab: SidebarSection | null) => void;
@@ -21,7 +26,82 @@ interface LeftSidebarProps {
   onFocusObject?: (object: SceneObject) => void;
 }
 
-export const LeftSidebar: React.FC<LeftSidebarProps> = ({
+interface NavItemProps {
+  id: SidebarSection;
+  icon: LucideIcon;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+interface ObjectListItemProps {
+  obj: SceneObject;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+// ============================================================================
+// Memoized Sub-Components
+// ============================================================================
+
+// Memoized navigation item to prevent unnecessary re-renders
+const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClick }) => {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        group relative flex w-full flex-col items-center justify-center gap-1.5 rounded-[20px] p-3 transition-all duration-300
+        ${
+          isActive
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-1 ring-white/20'
+            : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+        }
+      `}
+    >
+      <Icon
+        size={22}
+        strokeWidth={isActive ? 2.5 : 2}
+        className="transition-transform duration-300 group-hover:scale-110"
+      />
+      <span className="text-[10px] font-semibold tracking-tight">{label}</span>
+    </button>
+  );
+});
+NavItem.displayName = 'NavItem';
+
+// Memoized object list item to prevent entire list re-rendering on selection change
+const ObjectListItem = memo<ObjectListItemProps>(({ obj, isSelected, onSelect }) => {
+  const Icon = OBJECT_ICONS[obj.type] || Box;
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`
+        flex cursor-pointer items-center gap-3 rounded-[20px] p-3 text-sm transition-all duration-200
+        ${
+          isSelected
+            ? 'scale-[1.02] bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+            : 'text-slate-700 hover:scale-[1.01] hover:bg-white/60'
+        }
+      `}
+    >
+      <div
+        className={`rounded-[12px] p-1.5 ${isSelected ? 'bg-blue-500 text-white' : 'bg-white text-slate-400 shadow-sm'}`}
+      >
+        <Icon size={14} />
+      </div>
+      <span className="flex-1 truncate font-medium">{obj.name}</span>
+      {isSelected && <ChevronRight size={14} className="text-blue-200" />}
+    </div>
+  );
+});
+ObjectListItem.displayName = 'ObjectListItem';
+
+// ============================================================================
+// Main Component
+// ============================================================================
+
+const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   activeTab,
   setActiveTab,
   steps,
@@ -30,37 +110,26 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   selectedObjectId,
   onFocusObject,
 }) => {
-  const NavItem = ({
-    id,
-    icon: Icon,
-    label,
-  }: {
-    id: SidebarSection;
-    icon: LucideIcon;
-    label: string;
-  }) => {
-    const isActive = activeTab === id;
-    return (
-      <button
-        onClick={() => setActiveTab(isActive ? null : id)}
-        className={`
-          group relative flex w-full flex-col items-center justify-center gap-1.5 rounded-[20px] p-3 transition-all duration-300
-          ${
-            isActive
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-1 ring-white/20'
-              : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-          }
-        `}
-      >
-        <Icon
-          size={22}
-          strokeWidth={isActive ? 2.5 : 2}
-          className="transition-transform duration-300 group-hover:scale-110"
-        />
-        <span className="text-[10px] font-semibold tracking-tight">{label}</span>
-      </button>
-    );
-  };
+  // Memoized click handlers for nav items
+  const handleAddClick = useCallback(() => {
+    setActiveTab(activeTab === 'add' ? null : 'add');
+  }, [activeTab, setActiveTab]);
+
+  const handleObjectsClick = useCallback(() => {
+    setActiveTab(activeTab === 'objects' ? null : 'objects');
+  }, [activeTab, setActiveTab]);
+
+  const handleStepsClick = useCallback(() => {
+    setActiveTab(activeTab === 'steps' ? null : 'steps');
+  }, [activeTab, setActiveTab]);
+
+  const handleClosePanel = useCallback(() => {
+    setActiveTab(null);
+  }, [setActiveTab]);
+
+  const handleSwitchToLibrary = useCallback(() => {
+    setActiveTab('add');
+  }, [setActiveTab]);
 
   return (
     <div
@@ -71,9 +140,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     >
       {/* Floating Navigation Strip - Tier 1 Rounding (32px) */}
       <div className="pointer-events-auto flex h-fit w-20 shrink-0 -translate-y-16 flex-col items-center gap-2 self-center rounded-[32px] border border-white/40 bg-white/70 p-2 shadow-glass backdrop-blur-xl">
-        <NavItem id="add" icon={Plus} label="Add" />
-        <NavItem id="objects" icon={Box} label="Objects" />
-        <NavItem id="steps" icon={ListOrdered} label="Steps" />
+        <NavItem
+          id="add"
+          icon={Plus}
+          label="Add"
+          isActive={activeTab === 'add'}
+          onClick={handleAddClick}
+        />
+        <NavItem
+          id="objects"
+          icon={Box}
+          label="Objects"
+          isActive={activeTab === 'objects'}
+          onClick={handleObjectsClick}
+        />
+        <NavItem
+          id="steps"
+          icon={ListOrdered}
+          label="Steps"
+          isActive={activeTab === 'steps'}
+          onClick={handleStepsClick}
+        />
       </div>
 
       {/* Floating Content Panel - Tier 1 Rounding (32px) */}
@@ -91,7 +178,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             {activeTab === 'objects' && 'Scene Objects'}
           </h2>
           <button
-            onClick={() => setActiveTab(null)}
+            onClick={handleClosePanel}
             className="flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-500 transition-colors hover:bg-white/50 hover:text-slate-800"
             title="Minimize Sidebar"
           >
@@ -183,7 +270,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <p className="mt-1 text-xs text-slate-400">
                     Add objects from the{' '}
                     <button
-                      onClick={() => setActiveTab('add')}
+                      onClick={handleSwitchToLibrary}
                       className="font-semibold text-blue-500 underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-600"
                     >
                       Library
@@ -192,38 +279,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {objects.map((obj) => {
-                    const Icon = OBJECT_ICONS[obj.type] || Box;
-                    const isSelected = selectedObjectId === obj.id;
-                    return (
-                      <div
-                        key={obj.id}
-                        onClick={() => {
-                          onSelectObject(obj.id);
-                          // Focus camera on the object when clicked
-                          if (onFocusObject) {
-                            onFocusObject(obj);
-                          }
-                        }}
-                        className={`
-                                    flex cursor-pointer items-center gap-3 rounded-[20px] p-3 text-sm transition-all duration-200
-                                    ${
-                                      isSelected
-                                        ? 'scale-[1.02] bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                        : 'text-slate-700 hover:scale-[1.01] hover:bg-white/60'
-                                    }
-                                `}
-                      >
-                        <div
-                          className={`rounded-[12px] p-1.5 ${isSelected ? 'bg-blue-500 text-white' : 'bg-white text-slate-400 shadow-sm'}`}
-                        >
-                          <Icon size={14} />
-                        </div>
-                        <span className="flex-1 truncate font-medium">{obj.name}</span>
-                        {isSelected && <ChevronRight size={14} className="text-blue-200" />}
-                      </div>
-                    );
-                  })}
+                  {objects.map((obj) => (
+                    <ObjectListItem
+                      key={obj.id}
+                      obj={obj}
+                      isSelected={selectedObjectId === obj.id}
+                      onSelect={() => {
+                        onSelectObject(obj.id);
+                        if (onFocusObject) {
+                          onFocusObject(obj);
+                        }
+                      }}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -233,3 +301,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     </div>
   );
 };
+
+// Export memoized component
+export const LeftSidebar = memo(LeftSidebarInner);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import {
   Move,
   Rotate3d,
@@ -15,16 +15,20 @@ interface NavigationHelpProps {
   offsetForSidebar?: boolean;
 }
 
-// Keyboard shortcut badge component
-const KeyBadge: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+// Memoized keyboard shortcut badge component
+const KeyBadge = memo<{ children: React.ReactNode }>(({ children }) => (
   <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded bg-slate-200/80 px-1 py-0.5 text-[8px] font-bold text-slate-500">
     {children}
   </span>
-);
+));
+KeyBadge.displayName = 'KeyBadge';
 
-export const NavigationHelp: React.FC<NavigationHelpProps> = ({ offsetForSidebar = false }) => {
+const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
+
+  const toggleOpen = useCallback(() => setIsOpen((prev) => !prev), []);
+  const toggleKeyboard = useCallback(() => setShowKeyboard((prev) => !prev), []);
 
   return (
     <div
@@ -84,7 +88,7 @@ export const NavigationHelp: React.FC<NavigationHelpProps> = ({ offsetForSidebar
             {/* Keyboard Shortcuts - Expandable Section */}
             <div className="mt-3 border-t border-slate-200/50 pt-2">
               <button
-                onClick={() => setShowKeyboard(!showKeyboard)}
+                onClick={toggleKeyboard}
                 className="flex w-full items-center justify-between py-1 text-[9px] font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-600"
               >
                 <span>Keyboard Shortcuts</span>
@@ -148,7 +152,7 @@ export const NavigationHelp: React.FC<NavigationHelpProps> = ({ offsetForSidebar
 
       {/* Toggle Button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
         className={`
           pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full
           border shadow-sm backdrop-blur-md transition-all duration-200
@@ -165,3 +169,6 @@ export const NavigationHelp: React.FC<NavigationHelpProps> = ({ offsetForSidebar
     </div>
   );
 };
+
+// Export memoized component
+export const NavigationHelp = memo(NavigationHelpInner);

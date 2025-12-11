@@ -1,4 +1,4 @@
-import React, { Suspense, useRef, useEffect, useState, useCallback } from 'react';
+import React, { Suspense, useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
 import { SceneObject } from '../types';
 import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
@@ -11,6 +11,11 @@ import {
 } from '@react-three/drei';
 import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
+import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
+
+// Check if we're in development mode (Vite provides this)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
 
 // ============================================================================
 // Types
@@ -35,7 +40,11 @@ interface SceneContentProps {
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
 }
 
-const IndustrialPrimitive: React.FC<{
+// Shared geometry instances - created once and reused across all primitives
+const sharedBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+const sharedSelectionGeometry = new THREE.BoxGeometry(1.05, 1.05, 1.05);
+
+interface IndustrialPrimitiveProps {
   obj: SceneObject;
   isSelected: boolean;
   onPointerDown: (e: ThreeEvent<PointerEvent>, obj: SceneObject) => void;
@@ -44,7 +53,9 @@ const IndustrialPrimitive: React.FC<{
   isHovered: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
-}> = ({
+}
+
+const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   obj,
   isSelected,
   onPointerDown,
@@ -57,59 +68,120 @@ const IndustrialPrimitive: React.FC<{
   const meshRef = useRef<THREE.Group>(null);
   const color = obj.properties.color || '#3b82f6';
 
-  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    onPointerDown(e, obj);
-  };
+  // Memoize position array to prevent unnecessary re-renders
+  const position = useMemo<[number, number, number]>(
+    () => [obj.transform.x / 100, obj.transform.y / 100, -obj.transform.z / 100],
+    [obj.transform.x, obj.transform.y, obj.transform.z]
+  );
 
-  const handleDoubleClick = (e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-    onDoubleClick(obj);
-  };
+  // Memoize rotation array
+  const rotation = useMemo<[number, number, number]>(
+    () => [
+      THREE.MathUtils.degToRad(obj.transform.rotationX),
+      THREE.MathUtils.degToRad(obj.transform.rotationY),
+      THREE.MathUtils.degToRad(obj.transform.rotationZ),
+    ],
+    [obj.transform.rotationX, obj.transform.rotationY, obj.transform.rotationZ]
+  );
+
+  // Memoize scale array
+  const scale = useMemo<[number, number, number]>(
+    () => [obj.transform.scaleX, obj.transform.scaleY, obj.transform.scaleZ],
+    [obj.transform.scaleX, obj.transform.scaleY, obj.transform.scaleZ]
+  );
+
+  // Memoize event handlers
+  const handlePointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      onPointerDown(e, obj);
+    },
+    [onPointerDown, obj]
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      onDoubleClick(obj);
+    },
+    [onDoubleClick, obj]
+  );
+
+  const handlePointerEnter = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      onHoverStart();
+    },
+    [onHoverStart]
+  );
+
+  const handlePointerLeave = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      onHoverEnd();
+    },
+    [onHoverEnd]
+  );
+
+  // Calculate emissive properties
+  const emissiveColor = isHovered && !isDragging ? color : '#000000';
+  const emissiveIntensity = isHovered && !isDragging ? 0.1 : 0;
 
   return (
     <group
       ref={meshRef}
-      position={[obj.transform.x / 100, obj.transform.y / 100, -obj.transform.z / 100]}
-      rotation={[
-        THREE.MathUtils.degToRad(obj.transform.rotationX),
-        THREE.MathUtils.degToRad(obj.transform.rotationY),
-        THREE.MathUtils.degToRad(obj.transform.rotationZ),
-      ]}
-      scale={[obj.transform.scaleX, obj.transform.scaleY, obj.transform.scaleZ]}
+      position={position}
+      rotation={rotation}
+      scale={scale}
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
-      onPointerEnter={(e) => {
-        e.stopPropagation();
-        onHoverStart();
-      }}
-      onPointerLeave={(e) => {
-        e.stopPropagation();
-        onHoverEnd();
-      }}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
     >
-      <mesh>
-        <boxGeometry args={[1, 1, 1]} />
+      {/* eslint-disable-next-line react/no-unknown-property */}
+      <mesh geometry={sharedBoxGeometry}>
         <meshStandardMaterial
           color={color}
           roughness={0.2}
           metalness={0.1}
           // eslint-disable-next-line react/no-unknown-property
-          emissive={isHovered && !isDragging ? color : '#000000'}
+          emissive={emissiveColor}
           // eslint-disable-next-line react/no-unknown-property
-          emissiveIntensity={isHovered && !isDragging ? 0.1 : 0}
+          emissiveIntensity={emissiveIntensity}
         />
       </mesh>
 
       {isSelected && (
-        <mesh scale={[1.1, 1.1, 1.1]}>
-          <boxGeometry args={[1.05, 1.05, 1.05]} />
+        // eslint-disable-next-line react/no-unknown-property
+        <mesh geometry={sharedSelectionGeometry} scale={[1.1, 1.1, 1.1]}>
           <meshBasicMaterial color={color} wireframe transparent opacity={0.6} />
         </mesh>
       )}
     </group>
   );
 };
+
+// Memoized component with custom comparison for optimal re-rendering
+const IndustrialPrimitive = memo(IndustrialPrimitiveInner, (prevProps, nextProps) => {
+  // Only re-render if these specific props change
+  return (
+    prevProps.obj.id === nextProps.obj.id &&
+    prevProps.obj.transform.x === nextProps.obj.transform.x &&
+    prevProps.obj.transform.y === nextProps.obj.transform.y &&
+    prevProps.obj.transform.z === nextProps.obj.transform.z &&
+    prevProps.obj.transform.rotationX === nextProps.obj.transform.rotationX &&
+    prevProps.obj.transform.rotationY === nextProps.obj.transform.rotationY &&
+    prevProps.obj.transform.rotationZ === nextProps.obj.transform.rotationZ &&
+    prevProps.obj.transform.scaleX === nextProps.obj.transform.scaleX &&
+    prevProps.obj.transform.scaleY === nextProps.obj.transform.scaleY &&
+    prevProps.obj.transform.scaleZ === nextProps.obj.transform.scaleZ &&
+    prevProps.obj.properties.color === nextProps.obj.properties.color &&
+    prevProps.obj.properties.visible === nextProps.obj.properties.visible &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.isHovered === nextProps.isHovered
+  );
+});
 
 // Cursor manager component - updates document cursor based on hover/drag state
 const CursorManager: React.FC<{
@@ -146,9 +218,11 @@ const DragHandler: React.FC<{
   onMarkAsDrag: () => void;
 }> = ({ dragState, onUpdateObject, onDragEnd, onMarkAsDrag }) => {
   const { camera, gl } = useThree();
+  // Pre-allocate Three.js objects to avoid GC pressure in hot loops
   const raycaster = useRef(new THREE.Raycaster());
   const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
   const intersection = useRef(new THREE.Vector3());
+  const mouseCoords = useRef(new THREE.Vector2()); // Reusable Vector2 for mouse coordinates
 
   useEffect(() => {
     if (!dragState) return;
@@ -175,8 +249,9 @@ const DragHandler: React.FC<{
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      // Raycast to ground plane
-      raycaster.current.setFromCamera(new THREE.Vector2(x, y), camera);
+      // Reuse the Vector2 instead of creating a new one each frame
+      mouseCoords.current.set(x, y);
+      raycaster.current.setFromCamera(mouseCoords.current, camera);
 
       if (raycaster.current.ray.intersectPlane(groundPlane.current, intersection.current)) {
         // Apply offset to get new object position
@@ -213,13 +288,27 @@ const DragHandler: React.FC<{
   return null;
 };
 
+// Navigation keys that trigger continuous movement
+const NAVIGATION_KEYS = new Set([
+  'w',
+  'a',
+  's',
+  'd',
+  'q',
+  'e',
+  'arrowup',
+  'arrowdown',
+  'arrowleft',
+  'arrowright',
+]);
+
 // Keyboard navigation component - handles WASD, arrow keys, Q/E, F, Home
 const KeyboardNavigator: React.FC<{
   controlsRef: React.RefObject<CameraControlsImpl>;
   selectedObject: SceneObject | null;
 }> = ({ controlsRef, selectedObject }) => {
   const keysPressed = useRef<Set<string>>(new Set());
-  const { gl } = useThree();
+  const { gl, invalidate } = useThree();
 
   // Pan and rotation speeds
   const PAN_SPEED = 0.08;
@@ -253,12 +342,14 @@ const KeyboardNavigator: React.FC<{
           pos.z, // Target (object center)
           true // Enable smooth transition
         );
+        invalidate(); // Trigger re-render for smooth animation
         e.preventDefault();
       }
 
       // Reset view (Home or 0 key)
       if ((key === 'home' || key === '0') && controlsRef.current) {
         controlsRef.current.setLookAt(...DEFAULT_CAMERA_POSITION, ...DEFAULT_CAMERA_TARGET, true);
+        invalidate(); // Trigger re-render for smooth animation
         e.preventDefault();
       }
     };
@@ -270,17 +361,36 @@ const KeyboardNavigator: React.FC<{
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
+    // Capture ref value for cleanup to satisfy exhaustive-deps rule
+    const keysPressedRef = keysPressed.current;
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      keysPressedRef.clear(); // Clean up on unmount
     };
-  }, [gl, selectedObject, controlsRef]);
+  }, [gl, selectedObject, controlsRef, invalidate]);
 
   // Continuous movement in useFrame for smooth WASD/arrow key navigation
   useFrame(() => {
     if (!controlsRef.current) return;
-    const controls = controlsRef.current;
+
     const keys = keysPressed.current;
+
+    // Early return if no navigation keys are pressed - saves CPU cycles
+    if (keys.size === 0) return;
+
+    // Check if any navigation keys are actually pressed
+    let hasNavigationKey = false;
+    for (const key of keys) {
+      if (NAVIGATION_KEYS.has(key)) {
+        hasNavigationKey = true;
+        break;
+      }
+    }
+    if (!hasNavigationKey) return;
+
+    const controls = controlsRef.current;
 
     // Forward/Backward (W/S or Up/Down arrows) - truck forward/back
     if (keys.has('w') || keys.has('arrowup')) {
@@ -329,6 +439,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const hasNotifiedRef = useRef(false);
 
   // Poll each frame until controls are ready - guarantees we capture them
+  // This is necessary because refs don't trigger re-renders, so useEffect can't detect when populated
   useFrame(() => {
     if (controlsRef.current && onCameraControlsReady && !hasNotifiedRef.current) {
       hasNotifiedRef.current = true;
@@ -433,7 +544,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
         )}
       </group>
 
-      <ContactShadows position={[0, -0.01, 0]} opacity={0.2} scale={20} blur={2.5} far={1} />
+      <ContactShadows
+        position={[0, -0.01, 0]}
+        opacity={0.2}
+        scale={20}
+        blur={2.5}
+        far={1}
+        resolution={256} // Lower resolution for better performance (default is 512)
+        frames={1} // Only render shadow once (static shadows)
+      />
 
       {/* Grid visible from both above and below */}
       <Grid
@@ -506,6 +625,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
   );
 };
 
+// Performance stats type for the monitor
+interface PerformanceStats {
+  fps: number;
+  frameTime: number;
+  drawCalls: number;
+  triangles: number;
+  memory: number;
+}
+
 interface MainCanvasProps {
   objects: SceneObject[];
   selectedObjectId: string | null;
@@ -513,6 +641,8 @@ interface MainCanvasProps {
   onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (obj: SceneObject) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
+  /** Show performance monitor (defaults to true in development) */
+  showPerformanceMonitor?: boolean;
 }
 
 export const MainCanvas: React.FC<MainCanvasProps> = ({
@@ -522,13 +652,35 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onUpdateObject,
   onFocusObject,
   onCameraControlsReady,
+  showPerformanceMonitor = IS_DEV,
 }) => {
+  // Performance monitoring state
+  const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
+
+  // Memoize the stats handler to prevent unnecessary re-renders
+  const handlePerfStats = useCallback((stats: PerformanceStats) => {
+    setPerfStats(stats);
+  }, []);
+
   return (
     <div className="absolute inset-0 h-full w-full overflow-hidden bg-slate-100">
       <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,_#f8fafc_0%,_#cbd5e1_100%)]"></div>
 
       <div className="relative z-10 h-full w-full">
-        <Canvas shadows className="h-full w-full" onPointerMissed={() => onSelectObject(null)}>
+        <Canvas
+          shadows
+          className="h-full w-full"
+          onPointerMissed={() => onSelectObject(null)}
+          // Performance optimizations
+          dpr={[1, 2]} // Limit device pixel ratio (1 min, 2 max)
+          performance={{ min: 0.5 }} // Allow adaptive performance scaling
+          gl={{
+            antialias: true,
+            powerPreference: 'high-performance',
+            stencil: false, // Disable stencil buffer if not needed
+            depth: true,
+          }}
+        >
           <SceneContent
             objects={objects}
             selectedObjectId={selectedObjectId}
@@ -537,8 +689,14 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onFocusObject={onFocusObject}
             onCameraControlsReady={onCameraControlsReady}
           />
+
+          {/* Performance monitor (scene component - collects stats) */}
+          {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}
         </Canvas>
       </div>
+
+      {/* Performance monitor UI (outside canvas) */}
+      {showPerformanceMonitor && <PerformanceMonitorUI stats={perfStats} position="top-left" />}
     </div>
   );
 };

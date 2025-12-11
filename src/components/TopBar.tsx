@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { Undo, Redo, Share2, MonitorPlay, Save, Menu, Pencil } from 'lucide-react';
 import { Button } from './Button';
 
@@ -14,7 +14,7 @@ interface TopBarProps {
 }
 
 // =============================================================================
-// Sub-components
+// Sub-components (Memoized for performance)
 // =============================================================================
 
 /**
@@ -22,7 +22,7 @@ interface TopBarProps {
  * Uses a two-layer approach: gradient layer underneath, solid overlay on top.
  * The solid overlay fades out on hover to reveal the gradient.
  */
-const BrandLogo: React.FC = () => (
+const BrandLogo = memo(() => (
   <div className="group flex cursor-pointer select-none flex-col justify-center">
     <h1 className="relative text-xl font-bold leading-none tracking-tight">
       {/* Gradient layer (always rendered, provides layout) */}
@@ -41,12 +41,13 @@ const BrandLogo: React.FC = () => (
       Studio
     </span>
   </div>
-);
+));
+BrandLogo.displayName = 'BrandLogo';
 
 /**
  * History control buttons (Save, Undo, Redo).
  */
-const HistoryControls: React.FC = () => (
+const HistoryControls = memo(() => (
   <div className="hidden items-center gap-1 sm:flex">
     <Button variant="ghost" size="icon" aria-label="Save" className="h-10 w-10 rounded-[20px]">
       <Save size={18} />
@@ -66,7 +67,8 @@ const HistoryControls: React.FC = () => (
       </Button>
     </div>
   </div>
-);
+));
+HistoryControls.displayName = 'HistoryControls';
 
 interface SimulationTitleProps {
   title: string;
@@ -82,49 +84,61 @@ interface SimulationTitleProps {
 /**
  * Editable simulation title in the center of the header.
  */
-const SimulationTitle: React.FC<SimulationTitleProps> = ({
-  title,
-  isEditing,
-  tempTitle,
-  inputRef,
-  onTempTitleChange,
-  onStartEditing,
-  onSave,
-  onKeyDown,
-}) => (
-  <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center justify-center md:flex">
-    {isEditing ? (
-      <input
-        ref={inputRef}
-        value={tempTitle}
-        onChange={(e) => onTempTitleChange(e.target.value)}
-        onBlur={onSave}
-        onKeyDown={onKeyDown}
-        className="w-[200px] border-b-2 border-blue-500 bg-transparent px-2 py-1 text-center text-sm font-bold text-slate-800 focus:outline-none"
-        aria-label="Simulation title"
-      />
-    ) : (
-      <button
-        type="button"
-        className="group flex cursor-pointer items-center gap-2 rounded-[20px] px-4 py-1.5 outline-none transition-all hover:bg-black/5 focus:bg-black/5"
-        onClick={onStartEditing}
-        title="Edit simulation title"
-      >
-        <span className="max-w-[200px] truncate text-sm font-bold text-slate-700 lg:max-w-[400px]">
-          {title}
-        </span>
-        <div className="rounded-[12px] bg-slate-200/50 p-1 text-slate-400 transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
-          <Pencil size={12} strokeWidth={2.5} />
-        </div>
-      </button>
-    )}
-  </div>
+const SimulationTitle = memo<SimulationTitleProps>(
+  ({
+    title,
+    isEditing,
+    tempTitle,
+    inputRef,
+    onTempTitleChange,
+    onStartEditing,
+    onSave,
+    onKeyDown,
+  }) => {
+    const handleChange = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        onTempTitleChange(e.target.value);
+      },
+      [onTempTitleChange]
+    );
+
+    return (
+      <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center justify-center md:flex">
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            value={tempTitle}
+            onChange={handleChange}
+            onBlur={onSave}
+            onKeyDown={onKeyDown}
+            className="w-[200px] border-b-2 border-blue-500 bg-transparent px-2 py-1 text-center text-sm font-bold text-slate-800 focus:outline-none"
+            aria-label="Simulation title"
+          />
+        ) : (
+          <button
+            type="button"
+            className="group flex cursor-pointer items-center gap-2 rounded-[20px] px-4 py-1.5 outline-none transition-all hover:bg-black/5 focus:bg-black/5"
+            onClick={onStartEditing}
+            title="Edit simulation title"
+          >
+            <span className="max-w-[200px] truncate text-sm font-bold text-slate-700 lg:max-w-[400px]">
+              {title}
+            </span>
+            <div className="rounded-[12px] bg-slate-200/50 p-1 text-slate-400 transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
+              <Pencil size={12} strokeWidth={2.5} />
+            </div>
+          </button>
+        )}
+      </div>
+    );
+  }
 );
+SimulationTitle.displayName = 'SimulationTitle';
 
 /**
  * Action buttons on the right side (Preview, Publish, Mobile Menu).
  */
-const ActionButtons: React.FC = () => (
+const ActionButtons = memo(() => (
   <div className="z-10 flex items-center gap-3">
     <Button
       variant="secondary"
@@ -144,7 +158,8 @@ const ActionButtons: React.FC = () => (
       <Menu size={20} />
     </Button>
   </div>
-);
+));
+ActionButtons.displayName = 'ActionButtons';
 
 // =============================================================================
 // Main Component
@@ -161,7 +176,7 @@ const ActionButtons: React.FC = () => (
  * - Responsive mobile menu
  * - Glass morphism styling
  */
-export const TopBar: React.FC<TopBarProps> = ({ title, onTitleChange }) => {
+const TopBarInner: React.FC<TopBarProps> = ({ title, onTitleChange }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [tempTitle, setTempTitle] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -246,3 +261,6 @@ export const TopBar: React.FC<TopBarProps> = ({ title, onTitleChange }) => {
     </div>
   );
 };
+
+// Export memoized component
+export const TopBar = memo(TopBarInner);

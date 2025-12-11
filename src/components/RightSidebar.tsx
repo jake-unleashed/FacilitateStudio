@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback, useMemo } from 'react';
 import { SceneObject } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
@@ -60,8 +60,16 @@ interface PanelHeaderProps {
   onClose: () => void;
 }
 
-const PanelHeader: React.FC<PanelHeaderProps> = ({ objectType, onClose }) => {
+const PanelHeader = memo<PanelHeaderProps>(({ objectType, onClose }) => {
   const Icon = OBJECT_ICONS[objectType] || Box;
+
+  const handleClose = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onClose();
+    },
+    [onClose]
+  );
 
   return (
     <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
@@ -76,10 +84,7 @@ const PanelHeader: React.FC<PanelHeaderProps> = ({ objectType, onClose }) => {
         <h2 className="truncate text-sm font-bold text-slate-900">Object Details</h2>
       </div>
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
+        onClick={handleClose}
         className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[12px] text-slate-500 transition-colors hover:bg-white/50 hover:text-slate-800 active:scale-95"
         aria-label="Close"
         data-testid="close-button"
@@ -88,7 +93,8 @@ const PanelHeader: React.FC<PanelHeaderProps> = ({ objectType, onClose }) => {
       </button>
     </div>
   );
-};
+});
+PanelHeader.displayName = 'PanelHeader';
 
 interface NameAndVisibilitySectionProps {
   name: string;
@@ -97,39 +103,44 @@ interface NameAndVisibilitySectionProps {
   onVisibilityToggle: () => void;
 }
 
-const NameAndVisibilitySection: React.FC<NameAndVisibilitySectionProps> = ({
-  name,
-  visible,
-  onNameChange,
-  onVisibilityToggle,
-}) => {
-  const visibilityButtonClasses = visible
-    ? 'border-white/50 bg-white/50 text-blue-600 hover:bg-white hover:shadow-sm'
-    : 'border-transparent bg-slate-100/50 text-slate-400 hover:bg-slate-200';
+const NameAndVisibilitySection = memo<NameAndVisibilitySectionProps>(
+  ({ name, visible, onNameChange, onVisibilityToggle }) => {
+    const visibilityButtonClasses = visible
+      ? 'border-white/50 bg-white/50 text-blue-600 hover:bg-white hover:shadow-sm'
+      : 'border-transparent bg-slate-100/50 text-slate-400 hover:bg-slate-200';
 
-  return (
-    <div className="flex items-end gap-3">
-      <div className="flex-1">
-        <Input
-          label="Name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          className="text-sm font-semibold"
-          data-testid="object-name-input"
-        />
+    const handleChange = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        onNameChange(e.target.value);
+      },
+      [onNameChange]
+    );
+
+    return (
+      <div className="flex items-end gap-3">
+        <div className="flex-1">
+          <Input
+            label="Name"
+            value={name}
+            onChange={handleChange}
+            className="text-sm font-semibold"
+            data-testid="object-name-input"
+          />
+        </div>
+        <button
+          onClick={onVisibilityToggle}
+          className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[20px] border transition-all duration-200 ${visibilityButtonClasses}`}
+          title="Toggle Visibility"
+          aria-label={visible ? 'Hide object' : 'Show object'}
+          data-testid="visibility-toggle"
+        >
+          {visible ? <Eye size={20} /> : <EyeOff size={20} />}
+        </button>
       </div>
-      <button
-        onClick={onVisibilityToggle}
-        className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[20px] border transition-all duration-200 ${visibilityButtonClasses}`}
-        title="Toggle Visibility"
-        aria-label={visible ? 'Hide object' : 'Show object'}
-        data-testid="visibility-toggle"
-      >
-        {visible ? <Eye size={20} /> : <EyeOff size={20} />}
-      </button>
-    </div>
-  );
-};
+    );
+  }
+);
+NameAndVisibilitySection.displayName = 'NameAndVisibilitySection';
 
 interface HeightSectionProps {
   /** Height above ground in internal units (where 100 = 1 meter) */
@@ -138,11 +149,13 @@ interface HeightSectionProps {
   onHeightChange: (newHeight: number) => void;
 }
 
-const HeightSection: React.FC<HeightSectionProps> = ({ groundRelativeHeight, onHeightChange }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Slider value is in internal units (0-500 for 0-5m)
-    onHeightChange(parseFloat(e.target.value));
-  };
+const HeightSection = memo<HeightSectionProps>(({ groundRelativeHeight, onHeightChange }) => {
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onHeightChange(parseFloat(e.target.value));
+    },
+    [onHeightChange]
+  );
 
   // Convert internal units to display units (divide by 100 for meters)
   const displayHeight = groundRelativeHeight / 100;
@@ -184,17 +197,21 @@ const HeightSection: React.FC<HeightSectionProps> = ({ groundRelativeHeight, onH
       </div>
     </div>
   );
-};
+});
+HeightSection.displayName = 'HeightSection';
 
 interface ScaleSectionProps {
   currentScale: number;
   onScaleChange: (scale: number) => void;
 }
 
-const ScaleSection: React.FC<ScaleSectionProps> = ({ currentScale, onScaleChange }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onScaleChange(parseFloat(e.target.value));
-  };
+const ScaleSection = memo<ScaleSectionProps>(({ currentScale, onScaleChange }) => {
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onScaleChange(parseFloat(e.target.value));
+    },
+    [onScaleChange]
+  );
 
   return (
     <div
@@ -233,7 +250,8 @@ const ScaleSection: React.FC<ScaleSectionProps> = ({ currentScale, onScaleChange
       </div>
     </div>
   );
-};
+});
+ScaleSection.displayName = 'ScaleSection';
 
 interface RotationSectionProps {
   activeAxis: RotationAxis;
@@ -244,100 +262,101 @@ interface RotationSectionProps {
 
 const ROTATION_AXES: readonly RotationAxis[] = ['x', 'y', 'z'] as const;
 
-const RotationSection: React.FC<RotationSectionProps> = ({
-  activeAxis,
-  displayRotation,
-  onAxisChange,
-  onRotationChange,
-}) => {
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onRotationChange(parseFloat(e.target.value));
-  };
+const RotationSection = memo<RotationSectionProps>(
+  ({ activeAxis, displayRotation, onAxisChange, onRotationChange }) => {
+    const handleSliderChange = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        onRotationChange(parseFloat(e.target.value));
+      },
+      [onRotationChange]
+    );
 
-  return (
-    <div
-      className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
-      data-testid="rotation-section"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Rotate3d size={12} className="text-slate-500" />
-          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
-            Rotation
-          </label>
-        </div>
-        <span
-          className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
-          data-testid="rotation-value"
-        >
-          {Math.round(displayRotation)}°
-        </span>
-      </div>
-
-      {/* Axis toggles + Slider in compact layout */}
-      <div className="flex items-center gap-2">
-        {/* Axis Toggles - Compact */}
-        <div
-          className="flex shrink-0 rounded-[10px] border border-white/20 bg-slate-100/50 p-0.5"
-          role="group"
-          aria-label="Rotation axis selection"
-        >
-          {ROTATION_AXES.map((axis) => {
-            const isActive = activeAxis === axis;
-            const buttonClasses = isActive
-              ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-              : 'text-slate-400 hover:bg-white/50 hover:text-slate-600';
-
-            return (
-              <button
-                key={axis}
-                onClick={() => onAxisChange(axis)}
-                className={`rounded-[8px] px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-all duration-200 ${buttonClasses}`}
-                aria-pressed={isActive}
-                data-testid={`axis-${axis}-button`}
-              >
-                {axis}
-              </button>
-            );
-          })}
+    return (
+      <div
+        className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
+        data-testid="rotation-section"
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Rotate3d size={12} className="text-slate-500" />
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              Rotation
+            </label>
+          </div>
+          <span
+            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
+            data-testid="rotation-value"
+          >
+            {Math.round(displayRotation)}°
+          </span>
         </div>
 
-        {/* Slider with Center-Zero (-180 to 180) */}
-        <div className="relative flex-1">
-          {/* Center Marker */}
+        {/* Axis toggles + Slider in compact layout */}
+        <div className="flex items-center gap-2">
+          {/* Axis Toggles - Compact */}
           <div
-            className="absolute bottom-0 left-1/2 top-0 z-0 w-px bg-slate-300/40"
-            aria-hidden="true"
-          />
+            className="flex shrink-0 rounded-[10px] border border-white/20 bg-slate-100/50 p-0.5"
+            role="group"
+            aria-label="Rotation axis selection"
+          >
+            {ROTATION_AXES.map((axis) => {
+              const isActive = activeAxis === axis;
+              const buttonClasses = isActive
+                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                : 'text-slate-400 hover:bg-white/50 hover:text-slate-600';
 
-          <input
-            type="range"
-            min="-180"
-            max="180"
-            step="1"
-            value={displayRotation}
-            onChange={handleSliderChange}
-            className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
-            aria-label={`Rotation ${activeAxis.toUpperCase()} axis slider`}
-            data-testid="rotation-slider"
-          />
+              return (
+                <button
+                  key={axis}
+                  onClick={() => onAxisChange(axis)}
+                  className={`rounded-[8px] px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-all duration-200 ${buttonClasses}`}
+                  aria-pressed={isActive}
+                  data-testid={`axis-${axis}-button`}
+                >
+                  {axis}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Slider with Center-Zero (-180 to 180) */}
+          <div className="relative flex-1">
+            {/* Center Marker */}
+            <div
+              className="absolute bottom-0 left-1/2 top-0 z-0 w-px bg-slate-300/40"
+              aria-hidden="true"
+            />
+
+            <input
+              type="range"
+              min="-180"
+              max="180"
+              step="1"
+              value={displayRotation}
+              onChange={handleSliderChange}
+              className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+              aria-label={`Rotation ${activeAxis.toUpperCase()} axis slider`}
+              data-testid="rotation-slider"
+            />
+          </div>
+        </div>
+        <div className="mt-1 flex justify-between pl-[72px] text-[9px] font-medium text-slate-400">
+          <span>-180°</span>
+          <span className="text-slate-300">0°</span>
+          <span>180°</span>
         </div>
       </div>
-      <div className="mt-1 flex justify-between pl-[72px] text-[9px] font-medium text-slate-400">
-        <span>-180°</span>
-        <span className="text-slate-300">0°</span>
-        <span>180°</span>
-      </div>
-    </div>
-  );
-};
+    );
+  }
+);
+RotationSection.displayName = 'RotationSection';
 
 interface ActionsSectionProps {
   onDuplicate: () => void;
   onDelete: () => void;
 }
 
-const ActionsSection: React.FC<ActionsSectionProps> = ({ onDuplicate, onDelete }) => {
+const ActionsSection = memo<ActionsSectionProps>(({ onDuplicate, onDelete }) => {
   return (
     <div className="mt-auto grid grid-cols-2 gap-3 pt-2" data-testid="actions-section">
       <Button
@@ -362,13 +381,14 @@ const ActionsSection: React.FC<ActionsSectionProps> = ({ onDuplicate, onDelete }
       </Button>
     </div>
   );
-};
+});
+ActionsSection.displayName = 'ActionsSection';
 
 // ============================================================================
 // Main Component
 // ============================================================================
 
-export const RightSidebar: React.FC<RightSidebarProps> = ({
+const RightSidebarInner: React.FC<RightSidebarProps> = ({
   object,
   onUpdate,
   onDelete,
@@ -376,16 +396,40 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 }) => {
   const [activeRotAxis, setActiveRotAxis] = useState<RotationAxis>('y');
 
-  // Early return if no object is selected
-  if (!object) return null;
+  // ---- Memoized Calculations ----
+  // Note: All hooks must be called unconditionally (before any early returns)
 
-  // ---- Event Handlers ----
+  // Calculate the lowest point offset based on current rotation and scale
+  const lowestPointOffset = useMemo(() => {
+    if (!object) return 0;
+    return calculateLowestPointOffset(
+      object.transform.rotationX,
+      object.transform.rotationY,
+      object.transform.rotationZ,
+      object.transform.scaleX,
+      object.transform.scaleY,
+      object.transform.scaleZ
+    );
+  }, [object]);
 
-  const handleNameChange = (name: string) => {
-    onUpdate({ ...object, name });
-  };
+  // Calculate ground-relative height from Y position
+  const groundRelativeHeight = useMemo(() => {
+    if (!object) return 0;
+    return yPositionToHeight(object.transform.y, lowestPointOffset);
+  }, [object, lowestPointOffset]);
 
-  const handleVisibilityToggle = () => {
+  // ---- Memoized Event Handlers ----
+
+  const handleNameChange = useCallback(
+    (name: string) => {
+      if (!object) return;
+      onUpdate({ ...object, name });
+    },
+    [object, onUpdate]
+  );
+
+  const handleVisibilityToggle = useCallback(() => {
+    if (!object) return;
     onUpdate({
       ...object,
       properties: {
@@ -393,109 +437,95 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         visible: !object.properties.visible,
       },
     });
-  };
+  }, [object, onUpdate]);
 
-  // Calculate the lowest point offset based on current rotation and scale
-  const lowestPointOffset = calculateLowestPointOffset(
-    object.transform.rotationX,
-    object.transform.rotationY,
-    object.transform.rotationZ,
-    object.transform.scaleX,
-    object.transform.scaleY,
-    object.transform.scaleZ
+  const handleHeightChange = useCallback(
+    (newHeight: number) => {
+      if (!object) return;
+      const newY = heightToYPosition(newHeight, lowestPointOffset);
+      onUpdate({
+        ...object,
+        transform: {
+          ...object.transform,
+          y: newY,
+        },
+      });
+    },
+    [object, onUpdate, lowestPointOffset]
   );
 
-  // Calculate ground-relative height from Y position
-  const groundRelativeHeight = yPositionToHeight(object.transform.y, lowestPointOffset);
+  const handleScaleChange = useCallback(
+    (scale: number) => {
+      if (!object) return;
+      const newLowestPointOffset = calculateLowestPointOffset(
+        object.transform.rotationX,
+        object.transform.rotationY,
+        object.transform.rotationZ,
+        scale,
+        scale,
+        scale
+      );
+      const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
+      const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
 
-  const handleHeightChange = (newHeight: number) => {
-    // Convert ground-relative height to Y position
-    const newY = heightToYPosition(newHeight, lowestPointOffset);
-    onUpdate({
-      ...object,
-      transform: {
-        ...object.transform,
-        y: newY,
-      },
-    });
-  };
+      onUpdate({
+        ...object,
+        transform: {
+          ...object.transform,
+          scaleX: scale,
+          scaleY: scale,
+          scaleZ: scale,
+          y: newY,
+        },
+      });
+    },
+    [object, onUpdate, lowestPointOffset]
+  );
 
-  const handleScaleChange = (scale: number) => {
-    // Calculate new lowest point offset with the new scale
-    const newLowestPointOffset = calculateLowestPointOffset(
-      object.transform.rotationX,
-      object.transform.rotationY,
-      object.transform.rotationZ,
-      scale,
-      scale,
-      scale
-    );
+  const handleRotationChange = useCallback(
+    (rotation: number) => {
+      if (!object) return;
+      const rotationKey = getRotationKey(activeRotAxis);
+      const newRotationX = rotationKey === 'rotationX' ? rotation : object.transform.rotationX;
+      const newRotationY = rotationKey === 'rotationY' ? rotation : object.transform.rotationY;
+      const newRotationZ = rotationKey === 'rotationZ' ? rotation : object.transform.rotationZ;
 
-    // Calculate current height above ground
-    const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
+      const newLowestPointOffset = calculateLowestPointOffset(
+        newRotationX,
+        newRotationY,
+        newRotationZ,
+        object.transform.scaleX,
+        object.transform.scaleY,
+        object.transform.scaleZ
+      );
+      const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
+      const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
 
-    // Calculate new Y position that maintains the same height above ground
-    // (or clamps to 0 if the object would go through the ground)
-    const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
+      onUpdate({
+        ...object,
+        transform: {
+          ...object.transform,
+          [rotationKey]: rotation,
+          y: newY,
+        },
+      });
+    },
+    [object, onUpdate, activeRotAxis, lowestPointOffset]
+  );
 
-    onUpdate({
-      ...object,
-      transform: {
-        ...object.transform,
-        scaleX: scale,
-        scaleY: scale,
-        scaleZ: scale,
-        y: newY,
-      },
-    });
-  };
-
-  const handleRotationChange = (rotation: number) => {
-    const rotationKey = getRotationKey(activeRotAxis);
-
-    // Build new rotation values
-    const newRotationX = rotationKey === 'rotationX' ? rotation : object.transform.rotationX;
-    const newRotationY = rotationKey === 'rotationY' ? rotation : object.transform.rotationY;
-    const newRotationZ = rotationKey === 'rotationZ' ? rotation : object.transform.rotationZ;
-
-    // Calculate new lowest point offset with the new rotation
-    const newLowestPointOffset = calculateLowestPointOffset(
-      newRotationX,
-      newRotationY,
-      newRotationZ,
-      object.transform.scaleX,
-      object.transform.scaleY,
-      object.transform.scaleZ
-    );
-
-    // Calculate current height above ground
-    const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
-
-    // Calculate new Y position that maintains the same height above ground
-    // (or clamps to 0 if the object would go through the ground)
-    const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
-
-    onUpdate({
-      ...object,
-      transform: {
-        ...object.transform,
-        [rotationKey]: rotation,
-        y: newY,
-      },
-    });
-  };
-
-  const handleDuplicate = () => {
+  const handleDuplicate = useCallback(() => {
     // Duplicate functionality - currently a no-op, will be implemented later
-    // This is intentionally left empty as per the original implementation
-  };
+  }, []);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
+    if (!object) return;
     onDelete(object.id);
-  };
+  }, [object, onDelete]);
+
+  // ---- Early return after all hooks ----
+  if (!object) return null;
 
   // ---- Computed Values ----
-
   const rotationKey = getRotationKey(activeRotAxis);
   const currentRotation = object.transform[rotationKey];
   const displayRotation = normalizeAngle(currentRotation);
@@ -541,3 +571,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     </div>
   );
 };
+
+// Export memoized component
+export const RightSidebar = memo(RightSidebarInner);

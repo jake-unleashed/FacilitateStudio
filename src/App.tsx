@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
@@ -22,14 +22,21 @@ function App() {
   // Force re-render when controls become available
   const [, setControlsReady] = useState(false);
 
+  // Track debug cube count for naming
+  const debugCubeCountRef = useRef(0);
+
+  // ============================================================================
+  // Memoized Callbacks - Stable references for child components
+  // ============================================================================
+
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
     cameraControlsRef.current = controls;
     setControlsReady(true);
   }, []);
 
-  const handleSelectObject = (id: string | null) => {
+  const handleSelectObject = useCallback((id: string | null) => {
     setSelectedObjectId(id);
-  };
+  }, []);
 
   const handleFocusObject = useCallback((object: SceneObject) => {
     const controls = cameraControlsRef.current;
@@ -52,19 +59,16 @@ function App() {
     }
   }, []);
 
-  const handleUpdateObject = (updated: SceneObject) => {
+  const handleUpdateObject = useCallback((updated: SceneObject) => {
     setObjects((prev) => prev.map((obj) => (obj.id === updated.id ? updated : obj)));
-  };
+  }, []);
 
-  const handleDeleteObject = (id: string) => {
+  const handleDeleteObject = useCallback((id: string) => {
     setObjects((prev) => prev.filter((obj) => obj.id !== id));
-    if (selectedObjectId === id) setSelectedObjectId(null);
-  };
+    setSelectedObjectId((prevId) => (prevId === id ? null : prevId));
+  }, []);
 
-  // Track debug cube count for naming
-  const debugCubeCountRef = useRef(0);
-
-  const handleAddDebugCube = () => {
+  const handleAddDebugCube = useCallback(() => {
     debugCubeCountRef.current += 1;
     const cubeNumber = debugCubeCountRef.current;
     const newCube: SceneObject = {
@@ -88,9 +92,22 @@ function App() {
       },
     };
     setObjects((prev) => [...prev, newCube]);
-  };
+  }, []);
 
-  const selectedObject = objects.find((obj) => obj.id === selectedObjectId) || null;
+  const handleCloseRightSidebar = useCallback(() => {
+    setSelectedObjectId(null);
+  }, []);
+
+  // ============================================================================
+  // Memoized Derived State
+  // ============================================================================
+
+  const selectedObject = useMemo(
+    () => objects.find((obj) => obj.id === selectedObjectId) || null,
+    [objects, selectedObjectId]
+  );
+
+  const hasSelectedObject = useMemo(() => !!selectedObject, [selectedObject]);
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black selection:bg-blue-500/30 selection:text-white">
@@ -122,15 +139,15 @@ function App() {
           object={selectedObject}
           onUpdate={handleUpdateObject}
           onDelete={handleDeleteObject}
-          onClose={() => setSelectedObjectId(null)}
+          onClose={handleCloseRightSidebar}
         />
       )}
 
-      <NavigationHelp offsetForSidebar={!!selectedObject} />
+      <NavigationHelp offsetForSidebar={hasSelectedObject} />
 
       <CameraResetButton cameraControlsRef={cameraControlsRef} />
 
-      <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={!!selectedObject} />
+      <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={hasSelectedObject} />
     </div>
   );
 }
