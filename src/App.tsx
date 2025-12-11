@@ -100,6 +100,7 @@ function App() {
         selectedObjectId={selectedObjectId}
         onSelectObject={handleSelectObject}
         onUpdateObject={handleUpdateObject}
+        onFocusObject={handleFocusObject}
         onCameraControlsReady={handleCameraControlsReady}
       />
 

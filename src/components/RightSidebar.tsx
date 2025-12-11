@@ -2,8 +2,13 @@ import React, { useState } from 'react';
 import { SceneObject } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
-import { Box, Eye, EyeOff, Trash2, Copy, Rotate3d, Scaling, X } from 'lucide-react';
+import { Box, Eye, EyeOff, Trash2, Copy, Rotate3d, Scaling, X, ArrowUpDown } from 'lucide-react';
 import { OBJECT_ICONS } from '../constants';
+import {
+  calculateLowestPointOffset,
+  heightToYPosition,
+  yPositionToHeight,
+} from '../utils/groundHeight';
 
 // ============================================================================
 // Types
@@ -126,6 +131,61 @@ const NameAndVisibilitySection: React.FC<NameAndVisibilitySectionProps> = ({
   );
 };
 
+interface HeightSectionProps {
+  /** Height above ground in internal units (where 100 = 1 meter) */
+  groundRelativeHeight: number;
+  /** Called when user changes the height slider */
+  onHeightChange: (newHeight: number) => void;
+}
+
+const HeightSection: React.FC<HeightSectionProps> = ({ groundRelativeHeight, onHeightChange }) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Slider value is in internal units (0-500 for 0-5m)
+    onHeightChange(parseFloat(e.target.value));
+  };
+
+  // Convert internal units to display units (divide by 100 for meters)
+  const displayHeight = groundRelativeHeight / 100;
+
+  return (
+    <div
+      className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
+      data-testid="height-section"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <ArrowUpDown size={12} className="text-slate-500" />
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+            Height
+          </label>
+        </div>
+        <span
+          className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
+          data-testid="height-value"
+        >
+          {displayHeight.toFixed(2)}m
+        </span>
+      </div>
+
+      <input
+        type="range"
+        min="0"
+        max="500"
+        step="5"
+        value={groundRelativeHeight}
+        onChange={handleChange}
+        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+        aria-label="Height slider"
+        data-testid="height-slider"
+      />
+      <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
+        <span>0m</span>
+        <span>5m</span>
+      </div>
+    </div>
+  );
+};
+
 interface ScaleSectionProps {
   currentScale: number;
   onScaleChange: (scale: number) => void;
@@ -138,38 +198,38 @@ const ScaleSection: React.FC<ScaleSectionProps> = ({ currentScale, onScaleChange
 
   return (
     <div
-      className="rounded-[20px] border border-white/40 bg-white/40 p-4 shadow-sm"
+      className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
       data-testid="scale-section"
     >
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Scaling size={14} className="text-slate-500" />
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Scale</label>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Scaling size={12} className="text-slate-500" />
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+            Scale
+          </label>
         </div>
         <span
-          className="rounded-[12px] border border-white/50 bg-white/50 px-2 py-0.5 font-mono text-xs font-bold text-slate-500 shadow-sm"
+          className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
           data-testid="scale-value"
         >
           {currentScale.toFixed(2)}x
         </span>
       </div>
 
-      <div className="px-1">
-        <input
-          type="range"
-          min="0.1"
-          max="3.0"
-          step="0.1"
-          value={currentScale}
-          onChange={handleChange}
-          className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
-          aria-label="Scale slider"
-          data-testid="scale-slider"
-        />
-        <div className="mt-2 flex justify-between text-[10px] font-medium text-slate-400">
-          <span>0.1x</span>
-          <span>3.0x</span>
-        </div>
+      <input
+        type="range"
+        min="0.1"
+        max="3.0"
+        step="0.1"
+        value={currentScale}
+        onChange={handleChange}
+        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+        aria-label="Scale slider"
+        data-testid="scale-slider"
+      />
+      <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
+        <span>0.1x</span>
+        <span>3.0x</span>
       </div>
     </div>
   );
@@ -196,28 +256,29 @@ const RotationSection: React.FC<RotationSectionProps> = ({
 
   return (
     <div
-      className="rounded-[20px] border border-white/40 bg-white/40 p-4 shadow-sm"
+      className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
       data-testid="rotation-section"
     >
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Rotate3d size={14} className="text-slate-500" />
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Rotate3d size={12} className="text-slate-500" />
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
             Rotation
           </label>
         </div>
         <span
-          className="rounded-[12px] border border-white/50 bg-white/50 px-2 py-0.5 font-mono text-xs font-bold text-slate-500 shadow-sm"
+          className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
           data-testid="rotation-value"
         >
           {Math.round(displayRotation)}°
         </span>
       </div>
 
-      <div className="space-y-4">
-        {/* Axis Toggles */}
+      {/* Axis toggles + Slider in compact layout */}
+      <div className="flex items-center gap-2">
+        {/* Axis Toggles - Compact */}
         <div
-          className="flex rounded-[20px] border border-white/20 bg-slate-100/50 p-1"
+          className="flex shrink-0 rounded-[10px] border border-white/20 bg-slate-100/50 p-0.5"
           role="group"
           aria-label="Rotation axis selection"
         >
@@ -231,7 +292,7 @@ const RotationSection: React.FC<RotationSectionProps> = ({
               <button
                 key={axis}
                 onClick={() => onAxisChange(axis)}
-                className={`flex-1 rounded-[12px] py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-200 ${buttonClasses}`}
+                className={`rounded-[8px] px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-all duration-200 ${buttonClasses}`}
                 aria-pressed={isActive}
                 data-testid={`axis-${axis}-button`}
               >
@@ -242,10 +303,10 @@ const RotationSection: React.FC<RotationSectionProps> = ({
         </div>
 
         {/* Slider with Center-Zero (-180 to 180) */}
-        <div className="relative px-1">
+        <div className="relative flex-1">
           {/* Center Marker */}
           <div
-            className="absolute bottom-4 left-1/2 top-[-6px] z-0 w-px bg-slate-300/50"
+            className="absolute bottom-0 left-1/2 top-0 z-0 w-px bg-slate-300/40"
             aria-hidden="true"
           />
 
@@ -256,16 +317,16 @@ const RotationSection: React.FC<RotationSectionProps> = ({
             step="1"
             value={displayRotation}
             onChange={handleSliderChange}
-            className="relative z-10 h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+            className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
             aria-label={`Rotation ${activeAxis.toUpperCase()} axis slider`}
             data-testid="rotation-slider"
           />
-          <div className="mt-2 flex justify-between text-[10px] font-medium text-slate-400">
-            <span>-180°</span>
-            <span className="text-slate-300">0°</span>
-            <span>180°</span>
-          </div>
         </div>
+      </div>
+      <div className="mt-1 flex justify-between pl-[72px] text-[9px] font-medium text-slate-400">
+        <span>-180°</span>
+        <span className="text-slate-300">0°</span>
+        <span>180°</span>
       </div>
     </div>
   );
@@ -334,7 +395,49 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     });
   };
 
+  // Calculate the lowest point offset based on current rotation and scale
+  const lowestPointOffset = calculateLowestPointOffset(
+    object.transform.rotationX,
+    object.transform.rotationY,
+    object.transform.rotationZ,
+    object.transform.scaleX,
+    object.transform.scaleY,
+    object.transform.scaleZ
+  );
+
+  // Calculate ground-relative height from Y position
+  const groundRelativeHeight = yPositionToHeight(object.transform.y, lowestPointOffset);
+
+  const handleHeightChange = (newHeight: number) => {
+    // Convert ground-relative height to Y position
+    const newY = heightToYPosition(newHeight, lowestPointOffset);
+    onUpdate({
+      ...object,
+      transform: {
+        ...object.transform,
+        y: newY,
+      },
+    });
+  };
+
   const handleScaleChange = (scale: number) => {
+    // Calculate new lowest point offset with the new scale
+    const newLowestPointOffset = calculateLowestPointOffset(
+      object.transform.rotationX,
+      object.transform.rotationY,
+      object.transform.rotationZ,
+      scale,
+      scale,
+      scale
+    );
+
+    // Calculate current height above ground
+    const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
+
+    // Calculate new Y position that maintains the same height above ground
+    // (or clamps to 0 if the object would go through the ground)
+    const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
+
     onUpdate({
       ...object,
       transform: {
@@ -342,17 +445,42 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         scaleX: scale,
         scaleY: scale,
         scaleZ: scale,
+        y: newY,
       },
     });
   };
 
   const handleRotationChange = (rotation: number) => {
     const rotationKey = getRotationKey(activeRotAxis);
+
+    // Build new rotation values
+    const newRotationX = rotationKey === 'rotationX' ? rotation : object.transform.rotationX;
+    const newRotationY = rotationKey === 'rotationY' ? rotation : object.transform.rotationY;
+    const newRotationZ = rotationKey === 'rotationZ' ? rotation : object.transform.rotationZ;
+
+    // Calculate new lowest point offset with the new rotation
+    const newLowestPointOffset = calculateLowestPointOffset(
+      newRotationX,
+      newRotationY,
+      newRotationZ,
+      object.transform.scaleX,
+      object.transform.scaleY,
+      object.transform.scaleZ
+    );
+
+    // Calculate current height above ground
+    const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
+
+    // Calculate new Y position that maintains the same height above ground
+    // (or clamps to 0 if the object would go through the ground)
+    const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
+
     onUpdate({
       ...object,
       transform: {
         ...object.transform,
         [rotationKey]: rotation,
+        y: newY,
       },
     });
   };
@@ -385,12 +513,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         <PanelHeader objectType={object.type} onClose={onClose} />
 
         {/* Content */}
-        <div className="custom-scrollbar flex-1 space-y-5 overflow-y-auto p-5">
+        <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
           <NameAndVisibilitySection
             name={object.name}
             visible={object.properties.visible}
             onNameChange={handleNameChange}
             onVisibilityToggle={handleVisibilityToggle}
+          />
+
+          <HeightSection
+            groundRelativeHeight={groundRelativeHeight}
+            onHeightChange={handleHeightChange}
           />
 
           <ScaleSection currentScale={currentScale} onScaleChange={handleScaleChange} />

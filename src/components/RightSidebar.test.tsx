@@ -512,14 +512,16 @@ describe('RightSidebar', () => {
       expect(screen.getByDisplayValue(longName)).toBeInTheDocument();
     });
 
-    it('preserves other transform properties when updating scale', () => {
+    it('preserves other transform properties when updating scale and adjusts Y for ground awareness', () => {
       render(<RightSidebar {...defaultProps} />);
       const slider = screen.getByTestId('scale-slider');
       fireEvent.change(slider, { target: { value: '2.0' } });
 
       const updateCall = defaultProps.onUpdate.mock.calls[0][0];
       expect(updateCall.transform.x).toBe(0);
-      expect(updateCall.transform.y).toBe(0);
+      // Y is adjusted by ground-aware height system to keep lowest point at ground level
+      // For a scale of 2.0, the lowest point offset is -1.0 (in world units), so Y = 100
+      expect(updateCall.transform.y).toBe(100);
       expect(updateCall.transform.z).toBe(0);
       expect(updateCall.transform.rotationX).toBe(0);
       expect(updateCall.transform.rotationY).toBe(45);
