@@ -80,59 +80,30 @@ describe('App', () => {
     expect(screen.getByText('Library')).toBeInTheDocument();
   });
 
-  it('shows right sidebar when object is selected', async () => {
+  it('shows empty Objects panel for new project', () => {
     render(<App />);
-
-    // Select an object via the mocked canvas
-    fireEvent.click(screen.getByTestId('select-obj-1'));
-
-    // Wait for state update
-    await waitFor(() => {
-      expect(screen.getByText('Object Details')).toBeInTheDocument();
-    });
-    expect(screen.getByDisplayValue('Primary Cube')).toBeInTheDocument();
-  });
-
-  it('hides right sidebar when object is deselected', async () => {
-    render(<App />);
-
-    // Select an object
-    fireEvent.click(screen.getByTestId('select-obj-1'));
-    await waitFor(() => {
-      expect(screen.getByText('Object Details')).toBeInTheDocument();
-    });
-
-    // Deselect by clicking canvas
-    fireEvent.click(screen.getByTestId('main-canvas'));
-
-    // Right sidebar should be hidden
-    await waitFor(() => {
-      expect(screen.queryByText('Object Details')).not.toBeInTheDocument();
-    });
-  });
-
-  it('can delete an object', async () => {
-    render(<App />);
-
-    // Open Objects panel and verify initial count
     fireEvent.click(screen.getByText('Objects'));
-    expect(screen.getByText('Primary Cube')).toBeInTheDocument();
+    expect(screen.getByText('Scene Objects')).toBeInTheDocument();
+    // No objects should be listed in empty project
+    expect(screen.queryByRole('button', { name: /Select/ })).not.toBeInTheDocument();
+  });
 
-    // Select an object via the left sidebar
-    fireEvent.click(screen.getByText('Primary Cube'));
+  it('shows empty Steps panel with Add Step button for new project', () => {
+    render(<App />);
+    fireEvent.click(screen.getByText('Steps'));
+    expect(screen.getByText('Training Flow')).toBeInTheDocument();
+    expect(screen.getByText('Add Step')).toBeInTheDocument();
+  });
 
-    // Wait for sidebar to appear
-    await waitFor(() => {
-      expect(screen.getByText('Object Details')).toBeInTheDocument();
-    });
+  it('shows Upload Asset option in Add panel', () => {
+    render(<App />);
+    fireEvent.click(screen.getByText('Add'));
+    expect(screen.getByText('Upload Asset')).toBeInTheDocument();
+  });
 
-    // Delete the object
-    fireEvent.click(screen.getByText('Delete'));
-
-    // Object should be removed from the list
-    await waitFor(() => {
-      expect(screen.queryByText('Primary Cube')).not.toBeInTheDocument();
-    });
+  it('does not show right sidebar when no object is selected', () => {
+    render(<App />);
+    expect(screen.queryByText('Object Details')).not.toBeInTheDocument();
   });
 
   it('updates simulation title', async () => {
@@ -152,61 +123,25 @@ describe('App', () => {
     expect(screen.getByText('My Training Sim')).toBeInTheDocument();
   });
 
-  it('can update object properties', async () => {
-    render(<App />);
-
-    // Open objects panel first
-    fireEvent.click(screen.getByText('Objects'));
-
-    // Select an object via the objects list
-    fireEvent.click(screen.getByText('Primary Cube'));
-
-    // Wait for sidebar
-    await waitFor(() => {
-      expect(screen.getByText('Object Details')).toBeInTheDocument();
-    });
-
-    // Change the name
-    const nameInput = screen.getByDisplayValue('Primary Cube');
-    fireEvent.change(nameInput, { target: { value: 'Renamed Cube' } });
-
-    // Check that the name was updated in the objects list
-    expect(screen.getByText('Renamed Cube')).toBeInTheDocument();
-  });
-
-  it('closes right sidebar when close button is clicked', async () => {
-    render(<App />);
-
-    // Open objects panel and select an object
-    fireEvent.click(screen.getByText('Objects'));
-    fireEvent.click(screen.getByText('Primary Cube'));
-
-    await waitFor(() => {
-      expect(screen.getByText('Object Details')).toBeInTheDocument();
-    });
-
-    // Close via close button
-    fireEvent.click(screen.getByLabelText('Close'));
-
-    // Right sidebar should be hidden
-    await waitFor(() => {
-      expect(screen.queryByText('Object Details')).not.toBeInTheDocument();
-    });
-  });
-
   it('renders Preview and Publish buttons', () => {
     render(<App />);
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByText('Publish')).toBeInTheDocument();
   });
 
-  it('shows steps in the Steps panel', () => {
+  it('can close sidebar panels', async () => {
     render(<App />);
-    fireEvent.click(screen.getByText('Steps'));
 
-    expect(screen.getByText('Locate and verify power supply.')).toBeInTheDocument();
-    expect(screen.getByText('Ensure all safety barriers are in place.')).toBeInTheDocument();
-    expect(screen.getByText('Turn on the main industrial pump.')).toBeInTheDocument();
-    expect(screen.getByText('Wait for pressure to stabilize.')).toBeInTheDocument();
+    // Open Objects panel
+    fireEvent.click(screen.getByText('Objects'));
+    expect(screen.getByText('Scene Objects')).toBeInTheDocument();
+
+    // Close it by clicking the same button again
+    fireEvent.click(screen.getByText('Objects'));
+
+    // Panel header should no longer be visible
+    await waitFor(() => {
+      expect(screen.queryByText('Scene Objects')).not.toBeInTheDocument();
+    });
   });
 });

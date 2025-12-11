@@ -4,10 +4,9 @@ import {
   Box,
   ChevronRight,
   Upload,
-  Image as ImageIcon,
-  FileBox,
   ChevronsLeft,
   LucideIcon,
+  Clock,
 } from 'lucide-react';
 import { SidebarSection, SimStep, SceneObject } from '../types';
 import { OBJECT_ICONS } from '../constants';
@@ -115,30 +114,18 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </div>
               </div>
 
-              {/* Assets Library */}
+              {/* Recent Section */}
               <div>
                 <h3 className="mb-4 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
                   Recent
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { name: 'Safety Cone', type: 'model' },
-                    { name: 'Factory Wall', type: 'model' },
-                    { name: 'Warning Sign', type: 'image' },
-                    { name: 'Metal Floor', type: 'image' },
-                  ].map((item, i) => (
-                    <div
-                      key={i}
-                      className="group relative flex aspect-square cursor-pointer flex-col items-center justify-center rounded-[20px] border border-white/40 bg-white/40 p-3 transition-all hover:scale-105 hover:bg-white hover:shadow-lg"
-                    >
-                      <div className="flex flex-1 items-center justify-center text-slate-400 transition-colors group-hover:text-blue-500">
-                        {item.type === 'model' ? <FileBox size={28} /> : <ImageIcon size={28} />}
-                      </div>
-                      <span className="w-full truncate text-center text-[10px] font-semibold text-slate-600">
-                        {item.name}
-                      </span>
-                    </div>
-                  ))}
+                {/* Empty State */}
+                <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-white/30 px-6 py-8 text-center">
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <Clock size={20} />
+                  </div>
+                  <p className="text-sm font-medium text-slate-500">No recent assets</p>
+                  <p className="mt-1 text-xs text-slate-400">Uploaded assets will appear here</p>
                 </div>
               </div>
             </div>
@@ -184,34 +171,53 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           {/* Objects Panel */}
           {activeTab === 'objects' && (
             <div className="space-y-2">
-              <div className="space-y-1">
-                {objects.map((obj) => {
-                  const Icon = OBJECT_ICONS[obj.type] || Box;
-                  const isSelected = selectedObjectId === obj.id;
-                  return (
-                    <div
-                      key={obj.id}
-                      onClick={() => onSelectObject(obj.id)}
-                      className={`
-                                  flex cursor-pointer items-center gap-3 rounded-[20px] p-3 text-sm transition-all duration-200
-                                  ${
-                                    isSelected
-                                      ? 'scale-[1.02] bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                      : 'text-slate-700 hover:scale-[1.01] hover:bg-white/60'
-                                  }
-                              `}
+              {objects.length === 0 ? (
+                /* Empty State */
+                <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-white/30 px-6 py-10 text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <Box size={24} />
+                  </div>
+                  <p className="text-sm font-medium text-slate-500">No objects in scene</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Add objects from the{' '}
+                    <button
+                      onClick={() => setActiveTab('add')}
+                      className="font-semibold text-blue-500 underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-600"
                     >
+                      Library
+                    </button>
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {objects.map((obj) => {
+                    const Icon = OBJECT_ICONS[obj.type] || Box;
+                    const isSelected = selectedObjectId === obj.id;
+                    return (
                       <div
-                        className={`rounded-[12px] p-1.5 ${isSelected ? 'bg-blue-500 text-white' : 'bg-white text-slate-400 shadow-sm'}`}
+                        key={obj.id}
+                        onClick={() => onSelectObject(obj.id)}
+                        className={`
+                                    flex cursor-pointer items-center gap-3 rounded-[20px] p-3 text-sm transition-all duration-200
+                                    ${
+                                      isSelected
+                                        ? 'scale-[1.02] bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                                        : 'text-slate-700 hover:scale-[1.01] hover:bg-white/60'
+                                    }
+                                `}
                       >
-                        <Icon size={14} />
+                        <div
+                          className={`rounded-[12px] p-1.5 ${isSelected ? 'bg-blue-500 text-white' : 'bg-white text-slate-400 shadow-sm'}`}
+                        >
+                          <Icon size={14} />
+                        </div>
+                        <span className="flex-1 truncate font-medium">{obj.name}</span>
+                        {isSelected && <ChevronRight size={14} className="text-blue-200" />}
                       </div>
-                      <span className="flex-1 truncate font-medium">{obj.name}</span>
-                      {isSelected && <ChevronRight size={14} className="text-blue-200" />}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

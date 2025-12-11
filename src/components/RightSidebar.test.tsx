@@ -166,4 +166,97 @@ describe('RightSidebar', () => {
     // 200 should be normalized to -160
     expect(screen.getByText('-160°')).toBeInTheDocument();
   });
+
+  it('updates rotation when rotation slider is changed', () => {
+    render(<RightSidebar {...defaultProps} />);
+    const sliders = screen.getAllByRole('slider');
+    const rotationSlider = sliders[1]; // Second slider is rotation
+
+    fireEvent.change(rotationSlider, { target: { value: '90' } });
+
+    expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transform: expect.objectContaining({
+          rotationY: 90,
+        }),
+      })
+    );
+  });
+
+  it('updates correct rotation axis when X axis is selected', () => {
+    render(<RightSidebar {...defaultProps} />);
+
+    // Switch to X axis
+    fireEvent.click(screen.getByRole('button', { name: 'x' }));
+
+    // Change rotation
+    const sliders = screen.getAllByRole('slider');
+    const rotationSlider = sliders[1];
+    fireEvent.change(rotationSlider, { target: { value: '45' } });
+
+    expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transform: expect.objectContaining({
+          rotationX: 45,
+        }),
+      })
+    );
+  });
+
+  it('updates correct rotation axis when Z axis is selected', () => {
+    render(<RightSidebar {...defaultProps} />);
+
+    // Switch to Z axis
+    fireEvent.click(screen.getByRole('button', { name: 'z' }));
+
+    // Change rotation
+    const sliders = screen.getAllByRole('slider');
+    const rotationSlider = sliders[1];
+    fireEvent.change(rotationSlider, { target: { value: '30' } });
+
+    expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transform: expect.objectContaining({
+          rotationZ: 30,
+        }),
+      })
+    );
+  });
+
+  it('shows EyeOff icon when object is not visible', () => {
+    const hiddenObject = {
+      ...mockObject,
+      properties: { ...mockObject.properties, visible: false },
+    };
+    render(<RightSidebar {...defaultProps} object={hiddenObject} />);
+
+    const visibilityButton = screen.getByTitle('Toggle Visibility');
+    expect(visibilityButton).toHaveClass('bg-slate-100/50');
+  });
+
+  it('normalizes negative rotation angles correctly', () => {
+    const objectWithNegativeRotation = {
+      ...mockObject,
+      transform: { ...mockObject.transform, rotationY: -200 },
+    };
+    render(<RightSidebar {...defaultProps} object={objectWithNegativeRotation} />);
+    // -200 should be normalized to 160
+    expect(screen.getByText('160°')).toBeInTheDocument();
+  });
+
+  it('displays object type icon in header', () => {
+    render(<RightSidebar {...defaultProps} />);
+    const iconContainer = screen.getByTitle('Type: mesh');
+    expect(iconContainer).toBeInTheDocument();
+  });
+
+  it('uses fallback Box icon for unknown object types', () => {
+    const unknownTypeObject = {
+      ...mockObject,
+      type: 'unknown-type',
+    };
+    render(<RightSidebar {...defaultProps} object={unknownTypeObject} />);
+    const iconContainer = screen.getByTitle('Type: unknown-type');
+    expect(iconContainer).toBeInTheDocument();
+  });
 });
