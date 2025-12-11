@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { MainCanvas } from './components/MainCanvas';
 import { NavigationHelp } from './components/NavigationHelp';
+import { DebugMenu } from './components/DebugMenu';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from './constants';
 import { SceneObject, SidebarSection } from './types';
 
@@ -25,6 +26,35 @@ function App() {
   const handleDeleteObject = (id: string) => {
     setObjects((prev) => prev.filter((obj) => obj.id !== id));
     if (selectedObjectId === id) setSelectedObjectId(null);
+  };
+
+  // Track debug cube count for naming
+  const debugCubeCountRef = useRef(0);
+
+  const handleAddDebugCube = () => {
+    debugCubeCountRef.current += 1;
+    const cubeNumber = debugCubeCountRef.current;
+    const newCube: SceneObject = {
+      id: crypto.randomUUID(),
+      name: cubeNumber === 1 ? 'Debug Cube' : `Debug Cube ${cubeNumber}`,
+      type: 'mesh',
+      transform: {
+        x: 0,
+        y: 50, // Position cube so base sits on grid (0.5 units up from origin)
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+      },
+      properties: {
+        visible: true,
+        color: '#3b82f6',
+      },
+    };
+    setObjects((prev) => [...prev, newCube]);
   };
 
   const selectedObject = objects.find((obj) => obj.id === selectedObjectId) || null;
@@ -61,6 +91,8 @@ function App() {
       )}
 
       <NavigationHelp offsetForSidebar={!!selectedObject} />
+
+      <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={!!selectedObject} />
     </div>
   );
 }

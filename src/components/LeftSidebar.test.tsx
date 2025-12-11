@@ -194,7 +194,7 @@ describe('LeftSidebar', () => {
         {
           id: 'obj-unknown',
           name: 'Unknown Object',
-          type: 'unknown-type',
+          type: 'unknown-type' as SceneObject['type'], // Testing fallback for unknown types
           transform: {
             x: 0,
             y: 0,
@@ -209,7 +209,13 @@ describe('LeftSidebar', () => {
           properties: { visible: true, color: '#333' },
         },
       ];
-      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={unknownTypeObjects} />);
+      render(
+        <LeftSidebar
+          {...defaultProps}
+          activeTab="objects"
+          objects={unknownTypeObjects as SceneObject[]}
+        />
+      );
       expect(screen.getByText('Unknown Object')).toBeInTheDocument();
     });
   });

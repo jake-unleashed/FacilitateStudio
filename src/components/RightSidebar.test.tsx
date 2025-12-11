@@ -253,9 +253,9 @@ describe('RightSidebar', () => {
   it('uses fallback Box icon for unknown object types', () => {
     const unknownTypeObject = {
       ...mockObject,
-      type: 'unknown-type',
+      type: 'unknown-type' as SceneObject['type'], // Testing fallback for unknown types
     };
-    render(<RightSidebar {...defaultProps} object={unknownTypeObject} />);
+    render(<RightSidebar {...defaultProps} object={unknownTypeObject as SceneObject} />);
     const iconContainer = screen.getByTitle('Type: unknown-type');
     expect(iconContainer).toBeInTheDocument();
   });
