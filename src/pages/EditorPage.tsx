@@ -49,10 +49,6 @@ export function EditorPage() {
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Track current selection for thumbnail capture (avoids stale closure in auto-save)
-  const selectedObjectIdRef = useRef<string | null>(null);
-  selectedObjectIdRef.current = selectedObjectId;
-
   // ============================================================================
   // Project Loading & Initialization
   // ============================================================================
@@ -105,24 +101,13 @@ export function EditorPage() {
       // Capture thumbnail from the current scene
       let thumbnail = currentProject.thumbnail;
       if (canvasRef.current) {
-        // Store current selection and temporarily clear it to avoid capturing selection wireframe
-        const previousSelection = selectedObjectIdRef.current;
-        if (previousSelection) {
-          setSelectedObjectId(null);
-          // Wait for next animation frame to ensure scene re-renders without selection
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-          // Wait one more frame to ensure Three.js has updated
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-        }
-
+        // NOTE: We no longer clear selection for thumbnail capture.
+        // The selection wireframe in thumbnails is actually useful for showing
+        // which object is being edited. This also prevents the RightSidebar
+        // from unmounting and remounting, which was causing flickering.
         const captured = await captureThumbnail(canvasRef.current);
         if (captured) {
           thumbnail = captured;
-        }
-
-        // Restore selection
-        if (previousSelection) {
-          setSelectedObjectId(previousSelection);
         }
       }
 

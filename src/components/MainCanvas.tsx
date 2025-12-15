@@ -231,6 +231,12 @@ const DragHandler: React.FC<{
     groundPlane.current.constant = -dragState.groundPlaneY;
 
     const handlePointerMove = (event: PointerEvent) => {
+      // Always block events while a pointer is down on an object (even before we
+      // cross the drag threshold). This prevents accidental camera movement
+      // from small hand jitter on click/drag.
+      event.stopPropagation();
+      event.preventDefault();
+
       // Check if we've moved beyond the drag threshold
       const dx = event.clientX - dragState.startPosition.x;
       const dy = event.clientY - dragState.startPosition.y;
@@ -271,17 +277,23 @@ const DragHandler: React.FC<{
       }
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (event: PointerEvent) => {
+      // Prevent the pointer up event from reaching camera controls
+      // This is critical to avoid unwanted camera movement after dragging
+      event.stopPropagation();
+      event.preventDefault();
+
       onDragEnd(dragState.hasMoved);
     };
 
     // Add listeners to window to capture events outside canvas
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    // Use capture phase to intercept events before they reach camera controls
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerup', handlePointerUp, true);
 
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
     };
   }, [dragState, camera, gl, onUpdateObject, onDragEnd, onMarkAsDrag]);
 
@@ -434,6 +446,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
   // Drag state management
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
+  const [isRecentlyDragged, setIsRecentlyDragged] = useState(false);
 
   // Track if we've already notified parent
   const hasNotifiedRef = useRef(false);
@@ -451,6 +464,16 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const handleObjectPointerDown = useCallback((e: ThreeEvent<PointerEvent>, obj: SceneObject) => {
     // Only handle left mouse button
     if (e.nativeEvent.button !== 0) return;
+
+    // CRITICAL: Stop the pointerdown from reaching CameraControls.
+    // R3F's `e.stopPropagation()` prevents other R3F handlers, but the camera
+    // controls also listen at the DOM level.
+    e.stopPropagation();
+    e.nativeEvent.stopPropagation();
+    // `stopImmediatePropagation` is not available on all Event types; guard it.
+    (
+      e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
+    ).stopImmediatePropagation?.();
 
     const objectWorldPos = new THREE.Vector3(
       obj.transform.x / 100,
@@ -484,6 +507,17 @@ const SceneContent: React.FC<SceneContentProps> = ({
         onSelectObject(dragState.objectId);
       }
       setDragState(null);
+
+      // If this was an actual drag, prevent camera controls from responding
+      // to the pointer up event by keeping them disabled briefly
+      if (wasDrag) {
+        setIsRecentlyDragged(true);
+        // Re-enable camera controls after a short delay to ensure
+        // the pointer up event doesn't affect the camera
+        setTimeout(() => {
+          setIsRecentlyDragged(false);
+        }, 50); // 50ms is enough to skip the pointer up frame
+      }
     },
     [dragState, onSelectObject]
   );
@@ -569,7 +603,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <CameraControls
         ref={controlsRef}
         makeDefault
-        enabled={!(dragState?.hasMoved ?? false)}
+        // Disable camera controls while a pointer interaction on an object is in-flight.
+        // This prevents camera rotate/pan from competing with object click/drag.
+        enabled={dragState === null && !isRecentlyDragged}
         // Smooth damping for premium feel
         smoothTime={0.35}
         draggingSmoothTime={0.2}
