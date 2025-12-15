@@ -107,16 +107,26 @@ const ProjectCard = memo(function ProjectCard({ project, onOpen, onDelete }: Pro
     >
       {/* Thumbnail */}
       <div className="relative mb-3 flex aspect-video w-full items-center justify-center overflow-hidden rounded-[12px] border border-white/60 bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-50 shadow-inner">
-        {/* Decorative gradient mesh */}
-        <div className="absolute inset-0 opacity-30" aria-hidden="true">
-          <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-blue-400/40 blur-2xl" />
-          <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-indigo-400/30 blur-2xl" />
-        </div>
-        <Layers
-          size={28}
-          className="relative text-slate-300 transition-all duration-300 group-hover:scale-110 group-hover:text-blue-400"
-          aria-hidden="true"
-        />
+        {project.thumbnail ? (
+          <img
+            src={project.thumbnail}
+            alt={`${project.name} preview`}
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <>
+            {/* Decorative gradient mesh */}
+            <div className="absolute inset-0 opacity-30" aria-hidden="true">
+              <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-blue-400/40 blur-2xl" />
+              <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-indigo-400/30 blur-2xl" />
+            </div>
+            <Layers
+              size={28}
+              className="relative text-slate-300 transition-all duration-300 group-hover:scale-110 group-hover:text-blue-400"
+              aria-hidden="true"
+            />
+          </>
+        )}
       </div>
 
       {/* Project info */}

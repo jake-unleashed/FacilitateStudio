@@ -74,6 +74,24 @@ const sampleProjects: ProjectMetadata[] = [
   },
 ];
 
+// Sample projects with thumbnails
+const sampleProjectsWithThumbnails: ProjectMetadata[] = [
+  {
+    id: 'project-with-thumbnail',
+    name: 'Project With Thumbnail',
+    createdAt: '2024-01-15T10:00:00.000Z',
+    updatedAt: '2024-01-15T11:00:00.000Z',
+    thumbnail: 'data:image/jpeg;base64,mockThumbnailData123',
+  },
+  {
+    id: 'project-without-thumbnail',
+    name: 'Project Without Thumbnail',
+    createdAt: '2024-01-14T10:00:00.000Z',
+    updatedAt: '2024-01-14T12:00:00.000Z',
+    // No thumbnail - should show placeholder
+  },
+];
+
 describe('HomePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -137,9 +155,7 @@ describe('HomePage', () => {
       renderHomePage();
 
       expect(screen.getByText('No recent projects')).toBeInTheDocument();
-      expect(
-        screen.getByText(/create your first simulation to get started/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/create your first simulation to get started/i)).toBeInTheDocument();
     });
   });
 
@@ -309,6 +325,80 @@ describe('HomePage', () => {
 
       expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
       expect(screen.getByText('Test Project 1')).toBeInTheDocument();
+    });
+  });
+
+  describe('project thumbnails', () => {
+    it('displays thumbnail image when project has a thumbnail', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      // Find the thumbnail image by alt text
+      const thumbnailImg = screen.getByAltText('Project With Thumbnail preview');
+      expect(thumbnailImg).toBeInTheDocument();
+      expect(thumbnailImg).toHaveAttribute('src', 'data:image/jpeg;base64,mockThumbnailData123');
+    });
+
+    it('displays placeholder icon when project has no thumbnail', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      // The project without thumbnail should not have an img with preview alt text
+      const placeholderProject = screen.getByText('Project Without Thumbnail');
+      const projectCard = placeholderProject.closest('[role="button"]') as HTMLElement;
+
+      // Should not have a thumbnail image (no preview alt text)
+      expect(screen.queryByAltText('Project Without Thumbnail preview')).not.toBeInTheDocument();
+
+      // The card should still exist
+      expect(projectCard).toBeInTheDocument();
+    });
+
+    it('thumbnail image has object-cover styling for proper aspect ratio', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      const thumbnailImg = screen.getByAltText('Project With Thumbnail preview');
+      expect(thumbnailImg).toHaveClass('object-cover');
+    });
+
+    it('thumbnail container maintains 16:9 aspect ratio', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      const thumbnailImg = screen.getByAltText('Project With Thumbnail preview');
+      const container = thumbnailImg.closest('.aspect-video');
+      expect(container).toBeInTheDocument();
+    });
+
+    it('renders correct alt text for accessibility', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      const thumbnailImg = screen.getByAltText('Project With Thumbnail preview');
+      expect(thumbnailImg).toHaveAttribute('alt', 'Project With Thumbnail preview');
+    });
+
+    it('handles mixed projects with and without thumbnails', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      // Project with thumbnail should show the image
+      expect(screen.getByAltText('Project With Thumbnail preview')).toBeInTheDocument();
+
+      // Project without thumbnail should show in the list but without preview image
+      expect(screen.getByText('Project Without Thumbnail')).toBeInTheDocument();
+      expect(screen.queryByAltText('Project Without Thumbnail preview')).not.toBeInTheDocument();
+    });
+
+    it('applies hover scale effect to thumbnail image', () => {
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+      renderHomePage();
+
+      const thumbnailImg = screen.getByAltText('Project With Thumbnail preview');
+      // Check for the transition and transform classes that enable hover effects
+      expect(thumbnailImg).toHaveClass('transition-transform');
+      expect(thumbnailImg).toHaveClass('group-hover:scale-105');
     });
   });
 });

@@ -641,6 +641,8 @@ interface MainCanvasProps {
   onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (obj: SceneObject) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
+  /** Callback when the WebGL canvas is ready (for thumbnail capture) */
+  onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   /** Show performance monitor (defaults to true in development) */
   showPerformanceMonitor?: boolean;
 }
@@ -652,15 +654,29 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onUpdateObject,
   onFocusObject,
   onCameraControlsReady,
+  onCanvasReady,
   showPerformanceMonitor = IS_DEV,
 }) => {
   // Performance monitoring state
   const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
+  // Track if we've notified about canvas being ready
+  const hasNotifiedCanvasRef = useRef(false);
 
   // Memoize the stats handler to prevent unnecessary re-renders
   const handlePerfStats = useCallback((stats: PerformanceStats) => {
     setPerfStats(stats);
   }, []);
+
+  // Handle Canvas onCreate to expose the WebGL canvas element
+  const handleCreated = useCallback(
+    (state: { gl: THREE.WebGLRenderer }) => {
+      if (onCanvasReady && !hasNotifiedCanvasRef.current) {
+        hasNotifiedCanvasRef.current = true;
+        onCanvasReady(state.gl.domElement);
+      }
+    },
+    [onCanvasReady]
+  );
 
   return (
     <div className="absolute inset-0 h-full w-full overflow-hidden bg-slate-100">
@@ -671,6 +687,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
           shadows
           className="h-full w-full"
           onPointerMissed={() => onSelectObject(null)}
+          onCreated={handleCreated}
           // Performance optimizations
           dpr={[1, 2]} // Limit device pixel ratio (1 min, 2 max)
           performance={{ min: 0.5 }} // Allow adaptive performance scaling
@@ -679,6 +696,8 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             powerPreference: 'high-performance',
             stencil: false, // Disable stencil buffer if not needed
             depth: true,
+            alpha: true, // Enable transparency for background gradient compositing
+            preserveDrawingBuffer: true, // Required for thumbnail capture
           }}
         >
           <SceneContent

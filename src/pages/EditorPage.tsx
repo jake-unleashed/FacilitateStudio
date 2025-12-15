@@ -11,6 +11,7 @@ import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
 import { SceneObject, SidebarSection, SimStep } from '../types';
 import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
+import { captureThumbnail } from '../utils/captureThumbnail';
 import CameraControlsImpl from 'camera-controls';
 
 /**
@@ -44,6 +45,13 @@ export function EditorPage() {
 
   // Auto-save timer ref
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // WebGL canvas ref for thumbnail capture
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Track current selection for thumbnail capture (avoids stale closure in auto-save)
+  const selectedObjectIdRef = useRef<string | null>(null);
+  selectedObjectIdRef.current = selectedObjectId;
 
   // ============================================================================
   // Project Loading & Initialization
@@ -93,12 +101,37 @@ export function EditorPage() {
     }
 
     // Debounce auto-save by 1 second
-    autoSaveTimeoutRef.current = setTimeout(() => {
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      // Capture thumbnail from the current scene
+      let thumbnail = currentProject.thumbnail;
+      if (canvasRef.current) {
+        // Store current selection and temporarily clear it to avoid capturing selection wireframe
+        const previousSelection = selectedObjectIdRef.current;
+        if (previousSelection) {
+          setSelectedObjectId(null);
+          // Wait for next animation frame to ensure scene re-renders without selection
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          // Wait one more frame to ensure Three.js has updated
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+
+        const captured = await captureThumbnail(canvasRef.current);
+        if (captured) {
+          thumbnail = captured;
+        }
+
+        // Restore selection
+        if (previousSelection) {
+          setSelectedObjectId(previousSelection);
+        }
+      }
+
       const updatedProject: Project = {
         ...currentProject,
         name: simulationTitle,
         objects,
         steps,
+        thumbnail,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updatedProject);
@@ -126,6 +159,10 @@ export function EditorPage() {
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
     cameraControlsRef.current = controls;
     setControlsReady(true);
+  }, []);
+
+  const handleCanvasReady = useCallback((canvas: HTMLCanvasElement) => {
+    canvasRef.current = canvas;
   }, []);
 
   const handleSelectObject = useCallback((id: string | null) => {
@@ -226,6 +263,7 @@ export function EditorPage() {
         onUpdateObject={handleUpdateObject}
         onFocusObject={handleFocusObject}
         onCameraControlsReady={handleCameraControlsReady}
+        onCanvasReady={handleCanvasReady}
       />
 
       {/* Floating UI Layer */}
