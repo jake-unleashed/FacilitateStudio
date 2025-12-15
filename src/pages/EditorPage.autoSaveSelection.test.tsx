@@ -150,7 +150,8 @@ describe('EditorPage auto-save + selection stability', () => {
 
     // Thumbnail capture happened, but selection should remain (sidebar stays mounted)
     expect(captureThumbnailMock).toHaveBeenCalledTimes(1);
-    expect(saveProjectMock).toHaveBeenCalledTimes(1);
+    // Core save + thumbnail save
+    expect(saveProjectMock).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId('right-sidebar')).toBeInTheDocument();
     expect(screen.getByTestId('axis-x-button')).toHaveAttribute('aria-pressed', 'true');
   });

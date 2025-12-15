@@ -7,10 +7,12 @@ import { MainCanvas } from '../components/MainCanvas';
 import { NavigationHelp } from '../components/NavigationHelp';
 import { DebugMenu } from '../components/DebugMenu';
 import { CameraResetButton } from '../components/CameraResetButton';
+import { SaveOverlay } from '../components/SaveOverlay';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
 import { SceneObject, SidebarSection, SimStep } from '../types';
 import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
+import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import CameraControlsImpl from 'camera-controls';
 
@@ -43,11 +45,15 @@ export function EditorPage() {
   // Track debug cube count for naming
   const debugCubeCountRef = useRef(0);
 
-  // Auto-save timer ref
-  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const hasHydratedRef = useRef(false);
+
+  const [exitOverlay, setExitOverlay] = useState<null | {
+    mode: 'saving' | 'error';
+    errorMessage?: string;
+  }>(null);
 
   // ============================================================================
   // Project Loading & Initialization
@@ -88,54 +94,124 @@ export function EditorPage() {
   // Auto-save Logic
   // ============================================================================
 
-  const triggerAutoSave = useCallback(() => {
-    if (!currentProject) return;
+  // Stable thumbnail capture function (CRITICAL: must be useCallback to avoid infinite loops)
+  const handleCaptureThumbnail = useCallback(async () => {
+    if (!canvasRef.current) return undefined;
+    // NOTE: We do not clear selection for thumbnail capture.
+    const captured = await captureThumbnail(canvasRef.current);
+    return captured ?? undefined;
+  }, []);
 
-    // Clear any pending auto-save
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
+  const { status, isDirty, lastError, setBaseline, flushSave, flushSaveNow } = useProjectAutoSave({
+    project: currentProject,
+    name: simulationTitle,
+    objects,
+    steps,
+    saveProject,
+    captureThumbnail: handleCaptureThumbnail,
+    debounceMs: 1000,
+  });
 
-    // Debounce auto-save by 1 second
-    autoSaveTimeoutRef.current = setTimeout(async () => {
-      // Capture thumbnail from the current scene
-      let thumbnail = currentProject.thumbnail;
-      if (canvasRef.current) {
-        // NOTE: We no longer clear selection for thumbnail capture.
-        // The selection wireframe in thumbnails is actually useful for showing
-        // which object is being edited. This also prevents the RightSidebar
-        // from unmounting and remounting, which was causing flickering.
-        const captured = await captureThumbnail(canvasRef.current);
-        if (captured) {
-          thumbnail = captured;
-        }
-      }
-
-      const updatedProject: Project = {
-        ...currentProject,
-        name: simulationTitle,
-        objects,
-        steps,
-        thumbnail,
-        updatedAt: new Date().toISOString(),
-      };
-      saveProject(updatedProject);
-      setCurrentProject(updatedProject);
-    }, 1000);
-  }, [currentProject, simulationTitle, objects, steps, saveProject]);
-
-  // Trigger auto-save when relevant state changes
+  // Establish baseline AFTER initial state load so autosave knows what "saved" means
   useEffect(() => {
-    if (isInitialized && currentProject) {
-      triggerAutoSave();
-    }
-    // Cleanup timeout on unmount
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
+    if (!isInitialized || !currentProject) return;
+    if (hasHydratedRef.current) return;
+    hasHydratedRef.current = true;
+    setBaseline();
+    // We only need currentProject?.id, not the entire object, to avoid unnecessary re-runs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id, isInitialized, setBaseline]);
+
+  // Reset hydration when project changes
+  useEffect(() => {
+    hasHydratedRef.current = false;
+  }, [currentProject?.id]);
+
+  // Best-effort flush on unload / backgrounding.
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (!isDirty) return;
+      flushSaveNow();
     };
-  }, [objects, steps, simulationTitle, isInitialized, currentProject, triggerAutoSave]);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') return;
+      if (!isDirty) return;
+      flushSaveNow();
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      flushSaveNow();
+      e.preventDefault();
+      // Required for some browsers to show a confirmation dialog.
+      e.returnValue = '';
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isDirty, flushSaveNow]);
+
+  const handleRequestHome = useCallback(async () => {
+    if (!isDirty) {
+      navigate('/');
+      return;
+    }
+
+    setExitOverlay({ mode: 'saving' });
+
+    // Safety timeout: if save takes longer than 2s total, force-navigate anyway.
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[EditorPage] Save took too long; force-navigating Home.');
+      setExitOverlay(null);
+      navigate('/');
+    }, 2000);
+
+    try {
+      // Ensure thumbnail is as fresh as possible before returning Home,
+      // but never let this hang indefinitely.
+      await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600 });
+      clearTimeout(safetyTimeout);
+      setExitOverlay(null);
+      navigate('/');
+    } catch (err) {
+      clearTimeout(safetyTimeout);
+      console.error('[EditorPage] Failed to save before navigating Home:', err);
+      const message = err instanceof Error ? err.message : 'Failed to save changes';
+      setExitOverlay({ mode: 'error', errorMessage: message });
+    }
+  }, [flushSave, isDirty, navigate]);
+
+  const handleExitStay = useCallback(() => {
+    setExitOverlay(null);
+  }, []);
+
+  const handleExitLeaveAnyway = useCallback(() => {
+    setExitOverlay(null);
+    navigate('/');
+  }, [navigate]);
+
+  const handleManualSave = useCallback(async () => {
+    console.log('[EditorPage] Manual save clicked. isDirty:', isDirty, 'status:', status);
+    if (!isDirty) {
+      console.log('[EditorPage] Already saved, skipping.');
+      return;
+    }
+    try {
+      console.log('[EditorPage] Calling flushSave...');
+      await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600 });
+      console.log('[EditorPage] Manual save completed. New status should be "saved"');
+    } catch (err) {
+      console.error('[EditorPage] Manual save failed:', err);
+    }
+  }, [flushSave, isDirty, status]);
 
   // ============================================================================
   // Memoized Callbacks - Stable references for child components
@@ -252,7 +328,14 @@ export function EditorPage() {
       />
 
       {/* Floating UI Layer */}
-      <TopBar title={simulationTitle} onTitleChange={handleTitleChange} />
+      <TopBar
+        title={simulationTitle}
+        onTitleChange={handleTitleChange}
+        onRequestHome={handleRequestHome}
+        saveStatus={status}
+        saveErrorMessage={lastError?.message ?? null}
+        onManualSave={handleManualSave}
+      />
 
       <LeftSidebar
         activeTab={activeTab}
@@ -278,6 +361,15 @@ export function EditorPage() {
       <CameraResetButton cameraControlsRef={cameraControlsRef} />
 
       <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={hasSelectedObject} />
+
+      {exitOverlay && (
+        <SaveOverlay
+          mode={exitOverlay.mode}
+          errorMessage={exitOverlay.errorMessage}
+          onStay={handleExitStay}
+          onLeaveAnyway={handleExitLeaveAnyway}
+        />
+      )}
     </div>
   );
 }

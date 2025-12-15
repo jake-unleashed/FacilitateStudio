@@ -49,7 +49,7 @@ const HomeBranding = memo(function HomeBranding() {
       </div>
 
       {/* Studio subtitle - color transition on hover */}
-      <span className="mt-2 text-[10px] font-bold uppercase tracking-[0.4em] text-slate-400 transition-colors duration-500 group-hover:text-blue-500">
+      <span className="mt-2 text-xs font-bold uppercase tracking-[0.35em] text-slate-400 transition-colors duration-500 group-hover:text-blue-500 sm:text-sm">
         Studio
       </span>
     </div>

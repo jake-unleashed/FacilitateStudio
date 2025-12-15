@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Project, ProjectMetadata } from '../types/project';
-
-const STORAGE_KEY = 'facilitate-studio-projects';
+import {
+  LocalStorageProjectPersistence,
+  removeProject,
+  upsertProject,
+} from '../persistence/projectPersistence';
 
 /**
  * Hook for managing projects in localStorage.
@@ -10,32 +13,32 @@ const STORAGE_KEY = 'facilitate-studio-projects';
 export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const persistence = useMemo(() => new LocalStorageProjectPersistence(), []);
 
   // Load projects from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Project[];
-        // Sort by most recently updated
-        parsed.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        setProjects(parsed);
-      }
+      const loaded = persistence.loadProjects();
+      setProjects(loaded);
     } catch (error) {
       console.error('Failed to load projects from localStorage:', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [persistence]);
 
   // Persist projects to localStorage whenever they change
-  const persistProjects = useCallback((updatedProjects: Project[]) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProjects));
-    } catch (error) {
-      console.error('Failed to save projects to localStorage:', error);
-    }
-  }, []);
+  const persistProjects = useCallback(
+    (updatedProjects: Project[]) => {
+      try {
+        persistence.saveProjects(updatedProjects);
+      } catch (error) {
+        console.error('Failed to save projects to localStorage:', error);
+        throw error;
+      }
+    },
+    [persistence]
+  );
 
   /**
    * Get a project by ID
@@ -52,39 +55,15 @@ export function useProjects() {
    */
   const saveProject = useCallback(
     (project: Project): void => {
-      const now = new Date().toISOString();
-      const existingIndex = projects.findIndex((p) => p.id === project.id);
-
-      let updatedProjects: Project[];
-
-      if (existingIndex >= 0) {
-        // Update existing project
-        updatedProjects = [...projects];
-        updatedProjects[existingIndex] = {
-          ...project,
-          updatedAt: now,
-        };
-      } else {
-        // Create new project
-        updatedProjects = [
-          {
-            ...project,
-            createdAt: project.createdAt || now,
-            updatedAt: now,
-          },
-          ...projects,
-        ];
-      }
-
-      // Sort by most recently updated
-      updatedProjects.sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-
-      setProjects(updatedProjects);
-      persistProjects(updatedProjects);
+      // Use functional setState to avoid depending on projects in the callback,
+      // which would cause this function to be recreated on every save.
+      setProjects((currentProjects) => {
+        const updatedProjects = upsertProject(currentProjects, project);
+        persistProjects(updatedProjects);
+        return updatedProjects;
+      });
     },
-    [projects, persistProjects]
+    [persistProjects]
   );
 
   /**
@@ -92,11 +71,13 @@ export function useProjects() {
    */
   const deleteProject = useCallback(
     (id: string): void => {
-      const updatedProjects = projects.filter((p) => p.id !== id);
-      setProjects(updatedProjects);
-      persistProjects(updatedProjects);
+      setProjects((currentProjects) => {
+        const updatedProjects = removeProject(currentProjects, id);
+        persistProjects(updatedProjects);
+        return updatedProjects;
+      });
     },
-    [projects, persistProjects]
+    [persistProjects]
   );
 
   /**

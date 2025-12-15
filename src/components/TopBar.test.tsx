@@ -8,7 +8,7 @@ import { TopBar } from './TopBar';
 function renderTopBar(props: { title: string; onTitleChange: (title: string) => void }) {
   return render(
     <MemoryRouter>
-      <TopBar {...props} />
+      <TopBar {...props} saveStatus="saved" />
     </MemoryRouter>
   );
 }
