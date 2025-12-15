@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { TopBar } from './TopBar';
+
+// Helper to render with router context
+function renderTopBar(props: { title: string; onTitleChange: (title: string) => void }) {
+  return render(
+    <MemoryRouter>
+      <TopBar {...props} />
+    </MemoryRouter>
+  );
+}
 
 describe('TopBar', () => {
   const defaultProps = {
@@ -14,7 +24,7 @@ describe('TopBar', () => {
   });
 
   it('renders the brand name', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     // Facilitate text appears twice (gradient and solid overlay)
     const facilitateElements = screen.getAllByText('Facilitate');
     expect(facilitateElements.length).toBeGreaterThanOrEqual(1);
@@ -22,31 +32,31 @@ describe('TopBar', () => {
   });
 
   it('renders the simulation title', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     expect(screen.getByText('Test Simulation')).toBeInTheDocument();
   });
 
   it('renders control buttons', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     expect(screen.getByLabelText('Save')).toBeInTheDocument();
     expect(screen.getByLabelText('Undo')).toBeInTheDocument();
     expect(screen.getByLabelText('Redo')).toBeInTheDocument();
   });
 
   it('renders Preview and Publish buttons', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByText('Publish')).toBeInTheDocument();
   });
 
   it('disables Undo button initially', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     expect(screen.getByLabelText('Undo')).toBeDisabled();
   });
 
   it('enters edit mode when title is clicked', async () => {
     const user = userEvent.setup();
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
 
     await user.click(screen.getByText('Test Simulation'));
 
@@ -58,7 +68,7 @@ describe('TopBar', () => {
   it('calls onTitleChange when title is edited and saved', async () => {
     const user = userEvent.setup();
     const onTitleChange = vi.fn();
-    render(<TopBar title="Old Title" onTitleChange={onTitleChange} />);
+    renderTopBar({ title: 'Old Title', onTitleChange });
 
     await user.click(screen.getByText('Old Title'));
 
@@ -73,7 +83,7 @@ describe('TopBar', () => {
   it('reverts to original title on Escape', async () => {
     const user = userEvent.setup();
     const onTitleChange = vi.fn();
-    render(<TopBar title="Original Title" onTitleChange={onTitleChange} />);
+    renderTopBar({ title: 'Original Title', onTitleChange });
 
     await user.click(screen.getByText('Original Title'));
 
@@ -89,7 +99,7 @@ describe('TopBar', () => {
   it('saves title on blur', async () => {
     const user = userEvent.setup();
     const onTitleChange = vi.fn();
-    render(<TopBar title="Original" onTitleChange={onTitleChange} />);
+    renderTopBar({ title: 'Original', onTitleChange });
 
     await user.click(screen.getByText('Original'));
 
@@ -104,7 +114,7 @@ describe('TopBar', () => {
   it('does not save empty title', async () => {
     const user = userEvent.setup();
     const onTitleChange = vi.fn();
-    render(<TopBar title="Original" onTitleChange={onTitleChange} />);
+    renderTopBar({ title: 'Original', onTitleChange });
 
     await user.click(screen.getByText('Original'));
 
@@ -117,7 +127,7 @@ describe('TopBar', () => {
   });
 
   it('has proper glass styling', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     const header = screen.getByRole('banner');
     expect(header).toHaveClass('bg-white/70');
     expect(header).toHaveClass('backdrop-blur-xl');
@@ -125,7 +135,7 @@ describe('TopBar', () => {
   });
 
   it('brand logo uses font-bold to match app typography', () => {
-    render(<TopBar {...defaultProps} />);
+    renderTopBar(defaultProps);
     // Find the h1 that contains the brand name
     const brandHeading = screen.getByRole('heading', { level: 1 });
     expect(brandHeading).toHaveClass('font-bold');

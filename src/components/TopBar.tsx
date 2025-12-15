@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Undo, Redo, Share2, MonitorPlay, Save, Menu, Pencil } from 'lucide-react';
 import { Button } from './Button';
 
@@ -17,13 +18,23 @@ interface TopBarProps {
 // Sub-components (Memoized for performance)
 // =============================================================================
 
+interface BrandLogoProps {
+  onClick: () => void;
+}
+
 /**
  * Brand logo with gradient hover effect.
  * Uses a two-layer approach: gradient layer underneath, solid overlay on top.
  * The solid overlay fades out on hover to reveal the gradient.
+ * Clicking navigates back to the home page.
  */
-const BrandLogo = memo(() => (
-  <div className="group flex cursor-pointer select-none flex-col justify-center">
+const BrandLogo = memo<BrandLogoProps>(({ onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="group flex cursor-pointer select-none flex-col justify-center focus:outline-none"
+    title="Back to Home"
+  >
     <h1 className="relative text-xl font-bold leading-none tracking-tight">
       {/* Gradient layer (always rendered, provides layout) */}
       <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent [backface-visibility:hidden]">
@@ -40,7 +51,7 @@ const BrandLogo = memo(() => (
     <span className="ml-0.5 mt-0.5 text-[9px] font-bold uppercase leading-none tracking-[0.35em] text-slate-400 transition-colors duration-300 ease-in-out group-hover:text-blue-500">
       Studio
     </span>
-  </div>
+  </button>
 ));
 BrandLogo.displayName = 'BrandLogo';
 
@@ -177,9 +188,14 @@ ActionButtons.displayName = 'ActionButtons';
  * - Glass morphism styling
  */
 const TopBarInner: React.FC<TopBarProps> = ({ title, onTitleChange }) => {
+  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [tempTitle, setTempTitle] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoClick = useCallback(() => {
+    navigate('/');
+  }, [navigate]);
 
   // Sync tempTitle when external title prop changes
   useEffect(() => {
@@ -238,7 +254,7 @@ const TopBarInner: React.FC<TopBarProps> = ({ title, onTitleChange }) => {
       <header className="pointer-events-auto relative flex h-16 w-full items-center justify-between rounded-[32px] border border-white/40 bg-white/70 px-6 shadow-glass-sm backdrop-blur-xl transition-all duration-300 hover:bg-white/80">
         {/* Left Section: Brand + History Controls */}
         <div className="z-10 flex items-center gap-6">
-          <BrandLogo />
+          <BrandLogo onClick={handleLogoClick} />
           <div className="hidden h-6 w-px bg-slate-900/10 sm:block" aria-hidden="true" />
           <HistoryControls />
         </div>

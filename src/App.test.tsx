@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import App from './App';
 
 // Mock the MainCanvas component since Three.js doesn't work in jsdom
@@ -34,9 +35,37 @@ vi.mock('./components/MainCanvas', () => ({
   ),
 }));
 
+// Mock useProjects hook for EditorPage
+vi.mock('./hooks/useProjects', () => ({
+  useProjects: () => ({
+    getProjectMetadata: () => [],
+    getProject: () => undefined,
+    deleteProject: vi.fn(),
+    saveProject: vi.fn(),
+    createProject: (name: string) => ({
+      id: 'test-project-id',
+      name,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      objects: [],
+      steps: [],
+    }),
+    isLoading: false,
+  }),
+}));
+
+// Helper to render App with router context at the editor route
+function renderApp(initialEntries: string[] = ['/editor']) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <App />
+    </MemoryRouter>
+  );
+}
+
 describe('App', () => {
   it('renders the main application', () => {
-    render(<App />);
+    renderApp();
     // Facilitate text appears twice in TopBar (gradient and solid overlay)
     const facilitateElements = screen.getAllByText('Facilitate');
     expect(facilitateElements.length).toBeGreaterThanOrEqual(1);
@@ -44,47 +73,47 @@ describe('App', () => {
   });
 
   it('renders the top bar with default simulation title', () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByText('New Simulation')).toBeInTheDocument();
   });
 
   it('renders the left sidebar navigation', () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByText('Add')).toBeInTheDocument();
     expect(screen.getByText('Objects')).toBeInTheDocument();
     expect(screen.getByText('Steps')).toBeInTheDocument();
   });
 
   it('renders the mocked canvas', () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByTestId('main-canvas')).toBeInTheDocument();
   });
 
   it('renders navigation help button', () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByLabelText('Open Navigation Help')).toBeInTheDocument();
   });
 
   it('opens Objects panel when Objects button is clicked', () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByText('Objects'));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
   });
 
   it('opens Steps panel when Steps button is clicked', () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByText('Steps'));
     expect(screen.getByText('Training Flow')).toBeInTheDocument();
   });
 
   it('opens Add panel when Add button is clicked', () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByText('Add'));
     expect(screen.getByText('Library')).toBeInTheDocument();
   });
 
   it('shows empty Objects panel for new project', () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByText('Objects'));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
     // No objects should be listed in empty project
@@ -92,26 +121,26 @@ describe('App', () => {
   });
 
   it('shows empty Steps panel with Add Step button for new project', () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByText('Steps'));
     expect(screen.getByText('Training Flow')).toBeInTheDocument();
     expect(screen.getByText('Add Step')).toBeInTheDocument();
   });
 
   it('shows Upload Asset option in Add panel', () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByText('Add'));
     expect(screen.getByText('Upload Asset')).toBeInTheDocument();
   });
 
   it('does not show right sidebar when no object is selected', () => {
-    render(<App />);
+    renderApp();
     expect(screen.queryByText('Object Details')).not.toBeInTheDocument();
   });
 
   it('updates simulation title', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
 
     // Click on title to edit
     await user.click(screen.getByText('New Simulation'));
@@ -127,13 +156,13 @@ describe('App', () => {
   });
 
   it('renders Preview and Publish buttons', () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByText('Publish')).toBeInTheDocument();
   });
 
   it('can close sidebar panels', async () => {
-    render(<App />);
+    renderApp();
 
     // Open Objects panel
     fireEvent.click(screen.getByText('Objects'));
