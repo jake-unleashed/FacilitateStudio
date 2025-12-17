@@ -1,5 +1,5 @@
 import React, { Suspense, useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
-import { SceneObject } from '../types';
+import { SceneObject, SimStep } from '../types';
 import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import {
@@ -40,6 +40,8 @@ interface SceneContentProps {
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  recordingPositionForStepId?: string | null;
+  steps?: SimStep[];
 }
 
 // Shared geometry instances - created once and reused across all primitives
@@ -55,6 +57,7 @@ interface IndustrialPrimitiveProps {
   isHovered: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
+  isGhost?: boolean;
 }
 
 const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
@@ -66,6 +69,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   isHovered,
   onHoverStart,
   onHoverEnd,
+  isGhost = false,
 }) => {
   const meshRef = useRef<THREE.Group>(null);
   const color = obj.properties.color || '#3b82f6';
@@ -150,6 +154,8 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
           emissive={emissiveColor}
           // eslint-disable-next-line react/no-unknown-property
           emissiveIntensity={emissiveIntensity}
+          transparent={isGhost}
+          opacity={isGhost ? 0.45 : 1.0}
         />
       </mesh>
 
@@ -450,6 +456,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
   onCameraControlsReady,
   onDragStart,
   onDragEnd,
+  recordingPositionForStepId,
+  steps = [],
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const selectedObject = objects.find((obj) => obj.id === selectedObjectId) || null;
@@ -479,47 +487,110 @@ const SceneContent: React.FC<SceneContentProps> = ({
     }
   });
 
+  // Find recording step and target object
+  const recordingStep = useMemo(() => {
+    if (!recordingPositionForStepId) return null;
+    return steps.find((s) => s.id === recordingPositionForStepId) || null;
+  }, [recordingPositionForStepId, steps]);
+
+  const targetObjectId = recordingStep?.targetObjectId;
+  const targetObject = useMemo(() => {
+    if (!targetObjectId) return null;
+    return objects.find((obj) => obj.id === targetObjectId) || null;
+  }, [targetObjectId, objects]);
+
+  // Get ghost object position (uses endPosition from step) and actual object position (start position)
+  const ghostObject = useMemo(() => {
+    if (!targetObject || !recordingStep) return null;
+    // Ghost uses endPosition from step if available, otherwise uses startPosition
+    const startPos = recordingStep.startPosition || {
+      x: targetObject.transform.x,
+      y: targetObject.transform.y,
+      z: targetObject.transform.z,
+    };
+    const ghostPos = recordingStep.endPosition || startPos;
+    return {
+      ...targetObject,
+      transform: {
+        ...targetObject.transform,
+        x: ghostPos.x,
+        y: ghostPos.y,
+        z: ghostPos.z,
+      },
+    };
+  }, [targetObject, recordingStep]);
+
+  const actualObject = useMemo(() => {
+    if (!targetObject || !recordingStep) return null;
+    // Actual object uses start position (locked in place), or current position if no startPosition saved
+    const startPos = recordingStep.startPosition || {
+      x: targetObject.transform.x,
+      y: targetObject.transform.y,
+      z: targetObject.transform.z,
+    };
+    return {
+      ...targetObject,
+      transform: {
+        ...targetObject.transform,
+        x: startPos.x,
+        y: startPos.y,
+        z: startPos.z,
+      },
+    };
+  }, [targetObject, recordingStep]);
+
   // Handle pointer down on object - start potential drag
-  const handleObjectPointerDown = useCallback((e: ThreeEvent<PointerEvent>, obj: SceneObject) => {
-    // Only handle left mouse button
-    if (e.nativeEvent.button !== 0) return;
+  const handleObjectPointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>, obj: SceneObject) => {
+      // Only handle left mouse button
+      if (e.nativeEvent.button !== 0) return;
 
-    // CRITICAL: Stop the pointerdown from reaching CameraControls.
-    // R3F's `e.stopPropagation()` prevents other R3F handlers, but the camera
-    // controls also listen at the DOM level.
-    e.stopPropagation();
-    e.nativeEvent.stopPropagation();
-    // `stopImmediatePropagation` is not available on all Event types; guard it.
-    (
-      e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
-    ).stopImmediatePropagation?.();
+      // During recording, only allow dragging the ghost object (target object)
+      if (recordingPositionForStepId) {
+        if (obj.id !== targetObjectId) {
+          // Disable dragging for non-target objects during recording
+          return;
+        }
+      }
 
-    const objectWorldPos = new THREE.Vector3(
-      obj.transform.x / 100,
-      obj.transform.y / 100,
-      -obj.transform.z / 100
-    );
+      // CRITICAL: Stop the pointerdown from reaching CameraControls.
+      // R3F's `e.stopPropagation()` prevents other R3F handlers, but the camera
+      // controls also listen at the DOM level.
+      e.stopPropagation();
+      e.nativeEvent.stopPropagation();
+      // `stopImmediatePropagation` is not available on all Event types; guard it.
+      (
+        e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
+      ).stopImmediatePropagation?.();
 
-    // Calculate offset from click point to object center
-    const clickPoint = e.point;
-    const offset = new THREE.Vector3(
-      clickPoint.x - objectWorldPos.x,
-      0,
-      clickPoint.z - objectWorldPos.z
-    );
+      const objectWorldPos = new THREE.Vector3(
+        obj.transform.x / 100,
+        obj.transform.y / 100,
+        -obj.transform.z / 100
+      );
 
-    // Reset hasMovedRef synchronously before setting drag state
-    hasMovedRef.current = false;
+      // Calculate offset from click point to object center
+      const clickPoint = e.point;
+      const offset = new THREE.Vector3(
+        clickPoint.x - objectWorldPos.x,
+        0,
+        clickPoint.z - objectWorldPos.z
+      );
 
-    setDragState({
-      objectId: obj.id,
-      object: obj,
-      groundPlaneY: objectWorldPos.y,
-      offset,
-      hasMoved: false,
-      startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
-    });
-  }, []);
+      // Reset hasMovedRef synchronously before setting drag state
+      hasMovedRef.current = false;
+
+      setDragState({
+        objectId: obj.id,
+        object: obj,
+        groundPlaneY: objectWorldPos.y,
+        offset,
+        hasMoved: false,
+        startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
+      });
+    },
+    [recordingPositionForStepId, targetObjectId]
+  );
 
   // Handle drag end - select object if it was just a click
   const handleDragEnd = useCallback(
@@ -627,7 +698,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <group>
         {objects.map(
           (obj) =>
-            obj.properties.visible && (
+            obj.properties.visible &&
+            // During recording, don't render the target object normally (we'll render it as actual + ghost)
+            !(recordingPositionForStepId && obj.id === targetObjectId) && (
               <IndustrialPrimitive
                 key={obj.id}
                 obj={obj}
@@ -640,6 +713,35 @@ const SceneContent: React.FC<SceneContentProps> = ({
                 onHoverEnd={() => setHoveredObjectId(null)}
               />
             )
+        )}
+        {/* Render actual object at start position during recording (non-draggable) */}
+        {recordingPositionForStepId && actualObject && actualObject.properties.visible && (
+          <IndustrialPrimitive
+            key={`actual-${actualObject.id}`}
+            obj={actualObject}
+            isSelected={false}
+            onPointerDown={() => {}} // Disable interaction
+            onDoubleClick={() => {}}
+            isDragging={false}
+            isHovered={false}
+            onHoverStart={() => {}}
+            onHoverEnd={() => {}}
+          />
+        )}
+        {/* Render ghost object during recording (draggable) */}
+        {recordingPositionForStepId && ghostObject && ghostObject.properties.visible && (
+          <IndustrialPrimitive
+            key={`ghost-${ghostObject.id}`}
+            obj={ghostObject}
+            isSelected={selectedObjectId === ghostObject.id}
+            onPointerDown={handleObjectPointerDown}
+            onDoubleClick={handleDoubleClick}
+            isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
+            isHovered={hoveredObjectId === ghostObject.id}
+            onHoverStart={() => setHoveredObjectId(ghostObject.id)}
+            onHoverEnd={() => setHoveredObjectId(null)}
+            isGhost={true}
+          />
         )}
       </group>
 
@@ -751,6 +853,10 @@ interface MainCanvasProps {
   onDragStart?: () => void;
   /** Callback when drag operation ends (for undo/redo batching) */
   onDragEnd?: () => void;
+  /** Step ID for which position is being recorded */
+  recordingPositionForStepId?: string | null;
+  /** Steps array for finding recording step */
+  steps?: SimStep[];
 }
 
 export const MainCanvas: React.FC<MainCanvasProps> = ({
@@ -764,6 +870,8 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   showPerformanceMonitor = IS_DEV,
   onDragStart,
   onDragEnd,
+  recordingPositionForStepId,
+  steps = [],
 }) => {
   // Performance monitoring state
   const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
@@ -817,6 +925,8 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onCameraControlsReady={onCameraControlsReady}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            recordingPositionForStepId={recordingPositionForStepId}
+            steps={steps}
           />
 
           {/* Performance monitor (scene component - collects stats) */}

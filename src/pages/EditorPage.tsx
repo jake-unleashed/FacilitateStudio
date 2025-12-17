@@ -8,6 +8,7 @@ import { NavigationHelp } from '../components/NavigationHelp';
 import { DebugMenu } from '../components/DebugMenu';
 import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
+import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
 import { SceneObject, SidebarSection, SimStep } from '../types';
 import { Project } from '../types/project';
@@ -48,6 +49,8 @@ export function EditorPage() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
+  // Recording state for move-item step end position
+  const [recordingPositionForStepId, setRecordingPositionForStepId] = useState<string | null>(null);
 
   // Undo/Redo system - initialize with empty state, will be set when project loads
   const initialEditorState = useMemo(
@@ -395,6 +398,37 @@ export function EditorPage() {
         return;
       }
 
+      // If we're recording position for a step and this is the target object,
+      // don't update the actual object position - only update the step's end position
+      // The actual object should remain at its start position
+      if (recordingPositionForStepId) {
+        const recordingStep = steps.find((s) => s.id === recordingPositionForStepId);
+        if (recordingStep && recordingStep.targetObjectId === updated.id) {
+          // Only update the step's end position, not the actual object
+          const updatedStep: SimStep = {
+            ...recordingStep,
+            endPosition: {
+              x: updated.transform.x,
+              y: updated.transform.y,
+              z: updated.transform.z,
+            },
+          };
+          const previousStep = steps.find((s) => s.id === recordingStep.id);
+          if (previousStep) {
+            const stepCommand = createUpdateStepCommandHelper(
+              updatedStep.id,
+              previousStep,
+              updatedStep,
+              `Update step end position: ${updatedStep.title || 'Untitled'}`
+            );
+            executeCommand(stepCommand);
+          }
+          // Don't update the actual object - return early
+          return;
+        }
+      }
+
+      // Normal object update (not recording, or not the target object)
       const command = createUpdateObjectCommandHelper(
         updated.id,
         previousObject,
@@ -403,7 +437,7 @@ export function EditorPage() {
       );
       executeCommand(command);
     },
-    [objects, executeCommand]
+    [objects, executeCommand, recordingPositionForStepId, steps]
   );
 
   const handleDeleteObject = useCallback(
@@ -489,7 +523,8 @@ export function EditorPage() {
 
   const handleUpdateStep = useCallback(
     (updated: SimStep) => {
-      const previousStep = steps.find((step) => step.id === updated.id);
+      // Use undoRedoState.steps to get the most up-to-date step (not the local steps state which might be stale)
+      const previousStep = undoRedoState.steps.find((step) => step.id === updated.id);
       if (!previousStep) {
         console.warn('[EditorPage] Cannot update step: not found', updated.id);
         return;
@@ -503,8 +538,58 @@ export function EditorPage() {
       );
       executeCommand(command);
     },
-    [steps, executeCommand]
+    [undoRedoState.steps, executeCommand]
   );
+
+  // Recording handlers for move-item step end position
+  const handleStartRecordingPosition = useCallback(
+    (stepId: string) => {
+      setRecordingPositionForStepId(stepId);
+      beginBatch();
+    },
+    [beginBatch]
+  );
+
+  const handleStopRecordingPosition = useCallback(() => {
+    // Restore the actual object to its start position if it was moved during recording
+    if (recordingPositionForStepId) {
+      const recordingStep = steps.find((s) => s.id === recordingPositionForStepId);
+      if (recordingStep?.targetObjectId && recordingStep.startPosition) {
+        const targetObject = objects.find((obj) => obj.id === recordingStep.targetObjectId);
+        if (targetObject) {
+          // Check if object is not at start position and restore it
+          const isAtStartPosition =
+            targetObject.transform.x === recordingStep.startPosition.x &&
+            targetObject.transform.y === recordingStep.startPosition.y &&
+            targetObject.transform.z === recordingStep.startPosition.z;
+
+          if (!isAtStartPosition) {
+            const restoredObject: SceneObject = {
+              ...targetObject,
+              transform: {
+                ...targetObject.transform,
+                x: recordingStep.startPosition.x,
+                y: recordingStep.startPosition.y,
+                z: recordingStep.startPosition.z,
+              },
+            };
+            const previousObject = objects.find((obj) => obj.id === restoredObject.id);
+            if (previousObject) {
+              const command = createUpdateObjectCommandHelper(
+                restoredObject.id,
+                previousObject,
+                restoredObject,
+                `Restore ${restoredObject.name} to start position`
+              );
+              executeCommand(command);
+            }
+          }
+        }
+      }
+    }
+    setRecordingPositionForStepId(null);
+    endBatch();
+  }, [endBatch, recordingPositionForStepId, steps, objects, executeCommand]);
 
   // ============================================================================
   // Memoized Derived State
@@ -539,6 +624,8 @@ export function EditorPage() {
         onCanvasReady={handleCanvasReady}
         onDragStart={beginBatch}
         onDragEnd={endBatch}
+        recordingPositionForStepId={recordingPositionForStepId}
+        steps={steps}
       />
 
       {/* Floating UI Layer */}
@@ -565,6 +652,9 @@ export function EditorPage() {
         onFocusObject={handleFocusObject}
         onAddStep={handleAddStep}
         onUpdateStep={handleUpdateStep}
+        onStartRecordingPosition={handleStartRecordingPosition}
+        onStopRecordingPosition={handleStopRecordingPosition}
+        recordingPositionForStepId={recordingPositionForStepId}
       />
 
       {selectedObject && (
@@ -581,6 +671,19 @@ export function EditorPage() {
       <NavigationHelp offsetForSidebar={hasSelectedObject} />
 
       <CameraResetButton cameraControlsRef={cameraControlsRef} />
+
+      {/* Recording Mode Overlay */}
+      {recordingPositionForStepId && (
+        <RecordingModeOverlay
+          recordingStep={steps.find((s) => s.id === recordingPositionForStepId) || null}
+          targetObject={(() => {
+            const step = steps.find((s) => s.id === recordingPositionForStepId);
+            if (!step?.targetObjectId) return null;
+            return objects.find((obj) => obj.id === step.targetObjectId) || null;
+          })()}
+          onStopRecording={handleStopRecordingPosition}
+        />
+      )}
 
       <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={hasSelectedObject} />
 

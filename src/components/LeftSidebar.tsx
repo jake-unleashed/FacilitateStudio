@@ -52,6 +52,9 @@ interface LeftSidebarProps {
   onFocusObject?: (object: SceneObject) => void;
   onAddStep?: (step: Omit<SimStep, 'id'>) => void;
   onUpdateStep?: (step: SimStep) => void;
+  onStartRecordingPosition?: (stepId: string) => void;
+  onStopRecordingPosition?: (stepId: string) => void;
+  recordingPositionForStepId?: string | null;
 }
 
 interface NavItemProps {
@@ -139,6 +142,9 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   onFocusObject,
   onAddStep,
   onUpdateStep,
+  onStartRecordingPosition,
+  onStopRecordingPosition,
+  recordingPositionForStepId,
 }) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -295,8 +301,10 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
             <div className="space-y-4">
               {steps.map((step, index) => {
                 const isOpen = step.id === openedStepId;
+                // Use a composite key that includes step properties to force re-render when step changes
+                const stepKey = `${step.id}-${step.targetObjectId || 'none'}-${step.endPosition ? JSON.stringify(step.endPosition) : 'none'}`;
                 return (
-                  <div key={step.id}>
+                  <div key={stepKey}>
                     {isOpen ? (
                       <StepCard
                         step={step}
@@ -304,6 +312,20 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                         isOpen={true}
                         onUpdate={onUpdateStep || (() => {})}
                         onMinimize={handleMinimizeStep}
+                        selectedObjectId={selectedObjectId}
+                        objects={objects}
+                        onStartRecording={
+                          onStartRecordingPosition
+                            ? () => onStartRecordingPosition(step.id)
+                            : undefined
+                        }
+                        onStopRecording={
+                          onStopRecordingPosition
+                            ? () => onStopRecordingPosition(step.id)
+                            : undefined
+                        }
+                        isRecordingPosition={recordingPositionForStepId === step.id}
+                        onFocusObject={onFocusObject}
                       />
                     ) : (
                       <div

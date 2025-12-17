@@ -112,4 +112,3 @@ describe('Window TestHooks Integration', () => {
     >();
   });
 });
-

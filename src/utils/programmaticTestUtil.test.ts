@@ -82,6 +82,7 @@ describe('programmaticTestUtil', () => {
     };
 
     // Mount mock to window
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__testHooks = mockTestHooks;
 
     // Import the module to register window.programmaticTest
@@ -90,6 +91,7 @@ describe('programmaticTestUtil', () => {
 
   afterEach(() => {
     // Only clear test hooks, keep programmaticTest for integration tests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (window as any).__testHooks;
     vi.clearAllMocks();
   });
@@ -119,6 +121,7 @@ describe('programmaticTestUtil', () => {
     });
 
     it('should handle missing test hooks gracefully', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__testHooks;
       const { multiMoveTest } = await import('./programmaticTestUtil');
 

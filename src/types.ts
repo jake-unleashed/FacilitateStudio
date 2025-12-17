@@ -40,6 +40,10 @@ export interface SimStep {
   bodyText?: string;
   buttonText?: string;
   cardColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  // Move Item specific fields
+  targetObjectId?: string;
+  startPosition?: { x: number; y: number; z: number };
+  endPosition?: { x: number; y: number; z: number };
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';

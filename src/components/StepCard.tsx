@@ -1,6 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Info, MoveRight, ChevronUp, RefreshCw, HelpCircle, Pencil } from 'lucide-react';
-import { StepType, SimStep } from '../types';
+import {
+  Info,
+  MoveRight,
+  ChevronUp,
+  RefreshCw,
+  HelpCircle,
+  Pencil,
+  Circle,
+  CheckCircle2,
+  X,
+  CheckCircle,
+} from 'lucide-react';
+import { StepType, SimStep, SceneObject } from '../types';
+import { OBJECT_ICONS } from '../constants';
 
 interface StepCardProps {
   step: SimStep;
@@ -8,6 +20,12 @@ interface StepCardProps {
   isOpen: boolean;
   onUpdate: (updated: SimStep) => void;
   onMinimize: () => void;
+  selectedObjectId?: string | null;
+  objects?: SceneObject[];
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
+  isRecordingPosition?: boolean;
+  onFocusObject?: (object: SceneObject) => void;
 }
 
 interface StepTypeConfig {
@@ -105,6 +123,12 @@ export const StepCard: React.FC<StepCardProps> = ({
   isOpen,
   onUpdate,
   onMinimize,
+  selectedObjectId,
+  objects = [],
+  onStartRecording,
+  onStopRecording,
+  isRecordingPosition = false,
+  onFocusObject,
 }) => {
   // Local state for form fields
   const [stepName, setStepName] = useState(step.title);
@@ -116,6 +140,9 @@ export const StepCard: React.FC<StepCardProps> = ({
   const [cardColor, setCardColor] = useState<'blue' | 'green' | 'yellow' | 'red' | 'gray'>(
     step.cardColor || 'blue'
   );
+  // Move Item specific state
+  const [targetObjectId, setTargetObjectId] = useState(step.targetObjectId || '');
+  const [endPosition, setEndPosition] = useState(step.endPosition);
 
   // Edit state for inline editing
   const [editingField, setEditingField] = useState<'heading' | 'bodyText' | 'buttonText' | null>(
@@ -128,6 +155,7 @@ export const StepCard: React.FC<StepCardProps> = ({
   const buttonTextInputRef = useRef<HTMLInputElement>(null);
 
   // Sync local state when step prop changes
+  // Use individual properties to ensure we catch all changes
   useEffect(() => {
     setStepName(step.title);
     setSelectedType(step.type);
@@ -136,6 +164,9 @@ export const StepCard: React.FC<StepCardProps> = ({
     setBodyText(step.bodyText || '');
     setButtonText(step.buttonText || '');
     setCardColor(step.cardColor || 'blue');
+    // Always sync from step prop - it's the source of truth
+    setTargetObjectId(step.targetObjectId || '');
+    setEndPosition(step.endPosition);
   }, [
     step.id,
     step.title,
@@ -144,21 +175,44 @@ export const StepCard: React.FC<StepCardProps> = ({
     step.bodyText,
     step.buttonText,
     step.cardColor,
+    step.targetObjectId,
+    step.endPosition,
   ]);
 
   // Helper function to create updated step object
   const createUpdatedStep = useCallback(
-    (overrides?: Partial<SimStep>): SimStep => ({
-      ...step,
-      title: stepName,
-      type: selectedType,
-      heading: heading || undefined,
-      bodyText: bodyText || undefined,
-      buttonText: buttonText || undefined,
-      cardColor: cardColor,
-      ...overrides,
-    }),
-    [step, stepName, selectedType, heading, bodyText, buttonText, cardColor]
+    (overrides?: Partial<SimStep>): SimStep => {
+      // Use local state for move-item fields to ensure we have the latest values
+      const baseStep: SimStep = {
+        ...step,
+        title: stepName,
+        type: selectedType,
+        heading: heading || undefined,
+        bodyText: bodyText || undefined,
+        buttonText: buttonText || undefined,
+        cardColor: cardColor,
+        // Use local state for targetObjectId to ensure we have the latest value
+        targetObjectId: targetObjectId || undefined,
+        startPosition: step.startPosition || undefined,
+        endPosition: endPosition || undefined,
+      };
+      // Apply overrides (which will override the above values if provided)
+      return {
+        ...baseStep,
+        ...overrides,
+      };
+    },
+    [
+      step,
+      stepName,
+      selectedType,
+      heading,
+      bodyText,
+      buttonText,
+      cardColor,
+      targetObjectId,
+      endPosition,
+    ]
   );
 
   // Debounced values for auto-save
@@ -166,6 +220,10 @@ export const StepCard: React.FC<StepCardProps> = ({
   const debouncedHeading = useDebounce(heading, AUTO_SAVE_DELAY);
   const debouncedBodyText = useDebounce(bodyText, AUTO_SAVE_DELAY);
   const debouncedButtonText = useDebounce(buttonText, AUTO_SAVE_DELAY);
+
+  // Debounced values for move-item fields
+  const debouncedTargetObjectId = useDebounce(targetObjectId, AUTO_SAVE_DELAY);
+  const debouncedEndPosition = useDebounce(endPosition, AUTO_SAVE_DELAY);
 
   // Auto-save when debounced values change
   useEffect(() => {
@@ -176,7 +234,9 @@ export const StepCard: React.FC<StepCardProps> = ({
       debouncedHeading !== (step.heading || '') ||
       debouncedBodyText !== (step.bodyText || '') ||
       debouncedButtonText !== (step.buttonText || '') ||
-      cardColor !== (step.cardColor || 'blue');
+      cardColor !== (step.cardColor || 'blue') ||
+      debouncedTargetObjectId !== (step.targetObjectId || '') ||
+      JSON.stringify(debouncedEndPosition) !== JSON.stringify(step.endPosition);
 
     if (hasChanged) {
       onUpdate(
@@ -185,6 +245,8 @@ export const StepCard: React.FC<StepCardProps> = ({
           heading: debouncedHeading || undefined,
           bodyText: debouncedBodyText || undefined,
           buttonText: debouncedButtonText || undefined,
+          targetObjectId: debouncedTargetObjectId || undefined,
+          endPosition: debouncedEndPosition,
         })
       );
     }
@@ -196,6 +258,8 @@ export const StepCard: React.FC<StepCardProps> = ({
     debouncedBodyText,
     debouncedButtonText,
     cardColor,
+    debouncedTargetObjectId,
+    debouncedEndPosition,
     step.id,
     createUpdatedStep,
     onUpdate,
@@ -284,14 +348,87 @@ export const StepCard: React.FC<StepCardProps> = ({
     }
   }, [editingField]);
 
+  // Handle using selected object
+  const handleUseSelectedObject = useCallback(() => {
+    if (selectedObjectId) {
+      const selectedObject = objects.find((obj) => obj.id === selectedObjectId);
+      if (selectedObject) {
+        // Update local state immediately for instant UI feedback
+        setTargetObjectId(selectedObjectId);
+        // Auto-save start position when target object is assigned
+        const startPosition = {
+          x: selectedObject.transform.x,
+          y: selectedObject.transform.y,
+          z: selectedObject.transform.z,
+        };
+        // Update the step with the new target object ID and start position
+        const updatedStep: SimStep = createUpdatedStep({
+          targetObjectId: selectedObjectId,
+          startPosition: startPosition,
+        });
+        onUpdate(updatedStep);
+      }
+    }
+  }, [selectedObjectId, objects, createUpdatedStep, onUpdate]);
+
+  // Handle recording toggle
+  const handleToggleRecording = useCallback(() => {
+    if (isRecordingPosition) {
+      if (onStopRecording) {
+        onStopRecording();
+      }
+    } else {
+      if (onStartRecording) {
+        onStartRecording();
+      }
+    }
+  }, [isRecordingPosition, onStartRecording, onStopRecording]);
+
+  // Handle removing target object
+  const handleRemoveTargetObject = useCallback(() => {
+    setTargetObjectId('');
+    const updatedStep: SimStep = createUpdatedStep({
+      targetObjectId: undefined,
+      startPosition: undefined,
+      endPosition: undefined,
+    });
+    onUpdate(updatedStep);
+  }, [createUpdatedStep, onUpdate]);
+
+  // Handle focusing on target object
+  const handleFocusTargetObject = useCallback(
+    (targetObj: SceneObject) => {
+      if (onFocusObject) {
+        onFocusObject(targetObj);
+      }
+    },
+    [onFocusObject]
+  );
+
+  // Update end position when recording (called from parent via step updates)
+  useEffect(() => {
+    if (step.endPosition && isRecordingPosition) {
+      setEndPosition(step.endPosition);
+    }
+  }, [step.endPosition, isRecordingPosition]);
+
   // Only render if open
   if (!isOpen) {
     return null;
   }
 
   const isInfoCardSelected = selectedType === 'info-card';
+  const isMoveItemSelected = selectedType === 'move-item';
   const currentStepTypeConfig = STEP_TYPES.find((st) => st.type === selectedType);
   const currentTheme = COLOR_THEMES[cardColor];
+
+  // Find target object for move-item step (use local state for immediate updates, fallback to step prop)
+  const effectiveTargetObjectId = targetObjectId || step.targetObjectId;
+  const targetObject = effectiveTargetObjectId
+    ? objects.find((obj) => obj.id === effectiveTargetObjectId)
+    : null;
+  const hasSelectedObject = selectedObjectId !== null && selectedObjectId !== undefined;
+  const canUseSelectedObject = hasSelectedObject && selectedObjectId !== effectiveTargetObjectId;
 
   return (
     <div className="rounded-[20px] border border-white/50 bg-white/50 p-5 shadow-sm backdrop-blur-sm">
@@ -639,6 +776,138 @@ export const StepCard: React.FC<StepCardProps> = ({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Move Item Configuration (shown when Move Item type is selected) */}
+      {isMoveItemSelected && !showTypeSelection && (
+        <div className="border-t border-white/30 pt-4">
+          {/* Settings Label */}
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Settings
+            </span>
+            <span title="Configure which object to move and where it should end up.">
+              <HelpCircle size={12} className="text-slate-400" />
+            </span>
+          </div>
+
+          {/* Object Selection Section */}
+          <div className="mb-4 space-y-3">
+            {/* Target Object Display */}
+            <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Target Object
+              </label>
+              {targetObject ? (
+                <div className="group relative">
+                  <button
+                    onClick={() => handleFocusTargetObject(targetObject)}
+                    className="flex w-full items-center gap-2 rounded-[12px] border border-slate-200/60 bg-slate-100/50 px-3 py-2 text-left transition-all hover:border-slate-300/80 hover:bg-slate-100/80"
+                  >
+                    {(() => {
+                      const Icon = OBJECT_ICONS[targetObject.type] || Info;
+                      return <Icon size={14} className="text-slate-600" />;
+                    })()}
+                    <span className="flex-1 text-xs font-medium text-slate-700">
+                      {targetObject.name}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveTargetObject();
+                      }}
+                      className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 opacity-0 transition-all hover:bg-rose-100 hover:text-rose-600 group-hover:opacity-100"
+                      title="Remove target object"
+                    >
+                      <X size={11} />
+                    </button>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex-1 rounded-[10px] border border-slate-200/60 bg-slate-100/50 px-3 py-2 text-xs text-slate-400">
+                    No object selected
+                  </div>
+                  <button
+                    onClick={handleUseSelectedObject}
+                    disabled={!canUseSelectedObject}
+                    className={`
+                      flex w-full items-center justify-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all
+                      ${
+                        canUseSelectedObject
+                          ? 'border-slate-300/60 bg-slate-100/50 text-slate-700 hover:border-slate-400/80 hover:bg-slate-200/60'
+                          : 'cursor-not-allowed border-slate-200/60 bg-slate-100/50 text-slate-400'
+                      }
+                    `}
+                    title={
+                      canUseSelectedObject
+                        ? 'Use the currently selected object in the scene'
+                        : 'Select an object in the scene first'
+                    }
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>Use Selected Object</span>
+                  </button>
+                </div>
+              )}
+              {!targetObject && effectiveTargetObjectId && (
+                <p className="mt-2 text-xs text-rose-600">
+                  Object not found. It may have been deleted.
+                </p>
+              )}
+            </div>
+
+            {/* End Position Recording Section - Only show when target object is assigned */}
+            {targetObject && (
+              <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
+                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                  End Position
+                </label>
+                <div className="space-y-3">
+                  {isRecordingPosition ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 rounded-[10px] border border-blue-200/60 bg-blue-50/50 px-3 py-2">
+                        <Circle size={12} className="animate-pulse fill-blue-600 text-blue-600" />
+                        <span className="text-xs font-medium text-blue-700">
+                          Recording... Move the object to its end position
+                        </span>
+                      </div>
+                      <button
+                        onClick={handleToggleRecording}
+                        className="w-full rounded-[10px] border border-rose-300/60 bg-rose-100/50 px-3 py-2 text-xs font-semibold text-rose-700 transition-all hover:border-rose-400/80 hover:bg-rose-200/60"
+                      >
+                        Stop Recording
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {step.endPosition ? (
+                        <div className="flex items-center gap-2 rounded-[10px] border border-green-200/60 bg-green-50/50 px-3 py-2">
+                          <CheckCircle size={14} className="text-green-600" />
+                          <span className="text-xs font-medium text-green-700">
+                            End position recorded
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-[10px] border border-slate-200/60 bg-slate-100/50 px-3 py-2">
+                          <Circle size={14} className="text-slate-400" />
+                          <span className="text-xs text-slate-400">No end position recorded</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={handleToggleRecording}
+                        className="w-full rounded-[10px] border border-blue-300/60 bg-blue-100/50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:border-blue-400/80 hover:bg-blue-200/60"
+                        title="Click to start recording the end position. Move the object, then click Stop Recording."
+                      >
+                        {step.endPosition ? 'Record New Position' : 'Record End Position'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
