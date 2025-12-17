@@ -161,3 +161,13 @@ Manually verified in browser:
 - ✅ Fallback to placeholder works
 - ✅ Auto-save triggers thumbnail update
 
+
+
+
+
+
+
+
+
+
+

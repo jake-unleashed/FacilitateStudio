@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import {
   Plus,
   ListOrdered,
@@ -9,8 +9,9 @@ import {
   LucideIcon,
   Clock,
 } from 'lucide-react';
-import { SidebarSection, SimStep, SceneObject } from '../types';
+import { SidebarSection, SimStep, SceneObject, StepType } from '../types';
 import { OBJECT_ICONS } from '../constants';
+import { StepCard } from './StepCard';
 
 // ============================================================================
 // Types
@@ -24,6 +25,7 @@ interface LeftSidebarProps {
   onSelectObject: (id: string) => void;
   selectedObjectId: string | null;
   onFocusObject?: (object: SceneObject) => void;
+  onAddStep?: (step: Omit<SimStep, 'id'>) => void;
 }
 
 interface NavItemProps {
@@ -109,7 +111,11 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   onSelectObject,
   selectedObjectId,
   onFocusObject,
+  onAddStep,
 }) => {
+  // State for creating new step
+  const [isCreatingStep, setIsCreatingStep] = useState(false);
+  const [newStepName, setNewStepName] = useState('');
   // Memoized click handlers for nav items
   const handleAddClick = useCallback(() => {
     setActiveTab(activeTab === 'add' ? null : 'add');
@@ -130,6 +136,29 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   const handleSwitchToLibrary = useCallback(() => {
     setActiveTab('add');
   }, [setActiveTab]);
+
+  const handleAddStepClick = useCallback(() => {
+    setIsCreatingStep(true);
+    setNewStepName('');
+  }, []);
+
+  const handleStepTypeSelect = useCallback(
+    (type: StepType) => {
+      // When a type is selected, create the step
+      if (type && onAddStep) {
+        onAddStep({
+          title: newStepName || 'New Step',
+          description: newStepName || 'New Step',
+          completed: false,
+          type,
+        });
+        // Reset the form
+        setIsCreatingStep(false);
+        setNewStepName('');
+      }
+    },
+    [newStepName, onAddStep]
+  );
 
   return (
     <div
@@ -174,7 +203,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
         <div className="flex h-16 min-w-[20rem] shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
           <h2 className="text-lg font-bold tracking-tight text-slate-800">
             {activeTab === 'add' && 'Library'}
-            {activeTab === 'steps' && 'Training Flow'}
+            {activeTab === 'steps' && 'Steps'}
             {activeTab === 'objects' && 'Scene Objects'}
           </h2>
           <button
@@ -250,10 +279,25 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                 </div>
               ))}
 
-              <button className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-slate-300 bg-white/20 py-4 text-sm font-medium text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600">
-                <Plus size={18} />
-                Add Step
-              </button>
+              {/* New Step Card */}
+              {isCreatingStep && (
+                <StepCard
+                  stepName={newStepName}
+                  onStepNameChange={setNewStepName}
+                  onTypeSelect={handleStepTypeSelect}
+                />
+              )}
+
+              {/* Add Step Button */}
+              {!isCreatingStep && (
+                <button
+                  onClick={handleAddStepClick}
+                  className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-slate-300 bg-white/20 py-4 text-sm font-medium text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600"
+                >
+                  <Plus size={18} />
+                  Add Step
+                </button>
+              )}
             </div>
           )}
 

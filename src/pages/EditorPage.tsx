@@ -20,6 +20,7 @@ import {
   createDeleteObjectCommandHelper,
   createCreateObjectCommandHelper,
   createUpdateTitleCommandHelper,
+  createCreateStepCommandHelper,
   findObjectIndex,
 } from '../hooks/undoRedo/integration';
 import { UpdateObjectCommand, UndoRedoCommand } from '../hooks/undoRedo/types';
@@ -468,6 +469,20 @@ export function EditorPage() {
     [simulationTitle, executeCommand]
   );
 
+  const handleAddStep = useCallback(
+    (step: Omit<SimStep, 'id'>) => {
+      const newStep: SimStep = {
+        ...step,
+        id: crypto.randomUUID(),
+      };
+      const index = steps.length;
+      const command = createCreateStepCommandHelper(newStep, index, `Create step: ${newStep.title}`);
+      executeCommand(command);
+    },
+    [steps.length, executeCommand]
+  );
+
+
   // ============================================================================
   // Memoized Derived State
   // ============================================================================
@@ -517,15 +532,16 @@ export function EditorPage() {
         canRedo={canRedo}
       />
 
-      <LeftSidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        steps={steps}
-        objects={objects}
-        onSelectObject={handleSelectObject}
-        selectedObjectId={selectedObjectId}
-        onFocusObject={handleFocusObject}
-      />
+        <LeftSidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          steps={steps}
+          objects={objects}
+          onSelectObject={handleSelectObject}
+          selectedObjectId={selectedObjectId}
+          onFocusObject={handleFocusObject}
+          onAddStep={handleAddStep}
+        />
 
       {selectedObject && (
         <RightSidebar

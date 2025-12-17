@@ -1,9 +1,10 @@
-import { SceneObject } from '../../types';
+import { SceneObject, SimStep } from '../../types';
 import {
   createUpdateObjectCommand,
   createDeleteObjectCommand,
   createCreateObjectCommand,
   createUpdateTitleCommand,
+  createCreateStepCommand,
 } from './commandImplementations';
 import type { UndoRedoCommand } from './types';
 
@@ -67,4 +68,15 @@ export function findObjectIndex(objects: SceneObject[], objectId: string): numbe
  */
 export function getObjectById(objects: SceneObject[], objectId: string): SceneObject | undefined {
   return objects.find((obj) => obj.id === objectId);
+}
+
+/**
+ * Helper function to create a create step command.
+ */
+export function createCreateStepCommandHelper(
+  createdStep: SimStep,
+  index: number,
+  description?: string
+): UndoRedoCommand {
+  return createCreateStepCommand(createdStep, index, description);
 }

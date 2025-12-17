@@ -5,10 +5,11 @@ import {
   DeleteObjectCommand,
   CreateObjectCommand,
   UpdateTitleCommand,
+  CreateStepCommand,
   BatchCommand,
   CommandExecutionResult,
 } from './types';
-import { SceneObject } from '../../types';
+import { SceneObject, SimStep } from '../../types';
 
 /**
  * Executes a command and returns the new state.
@@ -27,6 +28,8 @@ export function executeCommand(
         return executeCreateObject(command, currentState);
       case 'updateTitle':
         return executeUpdateTitle(command, currentState);
+      case 'createStep':
+        return executeCreateStep(command, currentState);
       case 'batch':
         return executeBatch(command, currentState);
       default:
@@ -62,6 +65,8 @@ export function undoCommand(
         return undoCreateObject(command, currentState);
       case 'updateTitle':
         return undoUpdateTitle(command, currentState);
+      case 'createStep':
+        return undoCreateStep(command, currentState);
       case 'batch':
         return undoBatch(command, currentState);
       default:
@@ -148,6 +153,22 @@ function executeUpdateTitle(
     newState: {
       ...currentState,
       simulationTitle: command.newTitle,
+    },
+    success: true,
+  };
+}
+
+function executeCreateStep(
+  command: CreateStepCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  const newSteps = [...currentState.steps];
+  newSteps.splice(command.index, 0, command.createdStep);
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
     },
     success: true,
   };
@@ -241,6 +262,21 @@ function undoUpdateTitle(
     newState: {
       ...currentState,
       simulationTitle: command.previousTitle,
+    },
+    success: true,
+  };
+}
+
+function undoCreateStep(
+  command: CreateStepCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  const newSteps = currentState.steps.filter((step) => step.id !== command.createdStep.id);
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
     },
     success: true,
   };
@@ -354,5 +390,22 @@ export function createBatchCommand(
     timestamp: Date.now(),
     description,
     commands,
+  };
+}
+
+/**
+ * Creates a CreateStepCommand.
+ */
+export function createCreateStepCommand(
+  createdStep: SimStep,
+  index: number,
+  description?: string
+): CreateStepCommand {
+  return {
+    type: 'createStep',
+    timestamp: Date.now(),
+    description,
+    createdStep,
+    index,
   };
 }

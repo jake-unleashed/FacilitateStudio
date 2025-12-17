@@ -42,9 +42,9 @@ const TEST_OBJECTS: SceneObject[] = [
 ];
 
 const TEST_STEPS: SimStep[] = [
-  { id: 'step-1', title: 'Step 1', description: 'First test step', completed: true },
-  { id: 'step-2', title: 'Step 2', description: 'Second test step', completed: false },
-  { id: 'step-3', title: 'Step 3', description: 'Third test step', completed: false },
+  { id: 'step-1', title: 'Step 1', description: 'First test step', completed: true, type: 'info-card' },
+  { id: 'step-2', title: 'Step 2', description: 'Second test step', completed: false, type: 'move-item' },
+  { id: 'step-3', title: 'Step 3', description: 'Third test step', completed: false, type: 'info-card' },
 ];
 
 describe('LeftSidebar', () => {
@@ -112,9 +112,9 @@ describe('LeftSidebar', () => {
   });
 
   describe('Steps Panel', () => {
-    it('shows Training Flow title when steps tab is active', () => {
+    it('shows Steps title when steps tab is active', () => {
       render(<LeftSidebar {...defaultProps} activeTab="steps" />);
-      expect(screen.getByText('Training Flow')).toBeInTheDocument();
+      expect(screen.getByText('Steps')).toBeInTheDocument();
     });
 
     it('renders all steps when provided', () => {

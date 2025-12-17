@@ -203,6 +203,7 @@ describe('useProjectAutoSave', () => {
           title: 'Step 1',
           description: 'Test step',
           completed: false,
+          type: 'info-card',
         },
       ];
 
@@ -767,6 +768,7 @@ describe('useProjectAutoSave', () => {
           title: 'Test Step',
           description: 'Description',
           completed: false,
+          type: 'info-card',
         },
       ];
 

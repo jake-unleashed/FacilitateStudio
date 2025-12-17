@@ -27,11 +27,14 @@ export interface SceneObject {
   };
 }
 
+export type StepType = 'info-card' | 'move-item' | null;
+
 export interface SimStep {
   id: string;
   title: string;
   description: string;
   completed: boolean;
+  type: StepType;
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';

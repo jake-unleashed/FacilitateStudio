@@ -89,6 +89,7 @@ describe('Types', () => {
         title: 'Test Step',
         description: 'A test step description',
         completed: false,
+        type: 'info-card',
       };
       expect(step.id).toBe('step-1');
       expect(step.completed).toBe(false);
