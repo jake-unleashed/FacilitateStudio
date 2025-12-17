@@ -6,6 +6,7 @@ import {
   CreateObjectCommand,
   UpdateTitleCommand,
   CreateStepCommand,
+  UpdateStepCommand,
   BatchCommand,
   CommandExecutionResult,
 } from './types';
@@ -30,6 +31,8 @@ export function executeCommand(
         return executeUpdateTitle(command, currentState);
       case 'createStep':
         return executeCreateStep(command, currentState);
+      case 'updateStep':
+        return executeUpdateStep(command, currentState);
       case 'batch':
         return executeBatch(command, currentState);
       default:
@@ -67,6 +70,8 @@ export function undoCommand(
         return undoUpdateTitle(command, currentState);
       case 'createStep':
         return undoCreateStep(command, currentState);
+      case 'updateStep':
+        return undoUpdateStep(command, currentState);
       case 'batch':
         return undoBatch(command, currentState);
       default:
@@ -164,6 +169,31 @@ function executeCreateStep(
 ): CommandExecutionResult {
   const newSteps = [...currentState.steps];
   newSteps.splice(command.index, 0, command.createdStep);
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
+    },
+    success: true,
+  };
+}
+
+function executeUpdateStep(
+  command: UpdateStepCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  const stepIndex = currentState.steps.findIndex((step) => step.id === command.stepId);
+  if (stepIndex === -1) {
+    return {
+      newState: currentState,
+      success: false,
+      error: `Step with id ${command.stepId} not found`,
+    };
+  }
+
+  const newSteps = [...currentState.steps];
+  newSteps[stepIndex] = command.newState;
 
   return {
     newState: {
@@ -272,6 +302,31 @@ function undoCreateStep(
   currentState: EditorState
 ): CommandExecutionResult {
   const newSteps = currentState.steps.filter((step) => step.id !== command.createdStep.id);
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
+    },
+    success: true,
+  };
+}
+
+function undoUpdateStep(
+  command: UpdateStepCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  const stepIndex = currentState.steps.findIndex((step) => step.id === command.stepId);
+  if (stepIndex === -1) {
+    return {
+      newState: currentState,
+      success: false,
+      error: `Step with id ${command.stepId} not found`,
+    };
+  }
+
+  const newSteps = [...currentState.steps];
+  newSteps[stepIndex] = command.previousState;
 
   return {
     newState: {
@@ -407,5 +462,24 @@ export function createCreateStepCommand(
     description,
     createdStep,
     index,
+  };
+}
+
+/**
+ * Creates an UpdateStepCommand.
+ */
+export function createUpdateStepCommand(
+  stepId: string,
+  previousState: SimStep,
+  newState: SimStep,
+  description?: string
+): UpdateStepCommand {
+  return {
+    type: 'updateStep',
+    timestamp: Date.now(),
+    description,
+    stepId,
+    previousState,
+    newState,
   };
 }

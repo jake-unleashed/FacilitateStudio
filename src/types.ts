@@ -35,6 +35,11 @@ export interface SimStep {
   description: string;
   completed: boolean;
   type: StepType;
+  // Info Card specific fields
+  heading?: string;
+  bodyText?: string;
+  buttonText?: string;
+  cardColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';

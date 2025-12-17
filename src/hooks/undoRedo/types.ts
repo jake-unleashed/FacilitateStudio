@@ -79,6 +79,19 @@ export interface CreateStepCommand extends BaseCommand {
 }
 
 /**
+ * Command for updating an existing step's properties.
+ */
+export interface UpdateStepCommand extends BaseCommand {
+  type: 'updateStep';
+  /** ID of the step being updated */
+  stepId: string;
+  /** Previous state of the step (for undo) */
+  previousState: SimStep;
+  /** New state of the step (for redo) */
+  newState: SimStep;
+}
+
+/**
  * Command that groups multiple commands into a single undo entry.
  * Used for operations like dragging, where many updates should be one undo.
  */
@@ -97,6 +110,7 @@ export type UndoRedoCommand =
   | CreateObjectCommand
   | UpdateTitleCommand
   | CreateStepCommand
+  | UpdateStepCommand
   | BatchCommand;
 
 /**

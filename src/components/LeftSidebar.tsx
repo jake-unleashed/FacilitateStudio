@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useState, useEffect } from 'react';
 import {
   Plus,
   ListOrdered,
@@ -8,10 +8,35 @@ import {
   ChevronsLeft,
   LucideIcon,
   Clock,
+  Info,
+  MoveRight,
 } from 'lucide-react';
 import { SidebarSection, SimStep, SceneObject, StepType } from '../types';
 import { OBJECT_ICONS } from '../constants';
 import { StepCard } from './StepCard';
+
+// Step type configuration for minimized step indicators
+interface StepTypeConfig {
+  type: StepType;
+  icon: LucideIcon;
+  color: 'text-blue-600' | 'text-purple-600';
+  label: string;
+}
+
+const STEP_TYPE_CONFIGS: StepTypeConfig[] = [
+  {
+    type: 'info-card',
+    icon: Info,
+    color: 'text-blue-600',
+    label: 'Info Card',
+  },
+  {
+    type: 'move-item',
+    icon: MoveRight,
+    color: 'text-purple-600',
+    label: 'Move Item',
+  },
+];
 
 // ============================================================================
 // Types
@@ -26,6 +51,7 @@ interface LeftSidebarProps {
   selectedObjectId: string | null;
   onFocusObject?: (object: SceneObject) => void;
   onAddStep?: (step: Omit<SimStep, 'id'>) => void;
+  onUpdateStep?: (step: SimStep) => void;
 }
 
 interface NavItemProps {
@@ -112,10 +138,10 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   selectedObjectId,
   onFocusObject,
   onAddStep,
+  onUpdateStep,
 }) => {
-  // State for creating new step
-  const [isCreatingStep, setIsCreatingStep] = useState(false);
-  const [newStepName, setNewStepName] = useState('');
+  // State for tracking which step is open
+  const [openedStepId, setOpenedStepId] = useState<string | null>(null);
   // Memoized click handlers for nav items
   const handleAddClick = useCallback(() => {
     setActiveTab(activeTab === 'add' ? null : 'add');
@@ -138,27 +164,42 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   }, [setActiveTab]);
 
   const handleAddStepClick = useCallback(() => {
-    setIsCreatingStep(true);
-    setNewStepName('');
-  }, []);
+    if (onAddStep) {
+      const newStep: Omit<SimStep, 'id'> = {
+        title: '',
+        description: '',
+        completed: false,
+        type: null,
+      };
+      onAddStep(newStep);
+    }
+  }, [onAddStep]);
 
-  const handleStepTypeSelect = useCallback(
-    (type: StepType) => {
-      // When a type is selected, create the step
-      if (type && onAddStep) {
-        onAddStep({
-          title: newStepName || 'New Step',
-          description: newStepName || 'New Step',
-          completed: false,
-          type,
-        });
-        // Reset the form
-        setIsCreatingStep(false);
-        setNewStepName('');
+  // Auto-open the most recently added step (only if it's empty and no step is currently open)
+  useEffect(() => {
+    if (steps.length > 0 && openedStepId === null) {
+      const lastStep = steps[steps.length - 1];
+      // Check if it's a newly created empty step
+      if (lastStep.title === '' && lastStep.type === null && lastStep.description === '') {
+        setOpenedStepId(lastStep.id);
       }
+    }
+    // Close if the opened step was deleted
+    if (openedStepId !== null && !steps.find((s) => s.id === openedStepId)) {
+      setOpenedStepId(null);
+    }
+  }, [steps, openedStepId]);
+
+  const handleStepClick = useCallback(
+    (stepId: string) => {
+      setOpenedStepId(stepId === openedStepId ? null : stepId);
     },
-    [newStepName, onAddStep]
+    [openedStepId]
   );
+
+  const handleMinimizeStep = useCallback(() => {
+    setOpenedStepId(null);
+  }, []);
 
   return (
     <div
@@ -252,52 +293,83 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
           {/* Steps Panel */}
           {activeTab === 'steps' && (
             <div className="space-y-4">
-              {steps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className="group relative cursor-pointer rounded-[20px] border border-white/50 bg-white/50 p-4 shadow-sm backdrop-blur-sm transition-all hover:bg-white hover:shadow-md"
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`
-                            mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm
-                            ${
-                              step.completed
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-slate-200 text-slate-500'
-                            }
-                        `}
-                    >
-                      {index + 1}
-                    </div>
-                    <div className="min-w-0 flex-1 pt-0.5">
-                      <p className="text-sm font-medium leading-snug text-slate-700">
-                        {step.description}
-                      </p>
-                    </div>
+              {steps.map((step, index) => {
+                const isOpen = step.id === openedStepId;
+                return (
+                  <div key={step.id}>
+                    {isOpen ? (
+                      <StepCard
+                        step={step}
+                        stepNumber={index + 1}
+                        isOpen={true}
+                        onUpdate={onUpdateStep || (() => {})}
+                        onMinimize={handleMinimizeStep}
+                      />
+                    ) : (
+                      <div
+                        onClick={() => handleStepClick(step.id)}
+                        className="group relative cursor-pointer rounded-[20px] border border-white/50 bg-white/50 p-4 shadow-sm backdrop-blur-sm transition-all hover:bg-white hover:shadow-md"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`
+                              mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm
+                              ${
+                                step.completed
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-slate-200 text-slate-500'
+                              }
+                            `}
+                          >
+                            {index + 1}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium leading-snug text-slate-700">
+                              {step.title || 'Untitled Step'}
+                            </p>
+                            {/* Step Type Badge - Smaller, below step name */}
+                            {step.type &&
+                              (() => {
+                                const stepTypeConfig = STEP_TYPE_CONFIGS.find(
+                                  (config) => config.type === step.type
+                                );
+                                if (!stepTypeConfig) return null;
+                                const Icon = stepTypeConfig.icon;
+                                const isBlue = stepTypeConfig.color === 'text-blue-600';
+                                return (
+                                  <div
+                                    className={`
+                                    mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border px-2 py-0.5
+                                    ${
+                                      isBlue
+                                        ? 'border-blue-200/60 bg-gradient-to-br from-blue-50/60 to-blue-100/30'
+                                        : 'border-purple-200/60 bg-gradient-to-br from-purple-50/60 to-purple-100/30'
+                                    }
+                                  `}
+                                  >
+                                    <Icon size={12} className={stepTypeConfig.color} />
+                                    <span className="text-[10px] font-medium text-slate-600">
+                                      {stepTypeConfig.label}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-
-              {/* New Step Card */}
-              {isCreatingStep && (
-                <StepCard
-                  stepName={newStepName}
-                  onStepNameChange={setNewStepName}
-                  onTypeSelect={handleStepTypeSelect}
-                />
-              )}
+                );
+              })}
 
               {/* Add Step Button */}
-              {!isCreatingStep && (
-                <button
-                  onClick={handleAddStepClick}
-                  className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-slate-300 bg-white/20 py-4 text-sm font-medium text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600"
-                >
-                  <Plus size={18} />
-                  Add Step
-                </button>
-              )}
+              <button
+                onClick={handleAddStepClick}
+                className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-slate-300 bg-white/20 py-4 text-sm font-medium text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600"
+              >
+                <Plus size={18} />
+                Add Step
+              </button>
             </div>
           )}
 

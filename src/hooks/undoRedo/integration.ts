@@ -5,6 +5,7 @@ import {
   createCreateObjectCommand,
   createUpdateTitleCommand,
   createCreateStepCommand,
+  createUpdateStepCommand,
 } from './commandImplementations';
 import type { UndoRedoCommand } from './types';
 
@@ -79,4 +80,17 @@ export function createCreateStepCommandHelper(
   description?: string
 ): UndoRedoCommand {
   return createCreateStepCommand(createdStep, index, description);
+}
+
+/**
+ * Helper function to create an update step command and execute it.
+ * This is a convenience wrapper for the common case of updating a step.
+ */
+export function createUpdateStepCommandHelper(
+  stepId: string,
+  previousState: SimStep,
+  newState: SimStep,
+  description?: string
+): UndoRedoCommand {
+  return createUpdateStepCommand(stepId, previousState, newState, description);
 }

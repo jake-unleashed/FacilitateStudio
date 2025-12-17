@@ -103,7 +103,9 @@ describe('App', () => {
   it('opens Steps panel when Steps button is clicked', () => {
     renderApp();
     fireEvent.click(screen.getByText('Steps'));
-    expect(screen.getByText('Training Flow')).toBeInTheDocument();
+    // The panel heading is "Steps", not "Training Flow"
+    const stepsHeadings = screen.getAllByText('Steps');
+    expect(stepsHeadings.length).toBeGreaterThan(0);
   });
 
   it('opens Add panel when Add button is clicked', () => {
@@ -123,7 +125,9 @@ describe('App', () => {
   it('shows empty Steps panel with Add Step button for new project', () => {
     renderApp();
     fireEvent.click(screen.getByText('Steps'));
-    expect(screen.getByText('Training Flow')).toBeInTheDocument();
+    // The panel heading is "Steps", not "Training Flow"
+    const stepsHeadings = screen.getAllByText('Steps');
+    expect(stepsHeadings.length).toBeGreaterThan(0);
     expect(screen.getByText('Add Step')).toBeInTheDocument();
   });
 

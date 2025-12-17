@@ -42,9 +42,27 @@ const TEST_OBJECTS: SceneObject[] = [
 ];
 
 const TEST_STEPS: SimStep[] = [
-  { id: 'step-1', title: 'Step 1', description: 'First test step', completed: true, type: 'info-card' },
-  { id: 'step-2', title: 'Step 2', description: 'Second test step', completed: false, type: 'move-item' },
-  { id: 'step-3', title: 'Step 3', description: 'Third test step', completed: false, type: 'info-card' },
+  {
+    id: 'step-1',
+    title: 'Step 1',
+    description: 'First test step',
+    completed: true,
+    type: 'info-card',
+  },
+  {
+    id: 'step-2',
+    title: 'Step 2',
+    description: 'Second test step',
+    completed: false,
+    type: 'move-item',
+  },
+  {
+    id: 'step-3',
+    title: 'Step 3',
+    description: 'Third test step',
+    completed: false,
+    type: 'info-card',
+  },
 ];
 
 describe('LeftSidebar', () => {
@@ -114,13 +132,28 @@ describe('LeftSidebar', () => {
   describe('Steps Panel', () => {
     it('shows Steps title when steps tab is active', () => {
       render(<LeftSidebar {...defaultProps} activeTab="steps" />);
-      expect(screen.getByText('Steps')).toBeInTheDocument();
+      // Use getAllByText since "Steps" appears in both the nav button and the panel heading
+      const stepsElements = screen.getAllByText('Steps');
+      expect(stepsElements.length).toBeGreaterThan(0);
+      // Check that the panel heading exists
+      expect(stepsElements.some((el) => el.tagName === 'H2')).toBe(true);
     });
 
     it('renders all steps when provided', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="steps" steps={TEST_STEPS} />);
+      const mockOnAddStep = vi.fn();
+      const mockOnUpdateStep = vi.fn();
+      render(
+        <LeftSidebar
+          {...defaultProps}
+          activeTab="steps"
+          steps={TEST_STEPS}
+          onAddStep={mockOnAddStep}
+          onUpdateStep={mockOnUpdateStep}
+        />
+      );
       TEST_STEPS.forEach((step) => {
-        expect(screen.getByText(step.description)).toBeInTheDocument();
+        // Steps are displayed with their title, not description
+        expect(screen.getByText(step.title)).toBeInTheDocument();
       });
     });
 

@@ -21,6 +21,7 @@ import {
   createCreateObjectCommandHelper,
   createUpdateTitleCommandHelper,
   createCreateStepCommandHelper,
+  createUpdateStepCommandHelper,
   findObjectIndex,
 } from '../hooks/undoRedo/integration';
 import { UpdateObjectCommand, UndoRedoCommand } from '../hooks/undoRedo/types';
@@ -476,12 +477,34 @@ export function EditorPage() {
         id: crypto.randomUUID(),
       };
       const index = steps.length;
-      const command = createCreateStepCommandHelper(newStep, index, `Create step: ${newStep.title}`);
+      const command = createCreateStepCommandHelper(
+        newStep,
+        index,
+        `Create step: ${newStep.title}`
+      );
       executeCommand(command);
     },
     [steps.length, executeCommand]
   );
 
+  const handleUpdateStep = useCallback(
+    (updated: SimStep) => {
+      const previousStep = steps.find((step) => step.id === updated.id);
+      if (!previousStep) {
+        console.warn('[EditorPage] Cannot update step: not found', updated.id);
+        return;
+      }
+
+      const command = createUpdateStepCommandHelper(
+        updated.id,
+        previousStep,
+        updated,
+        `Update step: ${updated.title || 'Untitled'}`
+      );
+      executeCommand(command);
+    },
+    [steps, executeCommand]
+  );
 
   // ============================================================================
   // Memoized Derived State
@@ -532,16 +555,17 @@ export function EditorPage() {
         canRedo={canRedo}
       />
 
-        <LeftSidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          steps={steps}
-          objects={objects}
-          onSelectObject={handleSelectObject}
-          selectedObjectId={selectedObjectId}
-          onFocusObject={handleFocusObject}
-          onAddStep={handleAddStep}
-        />
+      <LeftSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        steps={steps}
+        objects={objects}
+        onSelectObject={handleSelectObject}
+        selectedObjectId={selectedObjectId}
+        onFocusObject={handleFocusObject}
+        onAddStep={handleAddStep}
+        onUpdateStep={handleUpdateStep}
+      />
 
       {selectedObject && (
         <RightSidebar
