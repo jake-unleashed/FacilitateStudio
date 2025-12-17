@@ -32,6 +32,14 @@ interface TopBarProps {
   saveErrorMessage?: string | null;
   /** Optional manual save callback (makes Save button clickable). */
   onManualSave?: () => void;
+  /** Undo callback */
+  onUndo?: () => void;
+  /** Redo callback */
+  onRedo?: () => void;
+  /** Whether undo is available */
+  canUndo?: boolean;
+  /** Whether redo is available */
+  canRedo?: boolean;
 }
 
 // =============================================================================
@@ -114,14 +122,34 @@ const HistoryControls = memo(
     saveStatus = 'idle',
     saveErrorMessage,
     onManualSave,
+    onUndo,
+    onRedo,
+    canUndo = false,
+    canRedo = false,
   }: {
     saveStatus?: SaveStatus;
     saveErrorMessage?: string | null;
     onManualSave?: () => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
+    canUndo?: boolean;
+    canRedo?: boolean;
   }) => {
     // Save button is clickable when dirty or error
     const canSave = (saveStatus === 'dirty' || saveStatus === 'error') && !!onManualSave;
     const isDisabled = saveStatus === 'saving' || !canSave;
+
+    const handleUndo = useCallback(() => {
+      if (canUndo && onUndo) {
+        onUndo();
+      }
+    }, [canUndo, onUndo]);
+
+    const handleRedo = useCallback(() => {
+      if (canRedo && onRedo) {
+        onRedo();
+      }
+    }, [canRedo, onRedo]);
 
     return (
       <div className="hidden items-center gap-1 sm:flex">
@@ -144,13 +172,31 @@ const HistoryControls = memo(
           <Button
             variant="ghost"
             size="icon"
-            disabled
+            disabled={!canUndo}
             aria-label="Undo"
-            className="h-9 w-9 rounded-[20px]"
+            className={`h-9 w-9 rounded-[20px] transition-all ${
+              canUndo
+                ? 'cursor-pointer text-slate-700 hover:bg-white/50 hover:text-slate-900'
+                : 'cursor-not-allowed text-slate-400 opacity-50'
+            }`}
+            title={canUndo ? 'Undo (Ctrl+Z)' : 'Nothing to undo'}
+            onClick={handleUndo}
           >
             <Undo size={16} />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Redo" className="h-9 w-9 rounded-[20px]">
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={!canRedo}
+            aria-label="Redo"
+            className={`h-9 w-9 rounded-[20px] transition-all ${
+              canRedo
+                ? 'cursor-pointer text-slate-700 hover:bg-white/50 hover:text-slate-900'
+                : 'cursor-not-allowed text-slate-400 opacity-50'
+            }`}
+            title={canRedo ? 'Redo (Ctrl+Y)' : 'Nothing to redo'}
+            onClick={handleRedo}
+          >
             <Redo size={16} />
           </Button>
         </div>
@@ -273,6 +319,10 @@ const TopBarInner: React.FC<TopBarProps> = ({
   saveStatus = 'idle',
   saveErrorMessage = null,
   onManualSave,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }) => {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
@@ -350,6 +400,10 @@ const TopBarInner: React.FC<TopBarProps> = ({
             saveStatus={saveStatus}
             saveErrorMessage={saveErrorMessage}
             onManualSave={onManualSave}
+            onUndo={onUndo}
+            onRedo={onRedo}
+            canUndo={canUndo}
+            canRedo={canRedo}
           />
         </div>
 

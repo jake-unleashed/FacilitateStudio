@@ -1,4 +1,4 @@
-import React, { useState, memo, useCallback, useMemo } from 'react';
+import React, { useState, memo, useCallback, useMemo, useRef } from 'react';
 import { SceneObject } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
@@ -21,6 +21,10 @@ interface RightSidebarProps {
   onUpdate: (updated: SceneObject) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  /** Callback when a batch operation starts (for undo/redo batching) */
+  onBatchStart?: () => void;
+  /** Callback when a batch operation ends (for undo/redo batching) */
+  onBatchEnd?: () => void;
 }
 
 // ============================================================================
@@ -145,131 +149,265 @@ NameAndVisibilitySection.displayName = 'NameAndVisibilitySection';
 interface HeightSectionProps {
   /** Height above ground in internal units (where 100 = 1 meter) */
   groundRelativeHeight: number;
-  /** Called when user changes the height slider */
+  /** Called when user changes the height slider (for real-time visual updates) */
   onHeightChange: (newHeight: number) => void;
+  /** Called when user commits the height change (mouseup - for undo/redo) */
+  onHeightCommit: (newHeight: number) => void;
+  /** Called when slider interaction starts (for undo/redo batching) */
+  onBatchStart?: () => void;
+  /** Called when slider interaction ends (for undo/redo batching) */
+  onBatchEnd?: () => void;
 }
 
-const HeightSection = memo<HeightSectionProps>(({ groundRelativeHeight, onHeightChange }) => {
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onHeightChange(parseFloat(e.target.value));
-    },
-    [onHeightChange]
-  );
+const HeightSection = memo<HeightSectionProps>(
+  ({ groundRelativeHeight, onHeightChange, onHeightCommit, onBatchStart, onBatchEnd }) => {
+    const [isDragging, setIsDragging] = useState(false);
+    const startValueRef = useRef<number>(groundRelativeHeight);
 
-  // Convert internal units to display units (divide by 100 for meters)
-  const displayHeight = groundRelativeHeight / 100;
+    const handleChange = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = parseFloat(e.target.value);
+        // Update visual state in real-time during drag
+        onHeightChange(newValue);
+      },
+      [onHeightChange]
+    );
 
-  return (
-    <div
-      className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
-      data-testid="height-section"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <ArrowUpDown size={12} className="text-slate-500" />
-          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
-            Height
-          </label>
+    const handleMouseDown = useCallback(() => {
+      setIsDragging(true);
+      startValueRef.current = groundRelativeHeight;
+      // Start batching for undo/redo
+      if (onBatchStart) {
+        onBatchStart();
+      }
+    }, [groundRelativeHeight, onBatchStart]);
+
+    const handleMouseUp = useCallback(() => {
+      if (isDragging) {
+        setIsDragging(false);
+        // Commit the final value to undo/redo
+        const finalValue = groundRelativeHeight;
+        onHeightCommit(finalValue);
+        // End batching
+        if (onBatchEnd) {
+          onBatchEnd();
+        }
+      }
+    }, [isDragging, groundRelativeHeight, onHeightCommit, onBatchEnd]);
+
+    // Handle mouse leave (user might release mouse outside the slider)
+    const handleMouseLeave = useCallback(() => {
+      if (isDragging) {
+        handleMouseUp();
+      }
+    }, [isDragging, handleMouseUp]);
+
+    // Convert internal units to display units (divide by 100 for meters)
+    const displayHeight = groundRelativeHeight / 100;
+
+    return (
+      <div
+        className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
+        data-testid="height-section"
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <ArrowUpDown size={12} className="text-slate-500" />
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              Height
+            </label>
+          </div>
+          <span
+            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
+            data-testid="height-value"
+          >
+            {displayHeight.toFixed(2)}m
+          </span>
         </div>
-        <span
-          className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
-          data-testid="height-value"
-        >
-          {displayHeight.toFixed(2)}m
-        </span>
-      </div>
 
-      <input
-        type="range"
-        min="0"
-        max="500"
-        step="5"
-        value={groundRelativeHeight}
-        onChange={handleChange}
-        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
-        aria-label="Height slider"
-        data-testid="height-slider"
-      />
-      <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
-        <span>0m</span>
-        <span>5m</span>
+        <input
+          type="range"
+          min="0"
+          max="500"
+          step="5"
+          value={groundRelativeHeight}
+          onChange={handleChange}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+          aria-label="Height slider"
+          data-testid="height-slider"
+        />
+        <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
+          <span>0m</span>
+          <span>5m</span>
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  }
+);
 HeightSection.displayName = 'HeightSection';
 
 interface ScaleSectionProps {
   currentScale: number;
+  /** Called when user changes the scale slider (for real-time visual updates) */
   onScaleChange: (scale: number) => void;
+  /** Called when user commits the scale change (mouseup - for undo/redo) */
+  onScaleCommit: (scale: number) => void;
+  /** Called when slider interaction starts (for undo/redo batching) */
+  onBatchStart?: () => void;
+  /** Called when slider interaction ends (for undo/redo batching) */
+  onBatchEnd?: () => void;
 }
 
-const ScaleSection = memo<ScaleSectionProps>(({ currentScale, onScaleChange }) => {
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onScaleChange(parseFloat(e.target.value));
-    },
-    [onScaleChange]
-  );
+const ScaleSection = memo<ScaleSectionProps>(
+  ({ currentScale, onScaleChange, onScaleCommit, onBatchStart, onBatchEnd }) => {
+    const [isDragging, setIsDragging] = useState(false);
 
-  return (
-    <div
-      className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
-      data-testid="scale-section"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Scaling size={12} className="text-slate-500" />
-          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
-            Scale
-          </label>
+    const handleChange = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = parseFloat(e.target.value);
+        // Update visual state in real-time during drag
+        onScaleChange(newValue);
+      },
+      [onScaleChange]
+    );
+
+    const handleMouseDown = useCallback(() => {
+      setIsDragging(true);
+      // Start batching for undo/redo
+      if (onBatchStart) {
+        onBatchStart();
+      }
+    }, [onBatchStart]);
+
+    const handleMouseUp = useCallback(() => {
+      if (isDragging) {
+        setIsDragging(false);
+        // Commit the final value to undo/redo
+        onScaleCommit(currentScale);
+        // End batching
+        if (onBatchEnd) {
+          onBatchEnd();
+        }
+      }
+    }, [isDragging, currentScale, onScaleCommit, onBatchEnd]);
+
+    // Handle mouse leave (user might release mouse outside the slider)
+    const handleMouseLeave = useCallback(() => {
+      if (isDragging) {
+        handleMouseUp();
+      }
+    }, [isDragging, handleMouseUp]);
+
+    return (
+      <div
+        className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
+        data-testid="scale-section"
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Scaling size={12} className="text-slate-500" />
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              Scale
+            </label>
+          </div>
+          <span
+            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
+            data-testid="scale-value"
+          >
+            {currentScale.toFixed(2)}x
+          </span>
         </div>
-        <span
-          className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
-          data-testid="scale-value"
-        >
-          {currentScale.toFixed(2)}x
-        </span>
-      </div>
 
-      <input
-        type="range"
-        min="0.1"
-        max="3.0"
-        step="0.1"
-        value={currentScale}
-        onChange={handleChange}
-        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
-        aria-label="Scale slider"
-        data-testid="scale-slider"
-      />
-      <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
-        <span>0.1x</span>
-        <span>3.0x</span>
+        <input
+          type="range"
+          min="0.1"
+          max="3.0"
+          step="0.1"
+          value={currentScale}
+          onChange={handleChange}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+          aria-label="Scale slider"
+          data-testid="scale-slider"
+        />
+        <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
+          <span>0.1x</span>
+          <span>3.0x</span>
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  }
+);
 ScaleSection.displayName = 'ScaleSection';
 
 interface RotationSectionProps {
   activeAxis: RotationAxis;
   displayRotation: number;
   onAxisChange: (axis: RotationAxis) => void;
+  /** Called when user changes the rotation slider (for real-time visual updates) */
   onRotationChange: (rotation: number) => void;
+  /** Called when user commits the rotation change (mouseup - for undo/redo) */
+  onRotationCommit: (rotation: number) => void;
+  /** Called when slider interaction starts (for undo/redo batching) */
+  onBatchStart?: () => void;
+  /** Called when slider interaction ends (for undo/redo batching) */
+  onBatchEnd?: () => void;
 }
 
 const ROTATION_AXES: readonly RotationAxis[] = ['x', 'y', 'z'] as const;
 
 const RotationSection = memo<RotationSectionProps>(
-  ({ activeAxis, displayRotation, onAxisChange, onRotationChange }) => {
+  ({
+    activeAxis,
+    displayRotation,
+    onAxisChange,
+    onRotationChange,
+    onRotationCommit,
+    onBatchStart,
+    onBatchEnd,
+  }) => {
+    const [isDragging, setIsDragging] = useState(false);
+
     const handleSliderChange = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
-        onRotationChange(parseFloat(e.target.value));
+        const newValue = parseFloat(e.target.value);
+        // Update visual state in real-time during drag
+        onRotationChange(newValue);
       },
       [onRotationChange]
     );
+
+    const handleMouseDown = useCallback(() => {
+      setIsDragging(true);
+      // Start batching for undo/redo
+      if (onBatchStart) {
+        onBatchStart();
+      }
+    }, [onBatchStart]);
+
+    const handleMouseUp = useCallback(() => {
+      if (isDragging) {
+        setIsDragging(false);
+        // Commit the final value to undo/redo
+        onRotationCommit(displayRotation);
+        // End batching
+        if (onBatchEnd) {
+          onBatchEnd();
+        }
+      }
+    }, [isDragging, displayRotation, onRotationCommit, onBatchEnd]);
+
+    // Handle mouse leave (user might release mouse outside the slider)
+    const handleMouseLeave = useCallback(() => {
+      if (isDragging) {
+        handleMouseUp();
+      }
+    }, [isDragging, handleMouseUp]);
 
     return (
       <div
@@ -334,6 +472,9 @@ const RotationSection = memo<RotationSectionProps>(
               step="1"
               value={displayRotation}
               onChange={handleSliderChange}
+              onMouseDown={handleMouseDown}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseLeave}
               className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
               aria-label={`Rotation ${activeAxis.toUpperCase()} axis slider`}
               data-testid="rotation-slider"
@@ -393,8 +534,13 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
   onUpdate,
   onDelete,
   onClose,
+  onBatchStart,
+  onBatchEnd,
 }) => {
   const [activeRotAxis, setActiveRotAxis] = useState<RotationAxis>('y');
+
+  // Store initial object state when slider interaction starts
+  const initialObjectRef = useRef<SceneObject | null>(null);
 
   // ---- Memoized Calculations ----
   // Note: All hooks must be called unconditionally (before any early returns)
@@ -439,6 +585,7 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     });
   }, [object, onUpdate]);
 
+  // Height change handler - updates visual state only (for real-time feedback during drag)
   const handleHeightChange = useCallback(
     (newHeight: number) => {
       if (!object) return;
@@ -454,6 +601,29 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     [object, onUpdate, lowestPointOffset]
   );
 
+  // Height commit handler - no-op since commands are created during drag and batched
+  const handleHeightCommit = useCallback((_finalHeight: number) => {
+    // The final state is already applied via handleHeightChange
+    // Commands are batched, so this is just a signal that drag ended
+  }, []);
+
+  const handleHeightBatchStart = useCallback(() => {
+    if (!object) return;
+    initialObjectRef.current = { ...object };
+    if (onBatchStart) {
+      onBatchStart();
+    }
+  }, [object, onBatchStart]);
+
+  const handleHeightBatchEnd = useCallback(() => {
+    if (!object || !initialObjectRef.current) return;
+    if (onBatchEnd) {
+      onBatchEnd();
+    }
+    initialObjectRef.current = null;
+  }, [object, onBatchEnd]);
+
+  // Scale change handler - updates visual state only (for real-time feedback during drag)
   const handleScaleChange = useCallback(
     (scale: number) => {
       if (!object) return;
@@ -482,6 +652,32 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     [object, onUpdate, lowestPointOffset]
   );
 
+  // Scale commit handler
+  const handleScaleCommit = useCallback(
+    (_finalScale: number) => {
+      if (!object || !initialObjectRef.current) return;
+      // The final state is already applied via handleScaleChange
+    },
+    [object]
+  );
+
+  const handleScaleBatchStart = useCallback(() => {
+    if (!object) return;
+    initialObjectRef.current = { ...object };
+    if (onBatchStart) {
+      onBatchStart();
+    }
+  }, [object, onBatchStart]);
+
+  const handleScaleBatchEnd = useCallback(() => {
+    if (!object || !initialObjectRef.current) return;
+    if (onBatchEnd) {
+      onBatchEnd();
+    }
+    initialObjectRef.current = null;
+  }, [object, onBatchEnd]);
+
+  // Rotation change handler - updates visual state only (for real-time feedback during drag)
   const handleRotationChange = useCallback(
     (rotation: number) => {
       if (!object) return;
@@ -512,6 +708,31 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     },
     [object, onUpdate, activeRotAxis, lowestPointOffset]
   );
+
+  // Rotation commit handler
+  const handleRotationCommit = useCallback(
+    (_finalRotation: number) => {
+      if (!object || !initialObjectRef.current) return;
+      // The final state is already applied via handleRotationChange
+    },
+    [object]
+  );
+
+  const handleRotationBatchStart = useCallback(() => {
+    if (!object) return;
+    initialObjectRef.current = { ...object };
+    if (onBatchStart) {
+      onBatchStart();
+    }
+  }, [object, onBatchStart]);
+
+  const handleRotationBatchEnd = useCallback(() => {
+    if (!object || !initialObjectRef.current) return;
+    if (onBatchEnd) {
+      onBatchEnd();
+    }
+    initialObjectRef.current = null;
+  }, [object, onBatchEnd]);
 
   const handleDuplicate = useCallback(() => {
     // Duplicate functionality - currently a no-op, will be implemented later
@@ -554,15 +775,27 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
           <HeightSection
             groundRelativeHeight={groundRelativeHeight}
             onHeightChange={handleHeightChange}
+            onHeightCommit={handleHeightCommit}
+            onBatchStart={handleHeightBatchStart}
+            onBatchEnd={handleHeightBatchEnd}
           />
 
-          <ScaleSection currentScale={currentScale} onScaleChange={handleScaleChange} />
+          <ScaleSection
+            currentScale={currentScale}
+            onScaleChange={handleScaleChange}
+            onScaleCommit={handleScaleCommit}
+            onBatchStart={handleScaleBatchStart}
+            onBatchEnd={handleScaleBatchEnd}
+          />
 
           <RotationSection
             activeAxis={activeRotAxis}
             displayRotation={displayRotation}
             onAxisChange={setActiveRotAxis}
             onRotationChange={handleRotationChange}
+            onRotationCommit={handleRotationCommit}
+            onBatchStart={handleRotationBatchStart}
+            onBatchEnd={handleRotationBatchEnd}
           />
 
           <ActionsSection onDuplicate={handleDuplicate} onDelete={handleDelete} />

@@ -167,10 +167,7 @@ describe('projectPersistence', () => {
 
         persistence.saveProjects(projects);
 
-        expect(localStorage.setItem).toHaveBeenCalledWith(
-          PROJECTS_STORAGE_KEY,
-          expect.any(String),
-        );
+        expect(localStorage.setItem).toHaveBeenCalledWith(PROJECTS_STORAGE_KEY, expect.any(String));
 
         const savedData = JSON.parse(mockLocalStorage[PROJECTS_STORAGE_KEY]);
         expect(savedData).toHaveLength(1);

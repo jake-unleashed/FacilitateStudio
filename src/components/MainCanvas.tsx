@@ -38,6 +38,8 @@ interface SceneContentProps {
   onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (obj: SceneObject) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
 // Shared geometry instances - created once and reused across all primitives
@@ -213,10 +215,11 @@ const DRAG_THRESHOLD = 5;
 // Drag handler component - manages pointer events for object translation
 const DragHandler: React.FC<{
   dragState: DragState | null;
+  hasMovedRef: React.MutableRefObject<boolean>;
   onUpdateObject: (obj: SceneObject) => void;
   onDragEnd: (wasDrag: boolean) => void;
   onMarkAsDrag: () => void;
-}> = ({ dragState, onUpdateObject, onDragEnd, onMarkAsDrag }) => {
+}> = ({ dragState, hasMovedRef, onUpdateObject, onDragEnd, onMarkAsDrag }) => {
   const { camera, gl } = useThree();
   // Pre-allocate Three.js objects to avoid GC pressure in hot loops
   const raycaster = useRef(new THREE.Raycaster());
@@ -246,7 +249,9 @@ const DragHandler: React.FC<{
       if (distance < DRAG_THRESHOLD) return;
 
       // Mark as a real drag (not just a click)
-      if (!dragState.hasMoved) {
+      // Check BOTH dragState.hasMoved AND hasMovedRef to prevent multiple calls
+      // during rapid pointer events before React re-renders
+      if (!dragState.hasMoved && !hasMovedRef.current) {
         onMarkAsDrag();
       }
 
@@ -283,7 +288,9 @@ const DragHandler: React.FC<{
       event.stopPropagation();
       event.preventDefault();
 
-      onDragEnd(dragState.hasMoved);
+      // Use hasMovedRef instead of dragState.hasMoved to avoid stale closure issues
+      // The ref is updated synchronously, so it always has the current value
+      onDragEnd(hasMovedRef.current);
     };
 
     // Add listeners to window to capture events outside canvas
@@ -295,6 +302,8 @@ const DragHandler: React.FC<{
       window.removeEventListener('pointermove', handlePointerMove, true);
       window.removeEventListener('pointerup', handlePointerUp, true);
     };
+    // hasMovedRef is a ref and doesn't need to be in dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragState, camera, gl, onUpdateObject, onDragEnd, onMarkAsDrag]);
 
   return null;
@@ -439,6 +448,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
   onUpdateObject,
   onFocusObject,
   onCameraControlsReady,
+  onDragStart,
+  onDragEnd,
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const selectedObject = objects.find((obj) => obj.id === selectedObjectId) || null;
@@ -447,6 +458,14 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
   const [isRecentlyDragged, setIsRecentlyDragged] = useState(false);
+
+  // Ref to track hasMoved synchronously (avoids stale closure issues in event handlers)
+  const hasMovedRef = useRef(false);
+
+  // Keep hasMovedRef in sync with dragState (for cases where state drives re-renders)
+  useEffect(() => {
+    hasMovedRef.current = dragState?.hasMoved ?? false;
+  }, [dragState?.hasMoved]);
 
   // Track if we've already notified parent
   const hasNotifiedRef = useRef(false);
@@ -489,6 +508,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
       clickPoint.z - objectWorldPos.z
     );
 
+    // Reset hasMovedRef synchronously before setting drag state
+    hasMovedRef.current = false;
+
     setDragState({
       objectId: obj.id,
       object: obj,
@@ -502,10 +524,19 @@ const SceneContent: React.FC<SceneContentProps> = ({
   // Handle drag end - select object if it was just a click
   const handleDragEnd = useCallback(
     (wasDrag: boolean) => {
+      console.log('[DRAG] End - wasDrag:', wasDrag, 'hasMovedRef:', hasMovedRef.current);
+
       if (dragState && !wasDrag) {
         // It was a click, not a drag - select the object
         onSelectObject(dragState.objectId);
       }
+
+      // Notify parent that drag ended (for undo/redo batching)
+      if (wasDrag && onDragEnd) {
+        console.log('[DRAG] Calling onDragEnd (endBatch)');
+        onDragEnd();
+      }
+
       setDragState(null);
 
       // If this was an actual drag, prevent camera controls from responding
@@ -519,13 +550,44 @@ const SceneContent: React.FC<SceneContentProps> = ({
         }, 50); // 50ms is enough to skip the pointer up frame
       }
     },
-    [dragState, onSelectObject]
+    [dragState, onSelectObject, onDragEnd]
   );
 
   // Mark the current interaction as a drag (mouse moved beyond threshold)
   const handleMarkAsDrag = useCallback(() => {
-    setDragState((prev) => (prev ? { ...prev, hasMoved: true } : null));
-  }, []);
+    // Set ref SYNCHRONOUSLY before state update to avoid stale closure issues
+    // This ensures handlePointerUp always sees the correct value via hasMovedRef
+    console.log(
+      '[DRAG] Mark as drag - hasMovedRef before:',
+      hasMovedRef.current,
+      'dragState.hasMoved:',
+      dragState?.hasMoved
+    );
+
+    // CRITICAL: Only proceed if this is the FIRST time marking as drag
+    if (hasMovedRef.current || dragState?.hasMoved) {
+      console.log('[DRAG] Already marked as drag, skipping');
+      return;
+    }
+
+    // Set ref SYNCHRONOUSLY
+    hasMovedRef.current = true;
+
+    // Call onDragStart SYNCHRONOUSLY *before* any state updates
+    // This prevents race conditions where updateObject commands are sent before batching begins
+    console.log('[DRAG] Calling onDragStart (beginBatch) SYNCHRONOUSLY');
+    if (onDragStart) {
+      onDragStart();
+    }
+
+    // Now update the state (this happens asynchronously)
+    setDragState((prev) => {
+      if (prev && !prev.hasMoved) {
+        return { ...prev, hasMoved: true };
+      }
+      return prev;
+    });
+  }, [onDragStart, dragState]);
 
   // Handle double-click to focus on object
   const handleDoubleClick = useCallback(
@@ -538,8 +600,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
   );
 
   // Update drag state when object is updated (keep reference fresh)
+  // BUT: Only update if we're NOT currently dragging (hasMoved is false means we haven't started dragging yet)
+  // During an active drag, we don't want to update dragState.object as it can cause extra updates
   useEffect(() => {
-    if (dragState) {
+    if (dragState && !dragState.hasMoved) {
+      // Only sync object reference before drag starts (when it's still just a click)
       const updatedObj = objects.find((o) => o.id === dragState.objectId);
       if (updatedObj && updatedObj !== dragState.object) {
         setDragState((prev) => (prev ? { ...prev, object: updatedObj } : null));
@@ -644,6 +709,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Drag handler for object translation */}
       <DragHandler
         dragState={dragState}
+        hasMovedRef={hasMovedRef}
         onUpdateObject={onUpdateObject}
         onDragEnd={handleDragEnd}
         onMarkAsDrag={handleMarkAsDrag}
@@ -681,6 +747,10 @@ interface MainCanvasProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   /** Show performance monitor (defaults to true in development) */
   showPerformanceMonitor?: boolean;
+  /** Callback when drag operation starts (for undo/redo batching) */
+  onDragStart?: () => void;
+  /** Callback when drag operation ends (for undo/redo batching) */
+  onDragEnd?: () => void;
 }
 
 export const MainCanvas: React.FC<MainCanvasProps> = ({
@@ -692,6 +762,8 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onCameraControlsReady,
   onCanvasReady,
   showPerformanceMonitor = IS_DEV,
+  onDragStart,
+  onDragEnd,
 }) => {
   // Performance monitoring state
   const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
@@ -743,6 +815,8 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onUpdateObject={onUpdateObject}
             onFocusObject={onFocusObject}
             onCameraControlsReady={onCameraControlsReady}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
           />
 
           {/* Performance monitor (scene component - collects stats) */}

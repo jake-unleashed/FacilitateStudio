@@ -14,6 +14,16 @@ import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { captureThumbnail } from '../utils/captureThumbnail';
+import { useUndoRedo } from '../hooks/useUndoRedo';
+import {
+  createUpdateObjectCommandHelper,
+  createDeleteObjectCommandHelper,
+  createCreateObjectCommandHelper,
+  createUpdateTitleCommandHelper,
+  findObjectIndex,
+} from '../hooks/undoRedo/integration';
+import { UpdateObjectCommand, UndoRedoCommand } from '../hooks/undoRedo/types';
+import '../types/testHooks'; // Import for global type augmentation
 import CameraControlsImpl from 'camera-controls';
 
 /**
@@ -36,6 +46,116 @@ export function EditorPage() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
+
+  // Undo/Redo system - initialize with empty state, will be set when project loads
+  const initialEditorState = useMemo(
+    () => ({
+      objects: [],
+      steps: [],
+      simulationTitle: 'New Simulation',
+    }),
+    []
+  );
+
+  const {
+    currentState: undoRedoState,
+    execute: executeCommand,
+    undo,
+    redo,
+    beginBatch,
+    endBatch,
+    canUndo,
+    canRedo,
+    setCurrentState: setUndoRedoState,
+    undoStackSize,
+    redoStackSize,
+  } = useUndoRedo(initialEditorState, { maxHistory: 50, enableKeyboardShortcuts: true });
+
+  // Store stack sizes in refs for real-time access (needed for testing)
+  const undoStackSizeRef = useRef(undoStackSize);
+  const redoStackSizeRef = useRef(redoStackSize);
+
+  useEffect(() => {
+    undoStackSizeRef.current = undoStackSize;
+    redoStackSizeRef.current = redoStackSize;
+  }, [undoStackSize, redoStackSize]);
+
+  // Sync undo/redo state changes back to local state
+  useEffect(() => {
+    // Only update if the state actually changed (to avoid infinite loops)
+    if (
+      undoRedoState.objects !== objects ||
+      undoRedoState.steps !== steps ||
+      undoRedoState.simulationTitle !== simulationTitle
+    ) {
+      setObjects(undoRedoState.objects);
+      setSteps(undoRedoState.steps);
+      setSimulationTitle(undoRedoState.simulationTitle);
+    }
+  }, [undoRedoState, objects, steps, simulationTitle]);
+
+  // Expose test hooks for automated testing (development only)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+
+    const createMoveCommand = (
+      objectId: string,
+      x: number,
+      z: number,
+      description?: string
+    ): UpdateObjectCommand => {
+      const obj = objects.find((o) => o.id === objectId);
+      if (!obj) throw new Error(`Object ${objectId} not found`);
+
+      return {
+        type: 'updateObject',
+        timestamp: Date.now(),
+        description: description || `Move to (${x.toFixed(1)}, ${z.toFixed(1)})`,
+        objectId,
+        previousState: obj,
+        newState: { ...obj, transform: { ...obj.transform, x, z } },
+      };
+    };
+
+    (window as Window).__testHooks = {
+      // Stack queries (using refs for real-time values)
+      getUndoStackSize: () => undoStackSizeRef.current,
+      getRedoStackSize: () => redoStackSizeRef.current,
+      getCurrentObjects: () => objects,
+      canUndo,
+      canRedo,
+
+      // Command execution
+      executeCommand: (command: UndoRedoCommand) => executeCommand(command),
+      undo,
+      redo,
+
+      // Programmatic object movement
+      moveObject: (objectId: string, x: number, z: number, description?: string) => {
+        const command = createMoveCommand(objectId, x, z, description);
+        executeCommand(command);
+        return command;
+      },
+
+      testMove: (objectId: string, deltaX: number, deltaZ: number) => {
+        const obj = objects.find((o) => o.id === objectId);
+        if (!obj) throw new Error(`Object ${objectId} not found`);
+
+        const command = createMoveCommand(
+          objectId,
+          obj.transform.x + deltaX,
+          obj.transform.z + deltaZ,
+          `Move by (${deltaX.toFixed(1)}, ${deltaZ.toFixed(1)})`
+        );
+        executeCommand(command);
+        return command;
+      },
+    };
+
+    return () => {
+      delete window.__testHooks;
+    };
+  }, [objects, canUndo, canRedo, executeCommand, undo, redo]);
 
   // Use ref for camera controls to avoid stale closures
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
@@ -68,9 +188,12 @@ export function EditorPage() {
       const project = getProject(projectId);
       if (project) {
         setCurrentProject(project);
-        setObjects(project.objects);
-        setSteps(project.steps);
-        setSimulationTitle(project.name);
+        // Initialize undo/redo state first, then it will sync to local state
+        setUndoRedoState({
+          objects: project.objects,
+          steps: project.steps,
+          simulationTitle: project.name,
+        });
         setIsInitialized(true);
       } else {
         // Project not found, redirect to home
@@ -81,14 +204,25 @@ export function EditorPage() {
       // Create a new project
       const newProject = createProject('New Simulation');
       setCurrentProject(newProject);
-      setObjects([]);
-      setSteps([]);
-      setSimulationTitle(newProject.name);
+      // Initialize undo/redo state first, then it will sync to local state
+      setUndoRedoState({
+        objects: [],
+        steps: [],
+        simulationTitle: newProject.name,
+      });
       // Update URL to include the new project ID
       navigate(`/editor/${newProject.id}`, { replace: true });
       setIsInitialized(true);
     }
-  }, [projectId, getProject, createProject, navigate, isInitialized, isLoadingProjects]);
+  }, [
+    projectId,
+    getProject,
+    createProject,
+    navigate,
+    isInitialized,
+    isLoadingProjects,
+    setUndoRedoState,
+  ]);
 
   // ============================================================================
   // Auto-save Logic
@@ -251,14 +385,44 @@ export function EditorPage() {
     }
   }, []);
 
-  const handleUpdateObject = useCallback((updated: SceneObject) => {
-    setObjects((prev) => prev.map((obj) => (obj.id === updated.id ? updated : obj)));
-  }, []);
+  const handleUpdateObject = useCallback(
+    (updated: SceneObject) => {
+      const previousObject = objects.find((obj) => obj.id === updated.id);
+      if (!previousObject) {
+        console.warn('[EditorPage] Cannot update object: not found', updated.id);
+        return;
+      }
 
-  const handleDeleteObject = useCallback((id: string) => {
-    setObjects((prev) => prev.filter((obj) => obj.id !== id));
-    setSelectedObjectId((prevId) => (prevId === id ? null : prevId));
-  }, []);
+      const command = createUpdateObjectCommandHelper(
+        updated.id,
+        previousObject,
+        updated,
+        `Update ${updated.name}`
+      );
+      executeCommand(command);
+    },
+    [objects, executeCommand]
+  );
+
+  const handleDeleteObject = useCallback(
+    (id: string) => {
+      const objectToDelete = objects.find((obj) => obj.id === id);
+      if (!objectToDelete) {
+        console.warn('[EditorPage] Cannot delete object: not found', id);
+        return;
+      }
+
+      const index = findObjectIndex(objects, id);
+      const command = createDeleteObjectCommandHelper(
+        objectToDelete,
+        index,
+        `Delete ${objectToDelete.name}`
+      );
+      executeCommand(command);
+      setSelectedObjectId((prevId) => (prevId === id ? null : prevId));
+    },
+    [objects, executeCommand]
+  );
 
   const handleAddDebugCube = useCallback(() => {
     debugCubeCountRef.current += 1;
@@ -283,16 +447,26 @@ export function EditorPage() {
         color: '#3b82f6',
       },
     };
-    setObjects((prev) => [...prev, newCube]);
-  }, []);
+    const index = objects.length;
+    const command = createCreateObjectCommandHelper(newCube, index, `Create ${newCube.name}`);
+    executeCommand(command);
+  }, [objects.length, executeCommand]);
 
   const handleCloseRightSidebar = useCallback(() => {
     setSelectedObjectId(null);
   }, []);
 
-  const handleTitleChange = useCallback((newTitle: string) => {
-    setSimulationTitle(newTitle);
-  }, []);
+  const handleTitleChange = useCallback(
+    (newTitle: string) => {
+      const command = createUpdateTitleCommandHelper(
+        simulationTitle,
+        newTitle,
+        'Update simulation title'
+      );
+      executeCommand(command);
+    },
+    [simulationTitle, executeCommand]
+  );
 
   // ============================================================================
   // Memoized Derived State
@@ -325,6 +499,8 @@ export function EditorPage() {
         onFocusObject={handleFocusObject}
         onCameraControlsReady={handleCameraControlsReady}
         onCanvasReady={handleCanvasReady}
+        onDragStart={beginBatch}
+        onDragEnd={endBatch}
       />
 
       {/* Floating UI Layer */}
@@ -335,6 +511,10 @@ export function EditorPage() {
         saveStatus={status}
         saveErrorMessage={lastError?.message ?? null}
         onManualSave={handleManualSave}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       <LeftSidebar
@@ -353,6 +533,8 @@ export function EditorPage() {
           onUpdate={handleUpdateObject}
           onDelete={handleDeleteObject}
           onClose={handleCloseRightSidebar}
+          onBatchStart={beginBatch}
+          onBatchEnd={endBatch}
         />
       )}
 

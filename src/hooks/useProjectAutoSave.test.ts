@@ -42,7 +42,7 @@ describe('useProjectAutoSave', () => {
           objects: mockObjects,
           steps: mockSteps,
           saveProject: mockSaveProject,
-        }),
+        })
       );
 
       expect(result.current.status).toBe('idle');
@@ -59,7 +59,7 @@ describe('useProjectAutoSave', () => {
           objects: mockObjects,
           steps: mockSteps,
           saveProject: mockSaveProject,
-        }),
+        })
       );
 
       expect(result.current.status).toBe('idle');
@@ -76,7 +76,7 @@ describe('useProjectAutoSave', () => {
           objects: mockObjects,
           steps: mockSteps,
           saveProject: mockSaveProject,
-        }),
+        })
       );
 
       act(() => {
@@ -95,7 +95,7 @@ describe('useProjectAutoSave', () => {
           objects: mockObjects,
           steps: mockSteps,
           saveProject: mockSaveProject,
-        }),
+        })
       );
 
       act(() => {
@@ -117,7 +117,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original Name' } },
+        { initialProps: { name: 'Original Name' } }
       );
 
       act(() => {
@@ -144,7 +144,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { objects: [] as SceneObject[] } },
+        { initialProps: { objects: [] as SceneObject[] } }
       );
 
       act(() => {
@@ -156,7 +156,17 @@ describe('useProjectAutoSave', () => {
           id: 'obj-1',
           type: 'mesh',
           name: 'Cube 1',
-          transform: { x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          transform: {
+            x: 0,
+            y: 0,
+            z: 0,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            scaleX: 1,
+            scaleY: 1,
+            scaleZ: 1,
+          },
           properties: { visible: true, color: '#3b82f6' },
         },
       ];
@@ -180,7 +190,7 @@ describe('useProjectAutoSave', () => {
             steps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { steps: [] as SimStep[] } },
+        { initialProps: { steps: [] as SimStep[] } }
       );
 
       act(() => {
@@ -215,7 +225,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Test Name' } },
+        { initialProps: { name: 'Test Name' } }
       );
 
       act(() => {
@@ -242,7 +252,7 @@ describe('useProjectAutoSave', () => {
             saveProject: mockSaveProject,
             debounceMs: 1000,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -289,7 +299,7 @@ describe('useProjectAutoSave', () => {
             saveProject: mockSaveProject,
             debounceMs: 2000,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -326,7 +336,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -358,7 +368,7 @@ describe('useProjectAutoSave', () => {
             saveProject: mockSaveProject,
             captureThumbnail: mockCaptureThumbnail,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -375,7 +385,7 @@ describe('useProjectAutoSave', () => {
       expect(mockSaveProject).toHaveBeenCalledWith(
         expect.objectContaining({
           thumbnail: 'data:image/png;base64,mock',
-        }),
+        })
       );
     });
 
@@ -390,7 +400,7 @@ describe('useProjectAutoSave', () => {
             saveProject: mockSaveProject,
             captureThumbnail: mockCaptureThumbnail,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -408,7 +418,8 @@ describe('useProjectAutoSave', () => {
 
     it('should timeout thumbnail capture if too slow', async () => {
       const slowCapture: () => Promise<string | undefined> = vi.fn(
-        () => new Promise((resolve) => setTimeout(() => resolve('data:image/png;base64,slow'), 5000)),
+        () =>
+          new Promise((resolve) => setTimeout(() => resolve('data:image/png;base64,slow'), 5000))
       );
 
       const { result, rerender } = renderHook(
@@ -421,7 +432,7 @@ describe('useProjectAutoSave', () => {
             saveProject: mockSaveProject,
             captureThumbnail: slowCapture,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -447,7 +458,7 @@ describe('useProjectAutoSave', () => {
       expect(mockSaveProject).toHaveBeenCalledWith(
         expect.objectContaining({
           thumbnail: undefined,
-        }),
+        })
       );
     });
   });
@@ -463,7 +474,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -492,7 +503,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -528,7 +539,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: failingSave,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -564,7 +575,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: failingSave,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -598,7 +609,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: failingSave,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -630,7 +641,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -662,7 +673,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       // Start: idle
@@ -703,7 +714,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -725,7 +736,7 @@ describe('useProjectAutoSave', () => {
           name: 'Updated Name',
           objects: mockObjects,
           steps: mockSteps,
-        }),
+        })
       );
     });
 
@@ -735,7 +746,17 @@ describe('useProjectAutoSave', () => {
           id: 'obj-1',
           type: 'mesh',
           name: 'Test Cube',
-          transform: { x: 0, y: 1, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          transform: {
+            x: 0,
+            y: 1,
+            z: 0,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            scaleX: 1,
+            scaleY: 1,
+            scaleZ: 1,
+          },
           properties: { visible: true, color: '#ff0000' },
         },
       ];
@@ -758,7 +779,7 @@ describe('useProjectAutoSave', () => {
             steps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { objects: [] as SceneObject[], steps: [] as SimStep[] } },
+        { initialProps: { objects: [] as SceneObject[], steps: [] as SimStep[] } }
       );
 
       act(() => {
@@ -778,7 +799,7 @@ describe('useProjectAutoSave', () => {
         expect.objectContaining({
           objects: newObjects,
           steps: newSteps,
-        }),
+        })
       );
     });
 
@@ -797,7 +818,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -816,7 +837,7 @@ describe('useProjectAutoSave', () => {
       expect(mockSaveProject).toHaveBeenCalledWith(
         expect.objectContaining({
           thumbnail: 'data:image/png;base64,existing',
-        }),
+        })
       );
     });
   });
@@ -832,7 +853,7 @@ describe('useProjectAutoSave', () => {
             steps: mockSteps,
             saveProject: mockSaveProject,
           }),
-        { initialProps: { name: 'Original' } },
+        { initialProps: { name: 'Original' } }
       );
 
       act(() => {
@@ -860,4 +881,3 @@ describe('useProjectAutoSave', () => {
     });
   });
 });
-
