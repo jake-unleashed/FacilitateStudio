@@ -261,7 +261,8 @@ export function useProjectAutoSave({
     // Schedule debounced save
     cancelScheduledSave();
     timeoutRef.current = setTimeout(() => {
-      void runSave({ includeThumbnail: true });
+      // Never allow unhandled rejections from background autosave
+      void runSave({ includeThumbnail: true }).catch(() => {});
     }, debounceMs);
 
     return () => {
@@ -275,29 +276,6 @@ export function useProjectAutoSave({
       isMountedRef.current = false;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
-      }
-      // Best-effort flush if there are unsaved changes
-      const currentData = {
-        name: latestRef.current.name,
-        objects: latestRef.current.objects,
-        steps: latestRef.current.steps,
-      };
-      if (hasDataChanged(currentData, lastSavedDataRef.current)) {
-        const base = latestRef.current.project;
-        if (base) {
-          try {
-            const updated = {
-              ...base,
-              name: currentData.name,
-              objects: currentData.objects,
-              steps: currentData.steps,
-              updatedAt: new Date().toISOString(),
-            };
-            saveProjectRef.current(updated);
-          } catch {
-            // Best-effort
-          }
-        }
       }
     };
   }, []);

@@ -40,6 +40,10 @@ interface TopBarProps {
   canUndo?: boolean;
   /** Whether redo is available */
   canRedo?: boolean;
+  /** Optional explicit preview handler; if omitted, falls back to navigating to /preview/:projectId */
+  onPreviewClick?: () => void;
+  /** Project id used for preview navigation fallback */
+  projectId?: string;
 }
 
 // =============================================================================
@@ -274,11 +278,12 @@ SimulationTitle.displayName = 'SimulationTitle';
 /**
  * Action buttons on the right side (Preview, Publish, Mobile Menu).
  */
-const ActionButtons = memo(() => (
+const ActionButtons = memo<{ onPreviewClick?: () => void }>(({ onPreviewClick }) => (
   <div className="z-10 flex items-center gap-3">
     <Button
       variant="secondary"
       className="hidden gap-2 rounded-[20px] border-white/40 bg-white/50 font-medium shadow-none hover:shadow-md sm:flex"
+      onClick={onPreviewClick}
     >
       <MonitorPlay size={16} className="text-slate-500" />
       Preview
@@ -323,8 +328,18 @@ const TopBarInner: React.FC<TopBarProps> = ({
   onRedo,
   canUndo = false,
   canRedo = false,
+  onPreviewClick,
+  projectId,
 }) => {
   const navigate = useNavigate();
+
+  const handlePreviewClick = useCallback(() => {
+    if (onPreviewClick) {
+      onPreviewClick();
+    } else if (projectId) {
+      navigate(`/preview/${projectId}`);
+    }
+  }, [onPreviewClick, projectId, navigate]);
   const [isEditing, setIsEditing] = useState(false);
   const [tempTitle, setTempTitle] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -420,7 +435,7 @@ const TopBarInner: React.FC<TopBarProps> = ({
         />
 
         {/* Right Section: Action Buttons */}
-        <ActionButtons />
+        <ActionButtons onPreviewClick={handlePreviewClick} />
       </header>
     </div>
   );

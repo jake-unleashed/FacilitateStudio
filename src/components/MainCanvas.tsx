@@ -12,6 +12,7 @@ import {
 import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
 import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
+import { PreviewMoveItemStepRenderer } from './preview/PreviewMoveItemStepRenderer';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,6 +43,12 @@ interface SceneContentProps {
   onDragEnd?: () => void;
   recordingPositionForStepId?: string | null;
   steps?: SimStep[];
+  previewMode?: boolean;
+  previewStep?: SimStep | null;
+  onPreviewObjectClick?: (objectId: string) => void;
+  onPreviewPositionUpdate?: (position: { x: number; y: number; z: number }) => void;
+  onPreviewStepComplete?: () => void;
+  shouldAnimateMoveItem?: boolean;
 }
 
 // Shared geometry instances - created once and reused across all primitives
@@ -458,8 +465,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
   onDragEnd,
   recordingPositionForStepId,
   steps = [],
+  previewMode = false,
+  previewStep = null,
+  onPreviewObjectClick,
+  onPreviewPositionUpdate,
+  onPreviewStepComplete,
+  shouldAnimateMoveItem = false,
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
+  const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
   const selectedObject = objects.find((obj) => obj.id === selectedObjectId) || null;
 
   // Drag state management
@@ -545,6 +559,14 @@ const SceneContent: React.FC<SceneContentProps> = ({
       // Only handle left mouse button
       if (e.nativeEvent.button !== 0) return;
 
+      // In preview mode, handle object clicks differently
+      if (previewMode && onPreviewObjectClick) {
+        e.stopPropagation();
+        e.nativeEvent.stopPropagation();
+        onPreviewObjectClick(obj.id);
+        return;
+      }
+
       // During recording, only allow dragging the ghost object (target object)
       if (recordingPositionForStepId) {
         if (obj.id !== targetObjectId) {
@@ -589,7 +611,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
       });
     },
-    [recordingPositionForStepId, targetObjectId]
+    [recordingPositionForStepId, targetObjectId, previewMode, onPreviewObjectClick]
   );
 
   // Handle drag end - select object if it was just a click
@@ -689,6 +711,19 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <pointLight position={[10, 10, 10]} intensity={1.5} />
       <spotLight position={[-10, 15, 10]} angle={0.25} penumbra={1} intensity={2} />
 
+      {/* Preview Move Item Step - renders outline and handles animation */}
+      {previewMode && previewStep?.type === 'move-item' && (
+        <PreviewMoveItemStepRenderer
+          step={previewStep}
+          objects={objects}
+          cameraControlsRef={controlsRef}
+          isPositioningCameraRef={isPositioningCameraRef}
+          shouldAnimate={shouldAnimateMoveItem}
+          onPositionUpdate={onPreviewPositionUpdate}
+          onComplete={onPreviewStepComplete}
+        />
+      )}
+
       <Suspense fallback={null}>
         <Environment preset="city" />
       </Suspense>
@@ -772,9 +807,13 @@ const SceneContent: React.FC<SceneContentProps> = ({
         makeDefault
         // Disable camera controls while a pointer interaction on an object is in-flight.
         // This prevents camera rotate/pan from competing with object click/drag.
-        enabled={dragState === null && !isRecentlyDragged}
-        // Smooth damping for premium feel
-        smoothTime={0.35}
+        // Allow controls to be enabled in preview mode if camera is being positioned
+        enabled={
+          (!previewMode && dragState === null && !isRecentlyDragged) ||
+          (previewMode && isPositioningCameraRef.current)
+        }
+        // Smooth damping for premium feel - slower for more comfortable camera movements
+        smoothTime={0.6}
         draggingSmoothTime={0.2}
         // Comfortable rotation speed for beginner-friendly navigation
         azimuthRotateSpeed={0.35}
@@ -857,6 +896,18 @@ interface MainCanvasProps {
   recordingPositionForStepId?: string | null;
   /** Steps array for finding recording step */
   steps?: SimStep[];
+  /** Enable preview mode (disables camera controls, enables preview interactions) */
+  previewMode?: boolean;
+  /** Current preview step (used for rendering preview-step UI like move-item) */
+  previewStep?: SimStep | null;
+  /** Callback when object is clicked in preview mode */
+  onPreviewObjectClick?: (objectId: string) => void;
+  /** Callback when preview move-item step updates object position (during animation) */
+  onPreviewPositionUpdate?: (position: { x: number; y: number; z: number }) => void;
+  /** Callback when preview move-item step finishes */
+  onPreviewStepComplete?: () => void;
+  /** Whether move-item animation should start (triggered after clicking target) */
+  shouldAnimateMoveItem?: boolean;
 }
 
 export const MainCanvas: React.FC<MainCanvasProps> = ({
@@ -872,6 +923,12 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onDragEnd,
   recordingPositionForStepId,
   steps = [],
+  previewMode = false,
+  previewStep = null,
+  onPreviewObjectClick,
+  onPreviewPositionUpdate,
+  onPreviewStepComplete,
+  shouldAnimateMoveItem = false,
 }) => {
   // Performance monitoring state
   const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
@@ -927,6 +984,12 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onDragEnd={onDragEnd}
             recordingPositionForStepId={recordingPositionForStepId}
             steps={steps}
+            previewMode={previewMode}
+            previewStep={previewStep}
+            onPreviewObjectClick={onPreviewObjectClick}
+            onPreviewPositionUpdate={onPreviewPositionUpdate}
+            onPreviewStepComplete={onPreviewStepComplete}
+            shouldAnimateMoveItem={shouldAnimateMoveItem}
           />
 
           {/* Performance monitor (scene component - collects stats) */}

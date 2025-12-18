@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bug, Box } from 'lucide-react';
+import { Bug, Box, Play } from 'lucide-react';
 import { Button } from './Button';
 
 interface DebugMenuProps {
   onAddCube: () => void;
+  onPopulateTestSteps?: () => void;
   hasSelectedObject: boolean;
 }
 
-export const DebugMenu: React.FC<DebugMenuProps> = ({ onAddCube, hasSelectedObject }) => {
+export const DebugMenu: React.FC<DebugMenuProps> = ({
+  onAddCube,
+  onPopulateTestSteps,
+  hasSelectedObject,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const prevHasSelectedObjectRef = useRef(hasSelectedObject);
 
@@ -69,6 +74,22 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({ onAddCube, hasSelectedObje
                 <Box size={14} className="text-blue-500" />
                 <span className="text-slate-700">Add Cube</span>
               </Button>
+              {onPopulateTestSteps && (
+                <>
+                  <p className="mt-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Testing
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={onPopulateTestSteps}
+                    className="justify-start gap-2 rounded-[16px] border-white/50 bg-white/60 px-4 text-left hover:bg-white/80"
+                  >
+                    <Play size={14} className="text-green-500" />
+                    <span className="text-slate-700">Populate Test Steps</span>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>

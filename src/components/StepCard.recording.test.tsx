@@ -51,6 +51,7 @@ describe('StepCard - Recording Mode', () => {
   const mockMoveItemStep: SimStep = {
     id: 'step-1',
     title: 'Move the cube',
+    description: '',
     type: 'move-item',
     completed: false,
     targetObjectId: 'cube-1',
@@ -218,7 +219,7 @@ describe('StepCard - Recording Mode', () => {
       );
 
       // Hover over the target object button to reveal the X button
-      const targetButton = screen.getByText('Test Cube 1').closest('.group');
+      const targetButton = screen.getByText('Test Cube 1').closest('.group') as HTMLElement | null;
       expect(targetButton).toBeInTheDocument();
 
       // Find and click the remove button (X icon)
@@ -295,7 +296,9 @@ describe('StepCard - Recording Mode', () => {
         />
       );
 
-      expect(screen.getByText(/Recording\.\.\. Move the object to its end position/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Recording\.\.\. Move the object to its end position/)
+      ).toBeInTheDocument();
       expect(screen.getByText('Stop Recording')).toBeInTheDocument();
     });
 
@@ -404,6 +407,7 @@ describe('StepCard - Recording Mode', () => {
       const infoCardStep: SimStep = {
         id: 'step-2',
         title: 'Information Step',
+        description: '',
         type: 'info-card',
         completed: false,
         heading: 'Test Heading',
@@ -454,4 +458,3 @@ describe('StepCard - Recording Mode', () => {
     });
   });
 });
-

@@ -488,6 +488,226 @@ export function EditorPage() {
     executeCommand(command);
   }, [objects.length, executeCommand]);
 
+  const handlePopulateTestSteps = useCallback(() => {
+    beginBatch();
+
+    // Define object IDs first so we can reference them in steps
+    const objectId1 = crypto.randomUUID();
+    const objectId2 = crypto.randomUUID();
+    const objectId3 = crypto.randomUUID();
+
+    // Create test steps first to determine object start positions
+    // We'll create objects at their first move step's start positions
+    const testSteps: Omit<SimStep, 'id'>[] = [
+      // Step 1: Info card
+      {
+        title: 'Welcome to the Test Simulation',
+        description: 'This is a test step',
+        completed: false,
+        type: 'info-card',
+        heading: 'Welcome!',
+        bodyText: 'This is a test simulation with multiple steps. Click Continue to proceed.',
+        buttonText: 'Continue',
+        cardColor: 'blue',
+      },
+      // Step 2: Move item - Cube 1
+      {
+        title: 'Move Test Cube 1',
+        description: 'Move the blue cube from its starting position',
+        completed: false,
+        type: 'move-item',
+        targetObjectId: objectId1,
+        startPosition: { x: -200, y: 50, z: -200 },
+        endPosition: { x: 200, y: 50, z: 200 },
+      },
+      // Step 3: Info card
+      {
+        title: 'Great Job!',
+        description: 'You moved the cube successfully',
+        completed: false,
+        type: 'info-card',
+        heading: 'Well Done!',
+        bodyText: "You successfully moved the first cube. Let's continue with more steps.",
+        buttonText: 'Next',
+        cardColor: 'green',
+      },
+      // Step 4: Move item - Cube 2
+      {
+        title: 'Move Test Cube 2',
+        description: 'Move the green cube',
+        completed: false,
+        type: 'move-item',
+        targetObjectId: objectId2,
+        startPosition: { x: 0, y: 50, z: 0 },
+        endPosition: { x: -300, y: 150, z: 300 },
+      },
+      // Step 5: Info card
+      {
+        title: 'Keep Going!',
+        description: 'Continue with the simulation',
+        completed: false,
+        type: 'info-card',
+        heading: 'Excellent Progress',
+        bodyText: "You're doing great! Keep following the steps.",
+        buttonText: 'Continue',
+        cardColor: 'yellow',
+      },
+      // Step 6: Move item - Cube 3
+      {
+        title: 'Move Test Cube 3',
+        description: 'Move the orange cube',
+        completed: false,
+        type: 'move-item',
+        targetObjectId: objectId3,
+        startPosition: { x: 300, y: 50, z: -100 },
+        endPosition: { x: -100, y: 200, z: -300 },
+      },
+      // Step 7: Info card
+      {
+        title: 'Almost There',
+        description: 'Just a few more steps',
+        completed: false,
+        type: 'info-card',
+        heading: 'Almost Done!',
+        bodyText: "You're almost at the end of the test simulation. Great work!",
+        buttonText: 'Continue',
+        cardColor: 'blue',
+      },
+      // Step 8: Move item - Cube 1 again (different position)
+      {
+        title: 'Move Test Cube 1 Again',
+        description: 'Move the blue cube to a new position',
+        completed: false,
+        type: 'move-item',
+        targetObjectId: objectId1,
+        startPosition: { x: 200, y: 50, z: 200 }, // From previous end position
+        endPosition: { x: 0, y: 100, z: 0 },
+      },
+      // Step 9: Info card
+      {
+        title: 'Final Step',
+        description: 'One last info card',
+        completed: false,
+        type: 'info-card',
+        heading: 'Final Step',
+        bodyText:
+          'This is the final step of the test simulation. Congratulations on completing it!',
+        buttonText: 'Finish',
+        cardColor: 'green',
+      },
+      // Step 10: Move item - Cube 2 again
+      {
+        title: 'Final Move',
+        description: 'Final move step',
+        completed: false,
+        type: 'move-item',
+        targetObjectId: objectId2,
+        startPosition: { x: -300, y: 150, z: 300 }, // From previous end position
+        endPosition: { x: 400, y: 50, z: -400 },
+      },
+    ];
+
+    // Find first start positions for each object
+    const firstStartPositions: Record<string, { x: number; y: number; z: number }> = {};
+    testSteps.forEach((step) => {
+      if (step.type === 'move-item' && step.targetObjectId && step.startPosition) {
+        if (!firstStartPositions[step.targetObjectId]) {
+          firstStartPositions[step.targetObjectId] = step.startPosition;
+        }
+      }
+    });
+
+    // Create test objects at their first start positions
+    const testObjects: SceneObject[] = [
+      {
+        id: objectId1,
+        name: 'Test Cube 1',
+        type: 'mesh',
+        transform: {
+          x: firstStartPositions[objectId1]?.x ?? -200,
+          y: firstStartPositions[objectId1]?.y ?? 50,
+          z: firstStartPositions[objectId1]?.z ?? -200,
+          rotationX: 0,
+          rotationY: 0,
+          rotationZ: 0,
+          scaleX: 1,
+          scaleY: 1,
+          scaleZ: 1,
+        },
+        properties: {
+          visible: true,
+          color: '#3b82f6',
+        },
+      },
+      {
+        id: objectId2,
+        name: 'Test Cube 2',
+        type: 'mesh',
+        transform: {
+          x: firstStartPositions[objectId2]?.x ?? 0,
+          y: firstStartPositions[objectId2]?.y ?? 50,
+          z: firstStartPositions[objectId2]?.z ?? 0,
+          rotationX: 0,
+          rotationY: 0,
+          rotationZ: 0,
+          scaleX: 1,
+          scaleY: 1,
+          scaleZ: 1,
+        },
+        properties: {
+          visible: true,
+          color: '#10b981',
+        },
+      },
+      {
+        id: objectId3,
+        name: 'Test Cube 3',
+        type: 'mesh',
+        transform: {
+          x: firstStartPositions[objectId3]?.x ?? 300,
+          y: firstStartPositions[objectId3]?.y ?? 50,
+          z: firstStartPositions[objectId3]?.z ?? -100,
+          rotationX: 0,
+          rotationY: 0,
+          rotationZ: 0,
+          scaleX: 1,
+          scaleY: 1,
+          scaleZ: 1,
+        },
+        properties: {
+          visible: true,
+          color: '#f59e0b',
+        },
+      },
+    ];
+
+    // Add objects first
+    testObjects.forEach((obj, index) => {
+      const command = createCreateObjectCommandHelper(
+        obj,
+        objects.length + index,
+        `Create ${obj.name}`
+      );
+      executeCommand(command);
+    });
+
+    // Add all steps
+    testSteps.forEach((step, index) => {
+      const newStep: SimStep = {
+        ...step,
+        id: crypto.randomUUID(),
+      };
+      const command = createCreateStepCommandHelper(
+        newStep,
+        steps.length + index,
+        `Create test step: ${newStep.title}`
+      );
+      executeCommand(command);
+    });
+
+    endBatch();
+  }, [objects.length, steps.length, executeCommand, beginBatch, endBatch]);
+
   const handleCloseRightSidebar = useCallback(() => {
     setSelectedObjectId(null);
   }, []);
@@ -640,6 +860,7 @@ export function EditorPage() {
         onRedo={redo}
         canUndo={canUndo}
         canRedo={canRedo}
+        projectId={projectId}
       />
 
       <LeftSidebar
@@ -685,7 +906,11 @@ export function EditorPage() {
         />
       )}
 
-      <DebugMenu onAddCube={handleAddDebugCube} hasSelectedObject={hasSelectedObject} />
+      <DebugMenu
+        onAddCube={handleAddDebugCube}
+        onPopulateTestSteps={handlePopulateTestSteps}
+        hasSelectedObject={hasSelectedObject}
+      />
 
       {exitOverlay && (
         <SaveOverlay

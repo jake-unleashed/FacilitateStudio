@@ -29,6 +29,7 @@ describe('RecordingModeOverlay', () => {
   const mockRecordingStep: SimStep = {
     id: 'step-1',
     title: 'Move the cube',
+    description: '',
     type: 'move-item',
     completed: false,
     targetObjectId: 'test-object-1',
@@ -131,4 +132,3 @@ describe('RecordingModeOverlay', () => {
     expect(overlay).toBeInTheDocument();
   });
 });
-
