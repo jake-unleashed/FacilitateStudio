@@ -23,6 +23,16 @@ const FINAL_STEP_COMPLETE_DELAY_MS = 300;
 const PROGRESS_TEXT = 'Progress';
 const DEFAULT_MOVE_ITEM_LABEL = 'Move Item';
 
+// Progress bar styling constants
+const PROGRESS_BAR_CONTAINER_CLASSES =
+  'flex w-72 items-center gap-2.5 rounded-[20px] border border-white/40 bg-white/70 px-4 py-2.5 shadow-glass backdrop-blur-xl sm:w-80';
+const PROGRESS_TEXT_CLASSES =
+  'whitespace-nowrap text-[10px] font-semibold leading-none tracking-tight text-slate-700';
+const PROGRESS_BAR_TRACK_CLASSES =
+  'h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200/30 ring-1 ring-white/30';
+const PROGRESS_BAR_FILL_CLASSES =
+  'h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[width] duration-700 ease-out';
+
 function getMoveItemLabel(step: SimStep): string {
   const title = step.title?.trim();
   return title ? title : DEFAULT_MOVE_ITEM_LABEL;
@@ -232,20 +242,24 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
         <span>Exit</span>
       </button>
 
-      {/* Progress bar at bottom - keep the bar slim; float the text above without inflating the pill */}
+      {/* Progress bar at bottom - unified container with liquid glass styling */}
       <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2">
-        <div className="relative w-72 sm:w-80">
-          <div className="pointer-events-none absolute -top-4 left-0 right-0 flex items-center justify-between text-[10px] font-medium text-white/75 drop-shadow-sm">
-            <span className="whitespace-nowrap">{PROGRESS_TEXT}</span>
-            <span className="whitespace-nowrap tabular-nums">{progressPercentage}%</span>
-          </div>
+        <div className={PROGRESS_BAR_CONTAINER_CLASSES}>
+          {/* Progress label */}
+          <span className={PROGRESS_TEXT_CLASSES}>{PROGRESS_TEXT}</span>
 
-          <div className="h-2 overflow-hidden rounded-full border border-white/45 bg-white/20 shadow-lg backdrop-blur-sm">
+          {/* Progress bar */}
+          <div className={PROGRESS_BAR_TRACK_CLASSES}>
             <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[width] duration-700 ease-out"
+              className={PROGRESS_BAR_FILL_CLASSES}
               style={{ width: `${progressPercentage}%` }}
             />
           </div>
+
+          {/* Percentage */}
+          <span className={`${PROGRESS_TEXT_CLASSES} tabular-nums`}>
+            {progressPercentage}%
+          </span>
         </div>
       </div>
 
