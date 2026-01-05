@@ -228,4 +228,3 @@ export function validateModelFile(file: File): ValidationResult {
 
   return { valid: true };
 }
-

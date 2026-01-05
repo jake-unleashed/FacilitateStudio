@@ -15,11 +15,11 @@ vi.mock('../utils/modelAssetStore', () => ({
   updateAssetMetadata: vi.fn(),
   migrateLegacyAssets: vi.fn().mockResolvedValue(0),
   hasLegacyAssets: vi.fn().mockReturnValue(false),
-  blobToBase64: vi.fn().mockResolvedValue('base64data'),
+  blobToArrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));
 
 vi.mock('../utils/modelLoaders', () => ({
-  loadAndPreprocessModel: vi.fn(),
+  loadAndPreprocessModelFromArrayBuffer: vi.fn(),
 }));
 
 vi.mock('../utils/modelCache', () => ({
@@ -27,9 +27,17 @@ vi.mock('../utils/modelCache', () => ({
 }));
 
 // Import mocked modules for assertions
-import * as modelAssetStore from '../utils/modelAssetStore';
-import * as modelLoaders from '../utils/modelLoaders';
-import * as modelCache from '../utils/modelCache';
+import {
+  saveAsset,
+  getAsset,
+  getRecentAssets,
+  updateAssetMetadata,
+  hasLegacyAssets,
+  migrateLegacyAssets,
+  blobToArrayBuffer,
+} from '../utils/modelAssetStore';
+import { loadAndPreprocessModelFromArrayBuffer } from '../utils/modelLoaders';
+import { cachePreprocessedModel } from '../utils/modelCache';
 
 describe('useModelUpload', () => {
   // ===========================================================================
@@ -69,9 +77,9 @@ describe('useModelUpload', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset mock implementations
-    vi.mocked(modelAssetStore.getRecentAssets).mockResolvedValue([]);
-    vi.mocked(modelAssetStore.hasLegacyAssets).mockReturnValue(false);
-    vi.mocked(modelAssetStore.migrateLegacyAssets).mockResolvedValue(0);
+    vi.mocked(getRecentAssets).mockResolvedValue([]);
+    vi.mocked(hasLegacyAssets).mockReturnValue(false);
+    vi.mocked(migrateLegacyAssets).mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -124,7 +132,7 @@ describe('useModelUpload', () => {
   describe('initialization', () => {
     it('loads recent assets on mount', async () => {
       const mockAssets = [createMockMetadata('1'), createMockMetadata('2')];
-      vi.mocked(modelAssetStore.getRecentAssets).mockResolvedValue(mockAssets);
+      vi.mocked(getRecentAssets).mockResolvedValue(mockAssets);
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -137,18 +145,18 @@ describe('useModelUpload', () => {
       renderHook(() => useModelUpload());
 
       await waitFor(() => {
-        expect(modelAssetStore.hasLegacyAssets).toHaveBeenCalled();
+        expect(hasLegacyAssets).toHaveBeenCalled();
       });
     });
 
     it('migrates legacy assets if present', async () => {
-      vi.mocked(modelAssetStore.hasLegacyAssets).mockReturnValue(true);
-      vi.mocked(modelAssetStore.migrateLegacyAssets).mockResolvedValue(3);
+      vi.mocked(hasLegacyAssets).mockReturnValue(true);
+      vi.mocked(migrateLegacyAssets).mockResolvedValue(3);
 
       renderHook(() => useModelUpload());
 
       await waitFor(() => {
-        expect(modelAssetStore.migrateLegacyAssets).toHaveBeenCalled();
+        expect(migrateLegacyAssets).toHaveBeenCalled();
       });
     });
   });
@@ -162,7 +170,7 @@ describe('useModelUpload', () => {
       const { result } = renderHook(() => useModelUpload());
 
       const newAssets = [createMockMetadata('new_1'), createMockMetadata('new_2')];
-      vi.mocked(modelAssetStore.getRecentAssets).mockResolvedValue(newAssets);
+      vi.mocked(getRecentAssets).mockResolvedValue(newAssets);
 
       await act(async () => {
         await result.current.refreshRecentAssets();
@@ -181,7 +189,7 @@ describe('useModelUpload', () => {
       const { result } = renderHook(() => useModelUpload());
 
       // First, trigger an error to change state
-      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Test error'));
+      vi.mocked(saveAsset).mockRejectedValue(new Error('Test error'));
 
       await act(async () => {
         await result.current.uploadFile(createMockFile('model.obj'), []);
@@ -224,12 +232,12 @@ describe('useModelUpload', () => {
 
     it('accepts valid file types', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -242,7 +250,7 @@ describe('useModelUpload', () => {
       });
 
       // Should have passed validation
-      expect(modelAssetStore.saveAsset).toHaveBeenCalled();
+      expect(saveAsset).toHaveBeenCalled();
     });
   });
 
@@ -253,12 +261,12 @@ describe('useModelUpload', () => {
   describe('uploadFile - storage', () => {
     it('saves file to IndexedDB', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -271,11 +279,11 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(file, []);
       });
 
-      expect(modelAssetStore.saveAsset).toHaveBeenCalledWith(file);
+      expect(saveAsset).toHaveBeenCalledWith(file);
     });
 
     it('handles storage errors', async () => {
-      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Storage quota exceeded'));
+      vi.mocked(saveAsset).mockRejectedValue(new Error('Storage quota exceeded'));
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -295,12 +303,12 @@ describe('useModelUpload', () => {
   describe('uploadFile - processing', () => {
     it('processes model after storage', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -312,17 +320,17 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(createMockFile('model.obj'), []);
       });
 
-      expect(modelLoaders.loadAndPreprocessModel).toHaveBeenCalled();
+      expect(loadAndPreprocessModelFromArrayBuffer).toHaveBeenCalled();
     });
 
     it('caches processed model', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -334,7 +342,7 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(createMockFile('model.obj'), []);
       });
 
-      expect(modelCache.cachePreprocessedModel).toHaveBeenCalled();
+      expect(cachePreprocessedModel).toHaveBeenCalled();
     });
   });
 
@@ -346,12 +354,12 @@ describe('useModelUpload', () => {
     it('returns upload result with scene object', async () => {
       const metadata = createMockMetadata();
       const metrics = createMockMetrics();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics,
         originalScale: 1,
@@ -372,12 +380,12 @@ describe('useModelUpload', () => {
 
     it('sets complete stage on success', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -401,12 +409,12 @@ describe('useModelUpload', () => {
     it('calls onSuccess callback', async () => {
       const onSuccess = vi.fn();
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -423,7 +431,7 @@ describe('useModelUpload', () => {
 
     it('calls onError callback on failure', async () => {
       const onError = vi.fn();
-      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Test error'));
+      vi.mocked(saveAsset).mockRejectedValue(new Error('Test error'));
 
       const { result } = renderHook(() => useModelUpload({ onError }));
 
@@ -457,11 +465,11 @@ describe('useModelUpload', () => {
 
     it('processes model when metrics not cached', async () => {
       const metadata = createMockMetadata(); // No metrics
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -473,7 +481,7 @@ describe('useModelUpload', () => {
         await result.current.addRecentAssetToScene(metadata, []);
       });
 
-      expect(modelLoaders.loadAndPreprocessModel).toHaveBeenCalled();
+      expect(loadAndPreprocessModelFromArrayBuffer).toHaveBeenCalled();
     });
 
     it('returns scene object', async () => {
@@ -507,12 +515,12 @@ describe('useModelUpload', () => {
         resolveUpload = () => resolve(metadata);
       });
 
-      vi.mocked(modelAssetStore.saveAsset).mockReturnValue(uploadPromise);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockReturnValue(uploadPromise);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -541,7 +549,7 @@ describe('useModelUpload', () => {
     });
 
     it('is false after error', async () => {
-      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Test'));
+      vi.mocked(saveAsset).mockRejectedValue(new Error('Test'));
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -568,12 +576,12 @@ describe('useModelUpload', () => {
 
     it('automatically resets progress from complete to idle after delay', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -602,12 +610,12 @@ describe('useModelUpload', () => {
 
     it('does not reset if stage changes before timeout', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -640,12 +648,12 @@ describe('useModelUpload', () => {
 
     it('cancels previous timeout when starting new upload', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,
@@ -680,7 +688,7 @@ describe('useModelUpload', () => {
     });
 
     it('does not reset when stage is error', async () => {
-      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Test error'));
+      vi.mocked(saveAsset).mockRejectedValue(new Error('Test error'));
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -715,12 +723,12 @@ describe('useModelUpload', () => {
 
     it('cleans up timeout on unmount', async () => {
       const metadata = createMockMetadata();
-      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
-      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
         model: {} as THREE.Object3D,
         metrics: createMockMetrics(),
         originalScale: 1,

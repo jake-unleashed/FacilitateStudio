@@ -58,16 +58,12 @@ async function getDB(): Promise<IDBPDatabase<ModelAssetDB>> {
   if (dbInstance) return dbInstance;
 
   if (!dbPromise) {
-    dbPromise = openDB<ModelAssetDB>(
-      STORAGE_CONFIG.DB_NAME,
-      STORAGE_CONFIG.DB_VERSION,
-      {
-        upgrade(db) {
-          const store = db.createObjectStore('assets', { keyPath: 'id' });
-          store.createIndex('by-date', 'metadata.uploadDate');
-        },
-      }
-    ).then((db) => {
+    dbPromise = openDB<ModelAssetDB>(STORAGE_CONFIG.DB_NAME, STORAGE_CONFIG.DB_VERSION, {
+      upgrade(db) {
+        const store = db.createObjectStore('assets', { keyPath: 'id' });
+        store.createIndex('by-date', 'metadata.uploadDate');
+      },
+    }).then((db) => {
       dbInstance = db;
       return db;
     });
@@ -125,9 +121,7 @@ export async function saveAsset(file: File): Promise<AssetMetadata> {
     return metadata;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      throw new Error(
-        'Storage quota exceeded. Please delete some assets to free up space.'
-      );
+      throw new Error('Storage quota exceeded. Please delete some assets to free up space.');
     }
     throw error;
   }
@@ -156,9 +150,7 @@ export async function getAsset(
 /**
  * Get just the metadata for an asset (faster than full asset).
  */
-export async function getAssetMetadata(
-  assetId: string
-): Promise<AssetMetadata | null> {
+export async function getAssetMetadata(assetId: string): Promise<AssetMetadata | null> {
   const db = await getDB();
   const stored = await db.get('assets', assetId);
   return stored?.metadata ?? null;
@@ -213,10 +205,7 @@ export async function getRecentAssets(limit = 20): Promise<AssetMetadata[]> {
 
   return allAssets
     .map((a) => a.metadata)
-    .sort(
-      (a, b) =>
-        new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()
-    )
+    .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
     .slice(0, limit);
 }
 
@@ -256,17 +245,11 @@ export async function getStorageStats(): Promise<StorageStats> {
   const db = await getDB();
   const allAssets = await db.getAll('assets');
 
-  const totalSizeBytes = allAssets.reduce(
-    (sum, asset) => sum + asset.metadata.fileSize,
-    0
-  );
+  const totalSizeBytes = allAssets.reduce((sum, asset) => sum + asset.metadata.fileSize, 0);
 
   const sorted = allAssets
     .map((a) => a.metadata)
-    .sort(
-      (a, b) =>
-        new Date(a.uploadDate).getTime() - new Date(b.uploadDate).getTime()
-    );
+    .sort((a, b) => new Date(a.uploadDate).getTime() - new Date(b.uploadDate).getTime());
 
   return {
     totalAssets: allAssets.length,
@@ -283,7 +266,7 @@ export async function getStorageStats(): Promise<StorageStats> {
 
 /**
  * Convert a Blob to a base64 string.
- * Used for passing data to Three.js loaders.
+ * Used for passing data to Three.js loaders (legacy, prefer ArrayBuffer).
  */
 export function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -296,6 +279,17 @@ export function blobToBase64(blob: Blob): Promise<string> {
     reader.onerror = () => reject(new Error('Failed to read blob'));
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * Convert a Blob to an ArrayBuffer.
+ * Preferred method for Three.js loaders as it:
+ * - Avoids base64 encoding overhead
+ * - Works directly with loader.parse() methods
+ * - Properly handles embedded textures in GLB/FBX files
+ */
+export function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+  return blob.arrayBuffer();
 }
 
 // =============================================================================
@@ -353,9 +347,7 @@ export async function migrateLegacyAssets(): Promise<number> {
 
     for (const meta of oldMetadata) {
       try {
-        const base64Data = localStorage.getItem(
-          `${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`
-        );
+        const base64Data = localStorage.getItem(`${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`);
         if (!base64Data) continue;
 
         // Convert base64 to blob
@@ -395,9 +387,7 @@ export async function migrateLegacyAssets(): Promise<number> {
     }
 
     localStorage.setItem(LEGACY_KEYS.MIGRATION_COMPLETE, 'true');
-    console.log(
-      `[migration] Migrated ${migratedCount}/${oldMetadata.length} assets`
-    );
+    console.log(`[migration] Migrated ${migratedCount}/${oldMetadata.length} assets`);
 
     return migratedCount;
   } catch (error) {

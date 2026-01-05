@@ -128,20 +128,14 @@ describe('model types', () => {
     });
 
     it('warns for large files under max size', () => {
-      const file = createMockFile(
-        'model.obj',
-        STORAGE_CONFIG.WARNING_FILE_SIZE + 1
-      );
+      const file = createMockFile('model.obj', STORAGE_CONFIG.WARNING_FILE_SIZE + 1);
       const result = validateModelFile(file);
       expect(result.valid).toBe(true);
       expect(result.warning).toContain('Large file');
     });
 
     it('does not warn for files under warning threshold', () => {
-      const file = createMockFile(
-        'model.obj',
-        STORAGE_CONFIG.WARNING_FILE_SIZE - 1
-      );
+      const file = createMockFile('model.obj', STORAGE_CONFIG.WARNING_FILE_SIZE - 1);
       const result = validateModelFile(file);
       expect(result.valid).toBe(true);
       expect(result.warning).toBeUndefined();
@@ -171,10 +165,7 @@ describe('model types', () => {
       expect(STORAGE_CONFIG.MAX_FILE_SIZE).toBe(100 * 1024 * 1024); // 100MB
       expect(STORAGE_CONFIG.WARNING_FILE_SIZE).toBe(50 * 1024 * 1024); // 50MB
       expect(STORAGE_CONFIG.MAX_CACHE_SIZE).toBeGreaterThan(0);
-      expect(STORAGE_CONFIG.CACHE_CLEANUP_THRESHOLD).toBeLessThan(
-        STORAGE_CONFIG.MAX_CACHE_SIZE
-      );
+      expect(STORAGE_CONFIG.CACHE_CLEANUP_THRESHOLD).toBeLessThan(STORAGE_CONFIG.MAX_CACHE_SIZE);
     });
   });
 });
-

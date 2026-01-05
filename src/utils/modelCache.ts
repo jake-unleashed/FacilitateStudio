@@ -12,15 +12,16 @@
 
 import * as THREE from 'three';
 import { ModelMetrics, STORAGE_CONFIG } from '../types/model';
-import { getAsset, updateAssetMetadata, blobToBase64 } from './modelAssetStore';
-import { loadAndPreprocessModel, PreprocessedModel } from './modelLoaders';
+import { getAsset, updateAssetMetadata, blobToArrayBuffer } from './modelAssetStore';
+import { loadAndPreprocessModelFromArrayBuffer, PreprocessedModel } from './modelLoaders';
+import { deepCloneGroup } from './deepCloneModel';
 
 // =============================================================================
 // Types
 // =============================================================================
 
 interface CachedModel {
-  model: THREE.Object3D;
+  model: THREE.Group;
   metrics: ModelMetrics;
   lastAccessed: number;
 }
@@ -42,7 +43,7 @@ const pendingLoads = new Map<string, PendingLoad>();
 
 /**
  * Get a model from cache, loading it if not present.
- * Returns a clone to prevent modifications to the cached version.
+ * Returns a deep clone to ensure independent materials per instance.
  *
  * @param assetId - The asset ID to load
  * @returns The model and its metrics
@@ -50,13 +51,14 @@ const pendingLoads = new Map<string, PendingLoad>();
  */
 export async function getOrLoadModel(
   assetId: string
-): Promise<{ model: THREE.Object3D; metrics: ModelMetrics }> {
+): Promise<{ model: THREE.Group; metrics: ModelMetrics }> {
   // Check cache first
   const cached = cache.get(assetId);
   if (cached) {
     cached.lastAccessed = Date.now();
+    // Deep clone ensures independent materials for opacity/emissive modifications
     return {
-      model: cached.model.clone(),
+      model: deepCloneGroup(cached.model),
       metrics: cached.metrics,
     };
   }
@@ -66,7 +68,7 @@ export async function getOrLoadModel(
   if (pending) {
     const result = await pending.promise;
     return {
-      model: result.model.clone(),
+      model: deepCloneGroup(result.model),
       metrics: result.metrics,
     };
   }
@@ -78,7 +80,7 @@ export async function getOrLoadModel(
   try {
     const result = await loadPromise;
     return {
-      model: result.model.clone(),
+      model: deepCloneGroup(result.model),
       metrics: result.metrics,
     };
   } finally {
@@ -96,13 +98,14 @@ export async function getOrLoadModel(
  */
 export function cachePreprocessedModel(
   assetId: string,
-  model: THREE.Object3D,
+  model: THREE.Group,
   metrics: ModelMetrics
 ): void {
   maybeCleanupCache();
 
   cache.set(assetId, {
-    model: model.clone(), // Store a clone to prevent external modifications
+    // Deep clone ensures cached model is independent from uploaded instance
+    model: deepCloneGroup(model),
     metrics,
     lastAccessed: Date.now(),
   });
@@ -165,6 +168,7 @@ export function getCacheStats(): { size: number; maxSize: number } {
 
 /**
  * Load a model from IndexedDB and cache it.
+ * Uses ArrayBuffer-based loading for proper embedded texture support.
  */
 async function loadModelInternal(assetId: string): Promise<CachedModel> {
   const assetData = await getAsset(assetId);
@@ -172,12 +176,13 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
     throw new Error(`Asset not found: ${assetId}`);
   }
 
-  // Convert blob to base64 for the loader
-  const base64 = await blobToBase64(assetData.blob);
+  // Convert blob to ArrayBuffer (more efficient than base64, better texture handling)
+  const arrayBuffer = await blobToArrayBuffer(assetData.blob);
 
-  // Load and preprocess the model
-  const preprocessed = await loadAndPreprocessModel(
-    base64,
+  // Load and preprocess the model using ArrayBuffer-based parsing
+  // This ensures embedded textures in GLB/FBX are properly extracted
+  const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
+    arrayBuffer,
     assetData.metadata.fileType
   );
 
@@ -192,9 +197,10 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
   // Cleanup if needed before adding to cache
   maybeCleanupCache();
 
-  // Store in cache
+  // Store in cache - deep clone to ensure cache is independent
+  // (consistent with cachePreprocessedModel behavior)
   const cachedModel: CachedModel = {
-    model: preprocessed.model,
+    model: deepCloneGroup(preprocessed.model),
     metrics,
     lastAccessed: Date.now(),
   };
@@ -244,9 +250,7 @@ function maybeCleanupCache(): void {
   if (cache.size < STORAGE_CONFIG.CACHE_CLEANUP_THRESHOLD) return;
 
   // Sort by last accessed (oldest first)
-  const entries = Array.from(cache.entries()).sort(
-    (a, b) => a[1].lastAccessed - b[1].lastAccessed
-  );
+  const entries = Array.from(cache.entries()).sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
 
   // Remove oldest entries
   const toRemove = cache.size - STORAGE_CONFIG.CACHE_CLEANUP_THRESHOLD + 5;
@@ -262,7 +266,7 @@ function maybeCleanupCache(): void {
 /**
  * Properly dispose of a Three.js model to free GPU memory.
  */
-function disposeModel(model: THREE.Object3D): void {
+function disposeModel(model: THREE.Group): void {
   model.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
 
@@ -270,9 +274,7 @@ function disposeModel(model: THREE.Object3D): void {
     child.geometry?.dispose();
 
     // Dispose materials and their textures
-    const materials = Array.isArray(child.material)
-      ? child.material
-      : [child.material];
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
 
     for (const material of materials) {
       if (!material) continue;

@@ -1,6 +1,6 @@
 /**
  * Model Preprocessing Utility
- * 
+ *
  * Comprehensive preprocessing pipeline to normalize 3D models for consistent,
  * user-friendly display in the scene. Handles scaling, pivot centering, ground
  * alignment, and orientation normalization.
@@ -25,7 +25,7 @@ export interface ModelMetrics {
 }
 
 export interface PreprocessedModel {
-  model: THREE.Object3D;
+  model: THREE.Group;
   metrics: ModelMetrics;
   originalScale: number; // Scale factor applied during preprocessing
 }
@@ -33,7 +33,7 @@ export interface PreprocessedModel {
 /**
  * Calculate bounding box for a model
  */
-function getModelBoundingBox(model: THREE.Object3D): THREE.Box3 {
+function getModelBoundingBox(model: THREE.Group | THREE.Object3D): THREE.Box3 {
   const box = new THREE.Box3();
   box.setFromObject(model);
   return box;
@@ -42,7 +42,7 @@ function getModelBoundingBox(model: THREE.Object3D): THREE.Box3 {
 /**
  * Count triangles in a model (for complexity checking)
  */
-function countTriangles(model: THREE.Object3D): number {
+function countTriangles(model: THREE.Group | THREE.Object3D): number {
   let count = 0;
   model.traverse((child) => {
     if (child instanceof THREE.Mesh && child.geometry) {
@@ -60,13 +60,13 @@ function countTriangles(model: THREE.Object3D): number {
 /**
  * Calculate model metrics
  */
-export function calculateModelMetrics(model: THREE.Object3D): ModelMetrics {
+export function calculateModelMetrics(model: THREE.Group): ModelMetrics {
   const boundingBox = getModelBoundingBox(model);
   const center = new THREE.Vector3();
   boundingBox.getCenter(center);
   const size = new THREE.Vector3();
   boundingBox.getSize(size);
-  
+
   const maxDimension = Math.max(size.x, size.y, size.z);
   const triangleCount = countTriangles(model);
 
@@ -86,7 +86,7 @@ export function calculateModelMetrics(model: THREE.Object3D): ModelMetrics {
  * This ensures rotation/scaling happens around the visual center
  * Returns the offset that was applied (for tracking)
  */
-export function centerModelPivot(model: THREE.Object3D): THREE.Vector3 {
+export function centerModelPivot(model: THREE.Group): THREE.Vector3 {
   const box = getModelBoundingBox(model);
   const center = new THREE.Vector3();
   box.getCenter(center);
@@ -100,19 +100,19 @@ export function centerModelPivot(model: THREE.Object3D): THREE.Vector3 {
     if (child instanceof THREE.Mesh && child.geometry) {
       const geometry = child.geometry;
       const positionAttribute = geometry.attributes.position;
-      
+
       if (positionAttribute) {
         // Translate vertices
         for (let i = 0; i < positionAttribute.count; i++) {
           const x = positionAttribute.getX(i);
           const y = positionAttribute.getY(i);
           const z = positionAttribute.getZ(i);
-          
+
           positionAttribute.setX(i, x - center.x);
           positionAttribute.setY(i, y - center.y);
           positionAttribute.setZ(i, z - center.z);
         }
-        
+
         positionAttribute.needsUpdate = true;
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
@@ -131,15 +131,15 @@ export function centerModelPivot(model: THREE.Object3D): THREE.Vector3 {
  * Preserves aspect ratio and handles edge cases
  */
 export function autoScaleModel(
-  model: THREE.Object3D,
+  model: THREE.Group,
   targetSize: number = MODEL_TARGET_SIZE
 ): number {
   const box = getModelBoundingBox(model);
   const size = new THREE.Vector3();
   box.getSize(size);
-  
+
   const maxDimension = Math.max(size.x, size.y, size.z);
-  
+
   // Handle edge cases
   if (maxDimension <= 0) {
     console.warn('[modelPreprocessing] Model has zero or negative size, using default scale');
@@ -148,7 +148,7 @@ export function autoScaleModel(
 
   // Calculate scale factor
   const scaleFactor = targetSize / maxDimension;
-  
+
   // Clamp scale to prevent models that are too small or too large
   const clampedScale = Math.max(
     MODEL_MIN_SIZE / maxDimension,
@@ -165,10 +165,10 @@ export function autoScaleModel(
  * Align model to ground plane (bottom at y=0)
  * Should be called after pivot centering
  */
-export function alignModelToGround(model: THREE.Object3D): void {
+export function alignModelToGround(model: THREE.Group): void {
   const box = getModelBoundingBox(model);
   const minY = box.min.y;
-  
+
   // Translate model up so bottom is at y=0
   model.position.y -= minY;
 }
@@ -177,15 +177,15 @@ export function alignModelToGround(model: THREE.Object3D): void {
  * Normalize model orientation to ensure +Y is up
  * Detects if model is lying down and rotates if needed
  */
-export function normalizeModelOrientation(model: THREE.Object3D): void {
+export function normalizeModelOrientation(model: THREE.Group): void {
   const box = getModelBoundingBox(model);
   const size = new THREE.Vector3();
   box.getSize(size);
-  
+
   // Determine primary orientation
   const maxDim = Math.max(size.x, size.y, size.z);
   const isFlat = maxDim / Math.min(size.x, size.y, size.z) > 5; // Very flat model
-  
+
   // If model is wider than tall, it might be lying down
   // Check if X or Z is the "up" dimension
   if (size.x > size.y * 1.5 && size.x > size.z * 1.5) {
@@ -195,7 +195,7 @@ export function normalizeModelOrientation(model: THREE.Object3D): void {
     // Model is lying along Z axis, rotate 90 degrees around X
     model.rotateX(-Math.PI / 2);
   }
-  
+
   // Ensure +Y is up (check if model is upside down)
   // This is a heuristic - if bottom is higher than top after rotation, flip
   const newBox = getModelBoundingBox(model);
@@ -208,7 +208,7 @@ export function normalizeModelOrientation(model: THREE.Object3D): void {
 /**
  * Disable animations in model (if present)
  */
-export function disableModelAnimations(model: THREE.Object3D): void {
+export function disableModelAnimations(model: THREE.Group): void {
   model.traverse((child) => {
     if (child instanceof THREE.SkinnedMesh) {
       // Disable skeleton animations
@@ -226,7 +226,7 @@ export function disableModelAnimations(model: THREE.Object3D): void {
 /**
  * Validate model before preprocessing
  */
-export function validateModel(model: THREE.Object3D): { valid: boolean; error?: string } {
+export function validateModel(model: THREE.Group | THREE.Object3D): { valid: boolean; error?: string } {
   // Check if model has geometry
   let hasGeometry = false;
   model.traverse((child) => {
@@ -243,17 +243,22 @@ export function validateModel(model: THREE.Object3D): { valid: boolean; error?: 
   const box = getModelBoundingBox(model);
   const size = new THREE.Vector3();
   box.getSize(size);
-  
+
   const maxDimension = Math.max(size.x, size.y, size.z);
-  
+
   if (maxDimension <= 0) {
     return { valid: false, error: 'Model has zero size' };
   }
 
   // Check for invalid values
-  if (!isFinite(box.min.x) || !isFinite(box.max.x) ||
-      !isFinite(box.min.y) || !isFinite(box.max.y) ||
-      !isFinite(box.min.z) || !isFinite(box.max.z)) {
+  if (
+    !isFinite(box.min.x) ||
+    !isFinite(box.max.x) ||
+    !isFinite(box.min.y) ||
+    !isFinite(box.max.y) ||
+    !isFinite(box.min.z) ||
+    !isFinite(box.max.z)
+  ) {
     return { valid: false, error: 'Model has invalid geometry (NaN or Infinity)' };
   }
 
@@ -265,7 +270,7 @@ export function validateModel(model: THREE.Object3D): { valid: boolean; error?: 
  * Applies all normalization steps in the correct order
  */
 export function preprocessModel(
-  model: THREE.Object3D,
+  model: THREE.Group,
   targetSize: number = MODEL_TARGET_SIZE
 ): PreprocessedModel {
   // Validate model first
@@ -302,4 +307,3 @@ export function preprocessModel(
     originalScale,
   };
 }
-

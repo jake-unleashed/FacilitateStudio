@@ -257,9 +257,7 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
           </div>
 
           {/* Percentage */}
-          <span className={`${PROGRESS_TEXT_CLASSES} tabular-nums`}>
-            {progressPercentage}%
-          </span>
+          <span className={`${PROGRESS_TEXT_CLASSES} tabular-nums`}>{progressPercentage}%</span>
         </div>
       </div>
 

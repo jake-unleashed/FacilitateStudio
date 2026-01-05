@@ -26,9 +26,9 @@ import {
   updateAssetMetadata,
   migrateLegacyAssets,
   hasLegacyAssets,
-  blobToBase64,
+  blobToArrayBuffer,
 } from '../utils/modelAssetStore';
-import { loadAndPreprocessModel } from '../utils/modelLoaders';
+import { loadAndPreprocessModelFromArrayBuffer } from '../utils/modelLoaders';
 import { cachePreprocessedModel } from '../utils/modelCache';
 import { MODEL_POSITION_SPACING } from '../constants';
 
@@ -349,8 +349,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         }
 
         try {
-          const base64 = await blobToBase64(assetData.blob);
-          const preprocessed = await loadAndPreprocessModel(base64, fileType);
+          // Use ArrayBuffer for proper embedded texture support in GLB/FBX
+          const arrayBuffer = await blobToArrayBuffer(assetData.blob);
+          const preprocessed = await loadAndPreprocessModelFromArrayBuffer(arrayBuffer, fileType);
           metrics = serializeMetrics(preprocessed.metrics);
 
           // Cache the model

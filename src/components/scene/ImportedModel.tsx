@@ -18,6 +18,24 @@ import { SceneObject } from '../../types';
 import { getOrLoadModel } from '../../utils/modelCache';
 import { BoundingBox } from './BoundingBox';
 
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** Duration of fade-in animation in milliseconds */
+const FADE_IN_DURATION_MS = 300;
+
+/** Colors for selection/hover effects */
+const SELECTION_COLOR = '#3b82f6';
+const SELECTION_COLOR_GHOST = '#a855f7';
+const HOVER_COLOR = '#ffffff';
+const SELECTION_INTENSITY = 0.15;
+const HOVER_INTENSITY = 0.08;
+
+// =============================================================================
+// Types
+// =============================================================================
+
 interface ImportedModelProps {
   obj: SceneObject;
   isSelected: boolean;
@@ -30,15 +48,21 @@ interface ImportedModelProps {
   isGhost?: boolean;
 }
 
-// Loading placeholder component
-const LoadingPlaceholder: React.FC = () => {
-  return (
-    <mesh>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color="#94a3b8" transparent opacity={0.5} />
-    </mesh>
-  );
-};
+// =============================================================================
+// Helper Components
+// =============================================================================
+
+/** Placeholder shown while model is loading */
+const LoadingPlaceholder: React.FC = () => (
+  <mesh>
+    <boxGeometry args={[1, 1, 1]} />
+    <meshStandardMaterial color="#94a3b8" transparent opacity={0.5} />
+  </mesh>
+);
+
+// =============================================================================
+// Main Component
+// =============================================================================
 
 const ImportedModelInner: React.FC<ImportedModelProps> = ({
   obj,
@@ -53,11 +77,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
 }) => {
   // Note: _isDragging is available for future use but currently unused
   const outerGroupRef = useRef<THREE.Group>(null);
-  const [model, setModel] = useState<THREE.Object3D | null>(null);
+  const [model, setModel] = useState<THREE.Group | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modelHeight, setModelHeight] = useState<number>(0);
-  const [opacity, setOpacity] = useState(0);
+  // Start at opacity 1 - models should be visible immediately
+  // Fade-in animation will temporarily reduce opacity if enabled
+  const [opacity, setOpacity] = useState(1);
 
   const modelAssetId = obj.properties.modelAssetId as string | undefined;
 
@@ -72,6 +98,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    // Reset opacity for new model load
+    setOpacity(0);
 
     getOrLoadModel(modelAssetId)
       .then(({ model: loadedModel, metrics }) => {
@@ -80,13 +108,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
         setModel(loadedModel);
         setModelHeight(metrics.size.y);
         setLoading(false);
-
-        // Start fade-in animation
-        requestAnimationFrame(() => {
-          if (!cancelled) {
-            setOpacity(1);
-          }
-        });
+        // Don't set opacity here - let the fade-in effect handle it
       })
       .catch((err) => {
         if (cancelled) return;
@@ -144,19 +166,21 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     onDoubleClick(obj);
   }, [onDoubleClick, obj]);
 
-  // Fade-in animation
+  // Fade-in animation with proper cleanup
   useEffect(() => {
     if (!loading && !error && model) {
-      const duration = 300; // 0.3 seconds
+      let cancelled = false;
       const startTime = Date.now();
-      const startOpacity = 0;
 
       const animate = () => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+        if (cancelled) return;
 
-        setOpacity(startOpacity + (1 - startOpacity) * eased);
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / FADE_IN_DURATION_MS, 1);
+        // Ease out cubic for smooth deceleration
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        setOpacity(eased);
 
         if (progress < 1) {
           requestAnimationFrame(animate);
@@ -164,29 +188,37 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
       };
 
       requestAnimationFrame(animate);
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [loading, error, model]);
 
-  // Apply opacity to model materials
+  // Apply opacity to model materials - runs for ALL opacity values including 1
   useEffect(() => {
-    if (model && opacity < 1) {
-      model.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.material) {
-          const materials = Array.isArray(child.material) ? child.material : [child.material];
-          materials.forEach((mat) => {
-            if (
-              mat instanceof THREE.MeshStandardMaterial ||
-              mat instanceof THREE.MeshBasicMaterial ||
-              mat instanceof THREE.MeshPhongMaterial ||
-              mat instanceof THREE.MeshLambertMaterial
-            ) {
-              mat.transparent = opacity < 1;
-              mat.opacity = opacity;
-            }
-          });
-        }
-      });
-    }
+    if (!model) return;
+
+    model.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((mat) => {
+          if (
+            mat instanceof THREE.MeshStandardMaterial ||
+            mat instanceof THREE.MeshBasicMaterial ||
+            mat instanceof THREE.MeshPhongMaterial ||
+            mat instanceof THREE.MeshLambertMaterial
+          ) {
+            // When opacity is 1, disable transparency for better rendering
+            const isTransparent = opacity < 1;
+            mat.transparent = isTransparent;
+            mat.opacity = opacity;
+            // Ensure Three.js knows to update the material
+            mat.needsUpdate = true;
+          }
+        });
+      }
+    });
   }, [model, opacity]);
 
   // Selection and hover effects (optimized: only run when needed)
@@ -201,13 +233,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     const hoverChanged = prevHoveredRef.current !== isHovered;
 
     if (selectionChanged || hoverChanged || isSelected || isHovered) {
-      model.traverse((child) => {
+      model.traverse((child: THREE.Object3D) => {
         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
           if (isSelected) {
-            const highlightColor = isGhost ? '#a855f7' : '#3b82f6';
-            child.material.emissive.set(highlightColor).multiplyScalar(0.15);
+            const highlightColor = isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR;
+            child.material.emissive.set(highlightColor).multiplyScalar(SELECTION_INTENSITY);
           } else if (isHovered) {
-            child.material.emissive.set('#ffffff').multiplyScalar(0.08);
+            child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
           } else {
             child.material.emissive.set('#000000');
           }

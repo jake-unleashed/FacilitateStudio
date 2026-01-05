@@ -1,7 +1,15 @@
 /**
  * Model Loaders Utility
- * 
- * Provides utilities to load 3D models from base64 strings using Three.js loaders.
+ *
+ * Provides utilities to load 3D models using Three.js loaders.
+ *
+ * TEXTURE LOADING ARCHITECTURE:
+ * - GLB/FBX: Uses ArrayBuffer + loader.parse() to properly handle embedded textures
+ * - OBJ: Uses text parsing (no texture support without MTL files)
+ * - GLTF: Uses ArrayBuffer parsing (external textures won't resolve)
+ *
+ * The key insight is that using loader.parse(arrayBuffer) instead of loader.load(url)
+ * ensures embedded textures in GLB/FBX files are properly extracted and applied.
  */
 
 import * as THREE from 'three';
@@ -14,134 +22,256 @@ import { MODEL_TARGET_SIZE } from '../constants';
 
 export type ModelFileType = 'obj' | 'fbx' | 'glb' | 'gltf';
 
-/**
- * Convert base64 string to blob URL
- */
-function base64ToBlobUrl(base64: string, mimeType: string): string {
-  const byteCharacters = atob(base64);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: mimeType });
-  return URL.createObjectURL(blob);
+// =============================================================================
+// Development Mode Detection
+// =============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
+
+// =============================================================================
+// Texture Diagnostics
+// =============================================================================
+
+export interface TextureReport {
+  totalMeshes: number;
+  meshesWithTextures: number;
+  meshesWithoutTextures: number;
+  textureTypes: Set<string>;
+  issues: string[];
 }
 
 /**
- * Get MIME type for file type
+ * Analyze a model's texture usage for diagnostics.
+ * Only logs in development mode.
  */
-function getMimeType(fileType: ModelFileType): string {
-  switch (fileType) {
-    case 'obj':
-      return 'model/obj';
-    case 'fbx':
-      return 'application/octet-stream';
-    case 'glb':
-      return 'model/gltf-binary';
-    case 'gltf':
-      return 'model/gltf+json';
-    default:
-      return 'application/octet-stream';
+export function analyzeModelTextures(model: THREE.Group, modelName?: string): TextureReport {
+  const report: TextureReport = {
+    totalMeshes: 0,
+    meshesWithTextures: 0,
+    meshesWithoutTextures: 0,
+    textureTypes: new Set(),
+    issues: [],
+  };
+
+  const textureProps = [
+    'map',
+    'normalMap',
+    'roughnessMap',
+    'metalnessMap',
+    'aoMap',
+    'emissiveMap',
+    'lightMap',
+    'bumpMap',
+    'displacementMap',
+    'alphaMap',
+    'envMap',
+  ] as const;
+
+  model.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+
+    report.totalMeshes++;
+    let hasAnyTexture = false;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+
+    for (const material of materials) {
+      if (!material) continue;
+
+      for (const prop of textureProps) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const texture = (material as any)[prop];
+        if (texture instanceof THREE.Texture) {
+          hasAnyTexture = true;
+          report.textureTypes.add(prop);
+
+          // Check for texture issues
+          if (!texture.image) {
+            report.issues.push(`${prop} texture has no image data`);
+          }
+        }
+      }
+
+      // Check for potential texture loading issues
+      if (material instanceof THREE.MeshStandardMaterial) {
+        if (material.color.getHex() === 0x000000 && !material.map) {
+          report.issues.push('Material is black without diffuse texture - may be missing texture');
+        }
+        if (material.transparent && material.opacity < 0.1 && !material.alphaMap) {
+          report.issues.push('Material is nearly invisible without alpha texture');
+        }
+      }
+    }
+
+    if (hasAnyTexture) {
+      report.meshesWithTextures++;
+    } else {
+      report.meshesWithoutTextures++;
+    }
+  });
+
+  // Log in development mode
+  if (IS_DEV) {
+    const name = modelName ?? 'Unknown Model';
+    console.log(`[TextureDiagnostics] ${name}:`);
+    console.log(
+      `  Meshes: ${report.totalMeshes} (${report.meshesWithTextures} textured, ${report.meshesWithoutTextures} untextured)`
+    );
+    if (report.textureTypes.size > 0) {
+      console.log(`  Texture types: ${Array.from(report.textureTypes).join(', ')}`);
+    }
+    if (report.issues.length > 0) {
+      console.warn(`  Issues:`, report.issues);
+    }
   }
+
+  return report;
+}
+
+// =============================================================================
+// ArrayBuffer Conversion Utilities
+// =============================================================================
+
+/**
+ * Convert base64 string to ArrayBuffer.
+ * Used when we receive base64 data from storage.
+ */
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
 }
 
 /**
- * Normalize model to a Group for consistent structure
+ * Convert base64 string to text (for OBJ files which are text-based).
  */
-function normalizeModelGeometry(model: THREE.Object3D): THREE.Group {
-  const group = new THREE.Group();
-  
-  // If it's already a group, clone it
+function base64ToText(base64: string): string {
+  const binaryString = atob(base64);
+  // Use TextDecoder for proper UTF-8 handling
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+// =============================================================================
+// Model Normalization
+// =============================================================================
+
+/**
+ * Wrap model in a Group for consistent structure.
+ *
+ * NOTE: We do NOT clone here. The original model from the loader is used directly.
+ * Deep cloning is handled by the model cache when returning instances to the scene.
+ * This prevents unnecessary cloning during the loading pipeline.
+ */
+function wrapInGroup(model: THREE.Object3D): THREE.Group {
+  // If already a Group with proper structure, return it directly
   if (model instanceof THREE.Group) {
-    model.children.forEach((child) => {
-      group.add(child.clone());
-    });
-    return group;
+    return model;
   }
 
-  // Otherwise, add the model to a group
+  // Wrap in a Group for consistent hierarchy
+  const group = new THREE.Group();
   group.add(model);
   return group;
 }
 
+// =============================================================================
+// Model Loaders (ArrayBuffer-based for proper texture handling)
+// =============================================================================
+
 /**
- * Load OBJ model from base64
+ * Load OBJ model from base64 text.
+ * OBJ files are text-based and don't support embedded textures.
  */
 async function loadOBJModel(base64: string): Promise<THREE.Object3D> {
-  return new Promise((resolve, reject) => {
-    const loader = new OBJLoader();
-    const blobUrl = base64ToBlobUrl(base64, getMimeType('obj'));
-    
-    loader.load(
-      blobUrl,
-      (object) => {
-        URL.revokeObjectURL(blobUrl);
-        resolve(object);
-      },
-      undefined,
-      (error) => {
-        URL.revokeObjectURL(blobUrl);
-        reject(new Error(`Failed to load OBJ model: ${error.message || 'Unknown error'}`));
-      }
-    );
-  });
+  const loader = new OBJLoader();
+  const objText = base64ToText(base64);
+
+  // OBJLoader.parse() takes text content directly
+  const object = loader.parse(objText);
+
+  if (IS_DEV) {
+    console.log('[modelLoaders] OBJ loaded via text parsing (no texture support)');
+  }
+
+  return object;
 }
 
 /**
- * Load FBX model from base64
+ * Load FBX model from ArrayBuffer.
+ * FBX files can contain embedded textures which are properly extracted via parse().
  */
 async function loadFBXModel(base64: string): Promise<THREE.Object3D> {
-  return new Promise((resolve, reject) => {
-    const loader = new FBXLoader();
-    const blobUrl = base64ToBlobUrl(base64, getMimeType('fbx'));
-    
-    loader.load(
-      blobUrl,
-      (object) => {
-        URL.revokeObjectURL(blobUrl);
-        resolve(object);
-      },
-      undefined,
-      (error) => {
-        URL.revokeObjectURL(blobUrl);
-        reject(new Error(`Failed to load FBX model: ${error.message || 'Unknown error'}`));
-      }
-    );
-  });
+  const loader = new FBXLoader();
+  const arrayBuffer = base64ToArrayBuffer(base64);
+
+  // FBXLoader.parse() extracts embedded textures correctly
+  // The second parameter is the resource path for external resources (empty for embedded)
+  const object = loader.parse(arrayBuffer, '');
+
+  if (IS_DEV) {
+    console.log('[modelLoaders] FBX loaded via ArrayBuffer parsing (embedded textures supported)');
+  }
+
+  return object;
 }
 
 /**
- * Load GLTF/GLB model from base64
+ * Load GLTF/GLB model from ArrayBuffer.
+ * GLB files have embedded textures that are properly extracted via parse().
+ * GLTF files with external textures won't resolve (need multi-file upload).
  */
 async function loadGLTFModel(base64: string, isGLB: boolean): Promise<THREE.Object3D> {
+  const loader = new GLTFLoader();
+  const arrayBuffer = base64ToArrayBuffer(base64);
+
   return new Promise((resolve, reject) => {
-    const loader = new GLTFLoader();
-    const blobUrl = base64ToBlobUrl(base64, getMimeType(isGLB ? 'glb' : 'gltf'));
-    
-    loader.load(
-      blobUrl,
+    // GLTFLoader.parse() properly handles embedded textures in GLB
+    // For GLTF with external textures, they won't resolve but the model loads
+    loader.parse(
+      arrayBuffer,
+      '', // Resource path (empty - all resources should be embedded for GLB)
       (gltf) => {
-        URL.revokeObjectURL(blobUrl);
-        // GLTFLoader returns a GLTF object with a scene property
+        if (IS_DEV) {
+          console.log(`[modelLoaders] ${isGLB ? 'GLB' : 'GLTF'} loaded via ArrayBuffer parsing`);
+          if (!isGLB) {
+            console.log(
+              '[modelLoaders] Note: GLTF external textures require multi-file upload (not supported)'
+            );
+          }
+        }
         resolve(gltf.scene);
       },
-      undefined,
       (error) => {
-        URL.revokeObjectURL(blobUrl);
-        reject(new Error(`Failed to load ${isGLB ? 'GLB' : 'GLTF'} model: ${error.message || 'Unknown error'}`));
+        reject(
+          new Error(
+            `Failed to load ${isGLB ? 'GLB' : 'GLTF'} model: ${error.message || 'Unknown error'}`
+          )
+        );
       }
     );
   });
 }
 
+// =============================================================================
+// Public API
+// =============================================================================
+
 /**
- * Load model from base64 string based on file type
+ * Load model from base64 string based on file type.
+ * Uses ArrayBuffer-based parsing for proper embedded texture support.
  */
 export async function loadModelFromBase64(
   base64: string,
   fileType: ModelFileType
-): Promise<THREE.Object3D> {
+): Promise<THREE.Group> {
   let model: THREE.Object3D;
 
   try {
@@ -162,8 +292,8 @@ export async function loadModelFromBase64(
         throw new Error(`Unsupported file type: ${fileType}`);
     }
 
-    // Normalize to ensure consistent structure
-    return normalizeModelGeometry(model);
+    // Wrap in Group for consistent structure
+    return wrapInGroup(model);
   } catch (error) {
     if (error instanceof Error) {
       throw error;
@@ -173,28 +303,121 @@ export async function loadModelFromBase64(
 }
 
 /**
- * Load and preprocess model from base64 string
- * This is the recommended function to use for adding models to the scene
+ * Load model directly from ArrayBuffer (preferred method).
+ * Skips the base64 encoding/decoding overhead.
+ */
+export async function loadModelFromArrayBuffer(
+  arrayBuffer: ArrayBuffer,
+  fileType: ModelFileType
+): Promise<THREE.Group> {
+  let model: THREE.Object3D;
+
+  try {
+    switch (fileType) {
+      case 'obj': {
+        const loader = new OBJLoader();
+        const text = new TextDecoder('utf-8').decode(arrayBuffer);
+        model = loader.parse(text);
+        break;
+      }
+      case 'fbx': {
+        const loader = new FBXLoader();
+        model = loader.parse(arrayBuffer, '');
+        break;
+      }
+      case 'glb':
+      case 'gltf': {
+        const loader = new GLTFLoader();
+        model = await new Promise((resolve, reject) => {
+          loader.parse(
+            arrayBuffer,
+            '',
+            (gltf) => resolve(gltf.scene),
+            (error) =>
+              reject(
+                new Error(
+                  `Failed to load ${fileType.toUpperCase()}: ${error.message || 'Unknown error'}`
+                )
+              )
+          );
+        });
+        break;
+      }
+      default:
+        throw new Error(`Unsupported file type: ${fileType}`);
+    }
+
+    if (IS_DEV) {
+      console.log(`[modelLoaders] ${fileType.toUpperCase()} loaded from ArrayBuffer`);
+    }
+
+    return wrapInGroup(model);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Failed to load model: ${String(error)}`);
+  }
+}
+
+/**
+ * Load and preprocess model from base64 string.
+ * This is the recommended function to use for adding models to the scene.
  */
 export async function loadAndPreprocessModel(
   base64: string,
   fileType: ModelFileType,
   targetSize: number = MODEL_TARGET_SIZE
 ): Promise<PreprocessedModel> {
-  // Load raw model
+  // Load raw model using ArrayBuffer-based parsing
   const rawModel = await loadModelFromBase64(base64, fileType);
-  
-  // Optimize materials first (before preprocessing)
+
+  // Run texture diagnostics in dev mode
+  if (IS_DEV) {
+    analyzeModelTextures(rawModel, `Uploaded ${fileType.toUpperCase()}`);
+  }
+
+  // Optimize materials (with smart fallbacks for missing textures)
   optimizeMaterialsForScene(rawModel);
-  
+
   // Preprocess model (scaling, centering, etc.)
   const preprocessed = preprocessModel(rawModel, targetSize);
-  
+
   return preprocessed;
 }
 
 /**
- * Get appropriate loader for file type (for direct loader access if needed)
+ * Load and preprocess model directly from ArrayBuffer.
+ * Preferred method - avoids base64 overhead.
+ */
+export async function loadAndPreprocessModelFromArrayBuffer(
+  arrayBuffer: ArrayBuffer,
+  fileType: ModelFileType,
+  targetSize: number = MODEL_TARGET_SIZE
+): Promise<PreprocessedModel> {
+  // Load raw model
+  const rawModel = await loadModelFromArrayBuffer(arrayBuffer, fileType);
+
+  // Run texture diagnostics in dev mode
+  if (IS_DEV) {
+    analyzeModelTextures(rawModel, `Uploaded ${fileType.toUpperCase()}`);
+  }
+
+  // Optimize materials (with smart fallbacks for missing textures)
+  optimizeMaterialsForScene(rawModel);
+
+  // Preprocess model (scaling, centering, etc.)
+  const preprocessed = preprocessModel(rawModel, targetSize);
+
+  return preprocessed;
+}
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+/**
+ * Get appropriate loader for file type (for direct loader access if needed).
  */
 export function getLoaderForFileType(fileType: ModelFileType): OBJLoader | FBXLoader | GLTFLoader {
   switch (fileType) {
@@ -211,37 +434,36 @@ export function getLoaderForFileType(fileType: ModelFileType): OBJLoader | FBXLo
 }
 
 /**
- * Calculate bounding box for a model (useful for auto-scaling)
+ * Calculate bounding box for a model (useful for auto-scaling).
  */
-export function getModelBoundingBox(model: THREE.Object3D): THREE.Box3 {
+export function getModelBoundingBox(model: THREE.Group): THREE.Box3 {
   const box = new THREE.Box3();
   box.setFromObject(model);
   return box;
 }
 
 /**
- * Center model at origin
+ * Center model at origin.
  */
-export function centerModelAtOrigin(model: THREE.Object3D): void {
+export function centerModelAtOrigin(model: THREE.Group): void {
   const box = getModelBoundingBox(model);
   const center = box.getCenter(new THREE.Vector3());
   model.position.sub(center);
 }
 
 /**
- * Scale model to fit within a bounding box
+ * Scale model to fit within a bounding box.
  */
-export function scaleModelToFit(
-  model: THREE.Object3D,
-  maxSize: number = 1
-): void {
+export function scaleModelToFit(model: THREE.Group, maxSize: number = 1): void {
   const box = getModelBoundingBox(model);
   const size = box.getSize(new THREE.Vector3());
   const maxDimension = Math.max(size.x, size.y, size.z);
-  
+
   if (maxDimension > 0) {
     const scale = maxSize / maxDimension;
     model.scale.multiplyScalar(scale);
   }
 }
 
+// Re-export PreprocessedModel type for convenience
+export type { PreprocessedModel } from './modelPreprocessing';
