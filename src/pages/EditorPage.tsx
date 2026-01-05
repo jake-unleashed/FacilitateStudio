@@ -175,13 +175,7 @@ export function EditorPage() {
   const debugCubeCountRef = useRef(0);
 
   // Model upload hook - handles storage, preprocessing, and caching
-  const {
-    uploadProgress,
-    recentAssets,
-    uploadFile,
-    addRecentAssetToScene,
-    isUploading,
-  } = useModelUpload();
+  const { uploadProgress, recentAssets, uploadFile, addRecentAssetToScene } = useModelUpload();
 
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -382,78 +376,72 @@ export function EditorPage() {
     setSelectedObjectId(id);
   }, []);
 
-  const handleFocusObject = useCallback(
-    async (object: SceneObject) => {
-      const controls = cameraControlsRef.current;
-      if (!controls) return;
+  const handleFocusObject = useCallback(async (object: SceneObject) => {
+    const controls = cameraControlsRef.current;
+    if (!controls) return;
 
-      // Calculate object position in Three.js coordinates
-      const x = object.transform.x / 100;
-      const y = object.transform.y / 100;
-      const z = -object.transform.z / 100;
+    // Calculate object position in Three.js coordinates
+    const x = object.transform.x / 100;
+    const y = object.transform.y / 100;
+    const z = -object.transform.z / 100;
 
-      // If object has a model, calculate optimal camera distance based on model size
-      let cameraDistance = 5; // Default distance
-      let targetX = x;
-      let targetY = y;
-      let targetZ = z;
+    // If object has a model, calculate optimal camera distance based on model size
+    let cameraDistance = 5; // Default distance
+    let targetX = x;
+    let targetY = y;
+    let targetZ = z;
 
-      if (object.properties.modelAssetId) {
-        // Try to get metrics from asset metadata first (faster)
-        const assetData = await getAsset(object.properties.modelAssetId);
-        if (assetData?.metadata.metrics) {
-          const maxDimension = assetData.metadata.metrics.maxDimension;
+    if (object.properties.modelAssetId) {
+      // Try to get metrics from asset metadata first (faster)
+      const assetData = await getAsset(object.properties.modelAssetId);
+      if (assetData?.metadata.metrics) {
+        const maxDimension = assetData.metadata.metrics.maxDimension;
+        cameraDistance = maxDimension * MODEL_CAMERA_DISTANCE_MULTIPLIER;
+        cameraDistance = Math.max(3, Math.min(cameraDistance, 20));
+
+        // Focus on visual center (bounding box center), not pivot point
+        const modelCenterY = assetData.metadata.metrics.size.y / 2;
+        targetY = y + modelCenterY;
+        targetX = x;
+        targetZ = z;
+      } else if (assetData) {
+        // Fallback: load and preprocess model to get metrics
+        try {
+          const base64 = await blobToBase64(assetData.blob);
+          const preprocessed = await loadAndPreprocessModel(base64, assetData.metadata.fileType);
+          const maxDimension = preprocessed.metrics.maxDimension;
           cameraDistance = maxDimension * MODEL_CAMERA_DISTANCE_MULTIPLIER;
           cameraDistance = Math.max(3, Math.min(cameraDistance, 20));
-          
-          // Focus on visual center (bounding box center), not pivot point
-          const modelCenterY = assetData.metadata.metrics.size.y / 2;
+
+          // Focus on visual center
+          const modelCenterY = preprocessed.metrics.size.y / 2;
           targetY = y + modelCenterY;
           targetX = x;
           targetZ = z;
-        } else if (assetData) {
-          // Fallback: load and preprocess model to get metrics
-          try {
-            const base64 = await blobToBase64(assetData.blob);
-            const preprocessed = await loadAndPreprocessModel(
-              base64,
-              assetData.metadata.fileType
-            );
-            const maxDimension = preprocessed.metrics.maxDimension;
-            cameraDistance = maxDimension * MODEL_CAMERA_DISTANCE_MULTIPLIER;
-            cameraDistance = Math.max(3, Math.min(cameraDistance, 20));
-            
-            // Focus on visual center
-            const modelCenterY = preprocessed.metrics.size.y / 2;
-            targetY = y + modelCenterY;
-            targetX = x;
-            targetZ = z;
-          } catch (error) {
-            console.warn('[EditorPage] Failed to load model for camera focus:', error);
-          }
+        } catch (error) {
+          console.warn('[EditorPage] Failed to load model for camera focus:', error);
         }
       }
+    }
 
-      // Calculate camera position (offset from target)
-      // Position camera at an angle for better viewing
-      const angle = Math.PI / 4; // 45 degrees
-      const cameraX = targetX + Math.cos(angle) * cameraDistance;
-      const cameraY = targetY + cameraDistance * 0.6; // Slightly above
-      const cameraZ = targetZ + Math.sin(angle) * cameraDistance;
+    // Calculate camera position (offset from target)
+    // Position camera at an angle for better viewing
+    const angle = Math.PI / 4; // 45 degrees
+    const cameraX = targetX + Math.cos(angle) * cameraDistance;
+    const cameraY = targetY + cameraDistance * 0.6; // Slightly above
+    const cameraZ = targetZ + Math.sin(angle) * cameraDistance;
 
-      // Smoothly focus camera on visual center of object
-      controls.setLookAt(
-        cameraX,
-        cameraY,
-        cameraZ,
-        targetX,
-        targetY,
-        targetZ, // Target (visual center)
-        true // Enable smooth transition
-      );
-    },
-    []
-  );
+    // Smoothly focus camera on visual center of object
+    controls.setLookAt(
+      cameraX,
+      cameraY,
+      cameraZ,
+      targetX,
+      targetY,
+      targetZ, // Target (visual center)
+      true // Enable smooth transition
+    );
+  }, []);
 
   const handleUpdateObject = useCallback(
     (updated: SceneObject) => {

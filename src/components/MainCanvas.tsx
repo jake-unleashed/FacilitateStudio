@@ -21,17 +21,46 @@ import { BoundingBox } from './scene/BoundingBox';
 const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Minimum distance in pixels before considering it a drag vs a click */
+const DRAG_THRESHOLD_PIXELS = 5;
+
+/** Conversion factor from scene units to Three.js world units */
+const SCENE_TO_WORLD_SCALE = 100;
+
+// ============================================================================
 // Types
 // ============================================================================
 
-// Drag state interface for tracking object translation
+/**
+ * Drag state for tracking object translation during drag operations.
+ *
+ * The drag system uses the click point's Y coordinate as the drag plane height,
+ * ensuring consistent coordinate projection between the initial click and
+ * subsequent drag movements. This prevents the "jump" issue that occurs when
+ * clicking on elevated surfaces of 3D models.
+ */
 interface DragState {
+  /** ID of the object being dragged */
   objectId: string;
+  /** Reference to the scene object being dragged */
   object: SceneObject;
+  /** Y-coordinate of the drag plane (set to click point Y for consistent projection) */
   groundPlaneY: number;
-  offset: THREE.Vector3;
-  hasMoved: boolean; // Track if mouse moved during drag (to distinguish click vs drag)
-  startPosition: { x: number; y: number }; // Initial mouse position
+  /** Object's starting X position in scene units (before drag began) */
+  initialObjectX: number;
+  /** Object's starting Z position in scene units (before drag began) */
+  initialObjectZ: number;
+  /** X-coordinate where user grabbed on the drag plane (world units) */
+  initialGrabX: number;
+  /** Z-coordinate where user grabbed on the drag plane (world units) */
+  initialGrabZ: number;
+  /** Whether mouse moved beyond drag threshold (distinguishes click vs drag) */
+  hasMoved: boolean;
+  /** Initial mouse screen position for threshold calculation */
+  startPosition: { x: number; y: number };
 }
 
 interface SceneContentProps {
@@ -229,10 +258,20 @@ const CursorManager: React.FC<{
   return null;
 };
 
-// Minimum distance in pixels before considering it a drag vs a click
-const DRAG_THRESHOLD = 5;
 
-// Drag handler component - manages pointer events for object translation
+/**
+ * DragHandler - Manages pointer events for object translation in the 3D scene.
+ *
+ * This component handles the drag-to-move interaction for scene objects:
+ * 1. Raycasts from mouse position to a horizontal plane at the grab point height
+ * 2. Calculates movement delta from initial grab position
+ * 3. Updates object position while maintaining the grab point under cursor
+ *
+ * Key features:
+ * - Uses capture phase event listeners to intercept before camera controls
+ * - Implements drag threshold to distinguish clicks from drags
+ * - Pre-allocates Three.js objects to avoid GC pressure
+ */
 const DragHandler: React.FC<{
   dragState: DragState | null;
   hasMovedRef: React.MutableRefObject<boolean>;
@@ -266,7 +305,7 @@ const DragHandler: React.FC<{
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       // Only start actual dragging if we've moved beyond threshold
-      if (distance < DRAG_THRESHOLD) return;
+      if (distance < DRAG_THRESHOLD_PIXELS) return;
 
       // Mark as a real drag (not just a click)
       // Check BOTH dragState.hasMoved AND hasMovedRef to prevent multiple calls
@@ -285,9 +324,14 @@ const DragHandler: React.FC<{
       raycaster.current.setFromCamera(mouseCoords.current, camera);
 
       if (raycaster.current.ray.intersectPlane(groundPlane.current, intersection.current)) {
-        // Apply offset to get new object position
-        const newX = (intersection.current.x - dragState.offset.x) * 100;
-        const newZ = -(intersection.current.z - dragState.offset.z) * 100;
+        // Calculate how far the grab point has moved on the drag plane
+        const deltaX = intersection.current.x - dragState.initialGrabX;
+        const deltaZ = intersection.current.z - dragState.initialGrabZ;
+
+        // Apply delta to initial object position (convert from world to scene units)
+        // Note: Z is negated because Three.js Z is opposite to scene transform Z
+        const newX = dragState.initialObjectX + deltaX * SCENE_TO_WORLD_SCALE;
+        const newZ = dragState.initialObjectZ - deltaZ * SCENE_TO_WORLD_SCALE;
 
         // Update object with new position
         const updatedObject: SceneObject = {
@@ -347,7 +391,8 @@ const NAVIGATION_KEYS = new Set([
 const KeyboardNavigator: React.FC<{
   controlsRef: React.RefObject<CameraControlsImpl>;
   selectedObject: SceneObject | null;
-}> = ({ controlsRef, selectedObject }) => {
+  onFocusObject?: (obj: SceneObject) => void;
+}> = ({ controlsRef, selectedObject, onFocusObject }) => {
   const keysPressed = useRef<Set<string>>(new Set());
   const { gl, invalidate } = useThree();
 
@@ -366,24 +411,9 @@ const KeyboardNavigator: React.FC<{
       const key = e.key.toLowerCase();
       keysPressed.current.add(key);
 
-      // Focus on selected object (F key)
-      if (key === 'f' && selectedObject && controlsRef.current) {
-        const pos = new THREE.Vector3(
-          selectedObject.transform.x / 100,
-          selectedObject.transform.y / 100,
-          -selectedObject.transform.z / 100
-        );
-        // Smoothly focus on object with good framing distance
-        controlsRef.current.setLookAt(
-          pos.x + 5,
-          pos.y + 3,
-          pos.z + 5, // Camera position offset
-          pos.x,
-          pos.y,
-          pos.z, // Target (object center)
-          true // Enable smooth transition
-        );
-        invalidate(); // Trigger re-render for smooth animation
+      // Focus on selected object (F key) - delegates to onFocusObject for unified focus behavior
+      if (key === 'f' && selectedObject && onFocusObject) {
+        onFocusObject(selectedObject);
         e.preventDefault();
       }
 
@@ -410,7 +440,7 @@ const KeyboardNavigator: React.FC<{
       window.removeEventListener('keyup', handleKeyUp);
       keysPressedRef.clear(); // Clean up on unmount
     };
-  }, [gl, selectedObject, controlsRef, invalidate]);
+  }, [gl, selectedObject, controlsRef, invalidate, onFocusObject]);
 
   // Continuous movement in useFrame for smooth WASD/arrow key navigation
   useFrame(() => {
@@ -592,19 +622,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
         e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
       ).stopImmediatePropagation?.();
 
-      const objectWorldPos = new THREE.Vector3(
-        obj.transform.x / 100,
-        obj.transform.y / 100,
-        -obj.transform.z / 100
-      );
-
-      // Calculate offset from click point to object center
       const clickPoint = e.point;
-      const offset = new THREE.Vector3(
-        clickPoint.x - objectWorldPos.x,
-        0,
-        clickPoint.z - objectWorldPos.z
-      );
+
+      // Use click point Y for the drag plane - this ensures consistent projection
+      // between the initial click and subsequent drag movements
+      const groundPlaneY = clickPoint.y;
 
       // Reset hasMovedRef synchronously before setting drag state
       hasMovedRef.current = false;
@@ -612,8 +634,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
       setDragState({
         objectId: obj.id,
         object: obj,
-        groundPlaneY: objectWorldPos.y,
-        offset,
+        groundPlaneY,
+        initialObjectX: obj.transform.x,
+        initialObjectZ: obj.transform.z,
+        initialGrabX: clickPoint.x,
+        initialGrabZ: clickPoint.z,
         hasMoved: false,
         startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
       });
@@ -716,10 +741,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
     <>
       {/* Enhanced lighting for better model visibility */}
       <ambientLight intensity={1.2} />
+      {/* eslint-disable-next-line react/no-unknown-property */}
       <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow />
       <directionalLight position={[-10, 10, -5]} intensity={0.8} />
       <pointLight position={[10, 10, 10]} intensity={2.0} />
       <pointLight position={[-10, 8, -10]} intensity={1.5} />
+      {/* eslint-disable-next-line react/no-unknown-property */}
       <spotLight position={[0, 20, 0]} angle={0.6} penumbra={0.5} intensity={2.5} castShadow />
 
       {/* Preview Move Item Step - renders outline and handles animation */}
@@ -918,7 +945,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
       />
 
       {/* Keyboard navigation */}
-      <KeyboardNavigator controlsRef={controlsRef} selectedObject={selectedObject} />
+      <KeyboardNavigator
+        controlsRef={controlsRef}
+        selectedObject={selectedObject}
+        onFocusObject={onFocusObject}
+      />
     </>
   );
 };
