@@ -59,7 +59,10 @@ interface UseModelUploadReturn {
   /** Upload a file and create a scene object */
   uploadFile: (file: File, existingObjects: SceneObject[]) => Promise<UploadResult | null>;
   /** Add an existing asset to the scene */
-  addRecentAssetToScene: (asset: AssetMetadata, existingObjects: SceneObject[]) => Promise<UploadResult | null>;
+  addRecentAssetToScene: (
+    asset: AssetMetadata,
+    existingObjects: SceneObject[]
+  ) => Promise<UploadResult | null>;
   /** Refresh the recent assets list */
   refreshRecentAssets: () => Promise<void>;
   /** Whether an upload is in progress */
@@ -84,10 +87,7 @@ function calculateOptimalPosition(
     return { x: 0, y: 0, z: 0 };
   }
 
-  const spacing = Math.max(
-    MODEL_POSITION_SPACING,
-    modelMetrics.maxDimension * 1.5
-  );
+  const spacing = Math.max(MODEL_POSITION_SPACING, modelMetrics.maxDimension * 1.5);
 
   // Spiral outward to find non-overlapping position
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -114,10 +114,7 @@ function calculateOptimalPosition(
 /**
  * Generate a unique name for the model, avoiding duplicates.
  */
-function generateUniqueName(
-  baseName: string,
-  existingObjects: SceneObject[]
-): string {
+function generateUniqueName(baseName: string, existingObjects: SceneObject[]): string {
   // Sanitize: remove extension, special chars, trim
   let name = baseName
     .replace(/\.[^/.]+$/, '')
@@ -174,7 +171,10 @@ function createSceneObject(
  * Serialize THREE.js metrics to plain JSON objects.
  */
 function serializeMetrics(metrics: {
-  boundingBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+  boundingBox: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  };
   center: { x: number; y: number; z: number };
   size: { x: number; y: number; z: number };
   bottomY: number;
@@ -184,8 +184,16 @@ function serializeMetrics(metrics: {
 }): ModelMetrics {
   return {
     boundingBox: {
-      min: { x: metrics.boundingBox.min.x, y: metrics.boundingBox.min.y, z: metrics.boundingBox.min.z },
-      max: { x: metrics.boundingBox.max.x, y: metrics.boundingBox.max.y, z: metrics.boundingBox.max.z },
+      min: {
+        x: metrics.boundingBox.min.x,
+        y: metrics.boundingBox.min.y,
+        z: metrics.boundingBox.min.z,
+      },
+      max: {
+        x: metrics.boundingBox.max.x,
+        y: metrics.boundingBox.max.y,
+        z: metrics.boundingBox.max.z,
+      },
     },
     center: { x: metrics.center.x, y: metrics.center.y, z: metrics.center.z },
     size: { x: metrics.size.x, y: metrics.size.y, z: metrics.size.z },
@@ -206,6 +214,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(INITIAL_UPLOAD_PROGRESS);
   const [recentAssets, setRecentAssets] = useState<AssetMetadata[]>([]);
   const hasMigratedRef = useRef(false);
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---------------------------------------------------------------------------
   // Initialization: Migrate legacy assets and load recent assets
@@ -242,11 +251,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   // ---------------------------------------------------------------------------
 
   const setProgress = useCallback(
-    (
-      stage: UploadProgress['stage'],
-      progress: number,
-      overrides: Partial<UploadProgress> = {}
-    ) => {
+    (stage: UploadProgress['stage'], progress: number, overrides: Partial<UploadProgress> = {}) => {
       setUploadProgress((prev) => ({
         ...prev,
         stage,
@@ -275,6 +280,37 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   const resetProgress = useCallback(() => {
     setUploadProgress(INITIAL_UPLOAD_PROGRESS);
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Auto-reset progress after successful upload
+  // ---------------------------------------------------------------------------
+
+  // Auto-reset delay: Time to show "Added to scene" message before resetting to "Upload Asset"
+  const AUTO_RESET_DELAY_MS = 2500;
+
+  useEffect(() => {
+    // Clear any existing timeout when stage changes
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
+
+    // If upload completes successfully, auto-reset after delay
+    if (uploadProgress.stage === 'complete') {
+      resetTimeoutRef.current = setTimeout(() => {
+        resetProgress();
+        resetTimeoutRef.current = null;
+      }, AUTO_RESET_DELAY_MS);
+    }
+
+    // Cleanup: clear timeout on unmount or when stage changes
+    return () => {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+        resetTimeoutRef.current = null;
+      }
+    };
+  }, [uploadProgress.stage, resetProgress]);
 
   // ---------------------------------------------------------------------------
   // Refresh Recent Assets

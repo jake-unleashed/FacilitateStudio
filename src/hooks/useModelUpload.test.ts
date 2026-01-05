@@ -275,9 +275,7 @@ describe('useModelUpload', () => {
     });
 
     it('handles storage errors', async () => {
-      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(
-        new Error('Storage quota exceeded')
-      );
+      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Storage quota exceeded'));
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -502,13 +500,13 @@ describe('useModelUpload', () => {
   describe('isUploading', () => {
     it('is true during upload', async () => {
       const metadata = createMockMetadata();
-      
+
       // Create a delayed promise to keep upload in progress
       let resolveUpload: () => void;
       const uploadPromise = new Promise<typeof metadata>((resolve) => {
         resolveUpload = () => resolve(metadata);
       });
-      
+
       vi.mocked(modelAssetStore.saveAsset).mockReturnValue(uploadPromise);
       vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
         blob: new Blob(['test']),
@@ -554,6 +552,198 @@ describe('useModelUpload', () => {
       expect(result.current.isUploading).toBe(false);
     });
   });
+
+  // ===========================================================================
+  // Auto-reset progress after successful upload
+  // ===========================================================================
+
+  describe('auto-reset after successful upload', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('automatically resets progress from complete to idle after delay', async () => {
+      const metadata = createMockMetadata();
+      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
+      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+        blob: new Blob(['test']),
+        metadata,
+      });
+      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+        model: {} as THREE.Object3D,
+        metrics: createMockMetrics(),
+        originalScale: 1,
+      });
+
+      const { result } = renderHook(() => useModelUpload());
+
+      // Complete upload
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('model.obj'), []);
+      });
+
+      // Should be complete immediately after upload
+      expect(result.current.uploadProgress.stage).toBe('complete');
+
+      // Advance time by 2.5 seconds
+      await act(async () => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      // Should have reset to idle
+      expect(result.current.uploadProgress.stage).toBe('idle');
+      expect(result.current.uploadProgress.fileName).toBeNull();
+      expect(result.current.uploadProgress.progress).toBe(0);
+    });
+
+    it('does not reset if stage changes before timeout', async () => {
+      const metadata = createMockMetadata();
+      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
+      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+        blob: new Blob(['test']),
+        metadata,
+      });
+      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+        model: {} as THREE.Object3D,
+        metrics: createMockMetrics(),
+        originalScale: 1,
+      });
+
+      const { result } = renderHook(() => useModelUpload());
+
+      // Complete upload
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('model.obj'), []);
+      });
+
+      expect(result.current.uploadProgress.stage).toBe('complete');
+
+      // Manually reset progress before timeout
+      act(() => {
+        result.current.resetProgress();
+      });
+
+      expect(result.current.uploadProgress.stage).toBe('idle');
+
+      // Advance time - should not reset again (already reset)
+      await act(async () => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      // Should still be idle
+      expect(result.current.uploadProgress.stage).toBe('idle');
+    });
+
+    it('cancels previous timeout when starting new upload', async () => {
+      const metadata = createMockMetadata();
+      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
+      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+        blob: new Blob(['test']),
+        metadata,
+      });
+      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+        model: {} as THREE.Object3D,
+        metrics: createMockMetrics(),
+        originalScale: 1,
+      });
+
+      const { result } = renderHook(() => useModelUpload());
+
+      // First upload
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('model1.obj'), []);
+      });
+
+      expect(result.current.uploadProgress.stage).toBe('complete');
+
+      // Start second upload before timeout fires
+      await act(async () => {
+        vi.advanceTimersByTime(1000); // Only 1 second passed
+        await result.current.uploadFile(createMockFile('model2.obj'), []);
+      });
+
+      // Should be complete for second upload
+      expect(result.current.uploadProgress.stage).toBe('complete');
+      expect(result.current.uploadProgress.fileName).toBe('model2.obj');
+
+      // Advance time - should reset for second upload
+      await act(async () => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      // Should have reset to idle
+      expect(result.current.uploadProgress.stage).toBe('idle');
+    });
+
+    it('does not reset when stage is error', async () => {
+      vi.mocked(modelAssetStore.saveAsset).mockRejectedValue(new Error('Test error'));
+
+      const { result } = renderHook(() => useModelUpload());
+
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('model.obj'), []);
+      });
+
+      expect(result.current.uploadProgress.stage).toBe('error');
+
+      // Advance time - should not reset
+      await act(async () => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      // Should still be error
+      expect(result.current.uploadProgress.stage).toBe('error');
+    });
+
+    it('does not reset when stage is idle', async () => {
+      const { result } = renderHook(() => useModelUpload());
+
+      expect(result.current.uploadProgress.stage).toBe('idle');
+
+      // Advance time - should not reset
+      await act(async () => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      // Should still be idle
+      expect(result.current.uploadProgress.stage).toBe('idle');
+    });
+
+    it('cleans up timeout on unmount', async () => {
+      const metadata = createMockMetadata();
+      vi.mocked(modelAssetStore.saveAsset).mockResolvedValue(metadata);
+      vi.mocked(modelAssetStore.getAsset).mockResolvedValue({
+        blob: new Blob(['test']),
+        metadata,
+      });
+      vi.mocked(modelLoaders.loadAndPreprocessModel).mockResolvedValue({
+        model: {} as THREE.Object3D,
+        metrics: createMockMetrics(),
+        originalScale: 1,
+      });
+
+      const { result, unmount } = renderHook(() => useModelUpload());
+
+      // Complete upload
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('model.obj'), []);
+      });
+
+      expect(result.current.uploadProgress.stage).toBe('complete');
+
+      // Unmount before timeout
+      unmount();
+
+      // Advance time - should not cause issues
+      vi.advanceTimersByTime(2500);
+
+      // No errors should occur (timeout should be cleaned up)
+    });
+  });
 });
 
 // Type declaration for THREE
@@ -563,4 +753,3 @@ declare global {
     interface Object3D {}
   }
 }
-
