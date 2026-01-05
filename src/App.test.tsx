@@ -111,7 +111,7 @@ describe('App', () => {
   it('opens Add panel when Add button is clicked', () => {
     renderApp();
     fireEvent.click(screen.getByText('Add'));
-    expect(screen.getByText('Library')).toBeInTheDocument();
+    expect(screen.getByText('Add New')).toBeInTheDocument();
   });
 
   it('shows empty Objects panel for new project', () => {

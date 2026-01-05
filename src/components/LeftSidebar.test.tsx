@@ -111,9 +111,9 @@ describe('LeftSidebar', () => {
   });
 
   describe('Add Panel', () => {
-    it('shows Library title when add tab is active', () => {
+    it('shows Add New title when add tab is active', () => {
       render(<LeftSidebar {...defaultProps} activeTab="add" />);
-      expect(screen.getByText('Library')).toBeInTheDocument();
+      expect(screen.getByText('Add New')).toBeInTheDocument();
     });
 
     it('shows Upload Asset section', () => {
@@ -213,12 +213,12 @@ describe('LeftSidebar', () => {
       render(<LeftSidebar {...defaultProps} activeTab="objects" />);
       expect(screen.getByText('Scene Objects')).toBeInTheDocument();
       expect(screen.getByText('No objects in scene')).toBeInTheDocument();
-      expect(screen.getByText('Library')).toBeInTheDocument();
+      expect(screen.getByText('Add New')).toBeInTheDocument();
     });
 
-    it('opens Library panel when Library link is clicked in empty state', () => {
+    it('opens Add panel when Add New link is clicked in empty state', () => {
       render(<LeftSidebar {...defaultProps} activeTab="objects" />);
-      fireEvent.click(screen.getByText('Library'));
+      fireEvent.click(screen.getByText('Add New'));
       expect(defaultProps.setActiveTab).toHaveBeenCalledWith('add');
     });
 

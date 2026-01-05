@@ -176,7 +176,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
     setActiveTab(null);
   }, [setActiveTab]);
 
-  const handleSwitchToLibrary = useCallback(() => {
+  const handleSwitchToAddPanel = useCallback(() => {
     setActiveTab('add');
   }, [setActiveTab]);
 
@@ -260,7 +260,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
         {/* Header */}
         <div className="flex h-16 min-w-[20rem] shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
           <h2 className="text-lg font-bold tracking-tight text-slate-800">
-            {activeTab === 'add' && 'Library'}
+            {activeTab === 'add' && 'Add New'}
             {activeTab === 'steps' && 'Steps'}
             {activeTab === 'objects' && 'Scene Objects'}
           </h2>
@@ -430,10 +430,10 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                   <p className="mt-1 text-xs text-slate-400">
                     Add objects from the{' '}
                     <button
-                      onClick={handleSwitchToLibrary}
+                      onClick={handleSwitchToAddPanel}
                       className="font-semibold text-blue-500 underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-600"
                     >
-                      Library
+                      Add New
                     </button>
                   </p>
                 </div>
