@@ -27,23 +27,11 @@ export interface SceneObject {
   };
 }
 
-export type StepType = 'info-card' | 'move-item' | null;
-
 export interface SimStep {
   id: string;
   title: string;
   description: string;
   completed: boolean;
-  type: StepType;
-  // Info Card specific fields
-  heading?: string;
-  bodyText?: string;
-  buttonText?: string;
-  cardColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
-  // Move Item specific fields
-  targetObjectId?: string;
-  startPosition?: { x: number; y: number; z: number };
-  endPosition?: { x: number; y: number; z: number };
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';

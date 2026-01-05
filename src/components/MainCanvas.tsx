@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
 import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
 import { PreviewMoveItemStepRenderer } from './preview/PreviewMoveItemStepRenderer';
+import { ImportedModel } from './scene/ImportedModel';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -707,9 +708,13 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
   return (
     <>
-      <ambientLight intensity={0.7} />
-      <pointLight position={[10, 10, 10]} intensity={1.5} />
-      <spotLight position={[-10, 15, 10]} angle={0.25} penumbra={1} intensity={2} />
+      {/* Enhanced lighting for better model visibility */}
+      <ambientLight intensity={1.2} />
+      <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow />
+      <directionalLight position={[-10, 10, -5]} intensity={0.8} />
+      <pointLight position={[10, 10, 10]} intensity={2.0} />
+      <pointLight position={[-10, 8, -10]} intensity={1.5} />
+      <spotLight position={[0, 20, 0]} angle={0.6} penumbra={0.5} intensity={2.5} castShadow />
 
       {/* Preview Move Item Step - renders outline and handles animation */}
       {previewMode && previewStep?.type === 'move-item' && (
@@ -736,47 +741,90 @@ const SceneContent: React.FC<SceneContentProps> = ({
             obj.properties.visible &&
             // During recording, don't render the target object normally (we'll render it as actual + ghost)
             !(recordingPositionForStepId && obj.id === targetObjectId) && (
-              <IndustrialPrimitive
-                key={obj.id}
-                obj={obj}
-                isSelected={selectedObjectId === obj.id}
-                onPointerDown={handleObjectPointerDown}
-                onDoubleClick={handleDoubleClick}
-                isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
-                isHovered={hoveredObjectId === obj.id}
-                onHoverStart={() => setHoveredObjectId(obj.id)}
-                onHoverEnd={() => setHoveredObjectId(null)}
-              />
+              obj.properties.modelAssetId ? (
+                <ImportedModel
+                  key={obj.id}
+                  obj={obj}
+                  isSelected={selectedObjectId === obj.id}
+                  onPointerDown={handleObjectPointerDown}
+                  onDoubleClick={handleDoubleClick}
+                  isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
+                  isHovered={hoveredObjectId === obj.id}
+                  onHoverStart={() => setHoveredObjectId(obj.id)}
+                  onHoverEnd={() => setHoveredObjectId(null)}
+                />
+              ) : (
+                <IndustrialPrimitive
+                  key={obj.id}
+                  obj={obj}
+                  isSelected={selectedObjectId === obj.id}
+                  onPointerDown={handleObjectPointerDown}
+                  onDoubleClick={handleDoubleClick}
+                  isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
+                  isHovered={hoveredObjectId === obj.id}
+                  onHoverStart={() => setHoveredObjectId(obj.id)}
+                  onHoverEnd={() => setHoveredObjectId(null)}
+                />
+              )
             )
         )}
         {/* Render actual object at start position during recording (non-draggable) */}
         {recordingPositionForStepId && actualObject && actualObject.properties.visible && (
-          <IndustrialPrimitive
-            key={`actual-${actualObject.id}`}
-            obj={actualObject}
-            isSelected={false}
-            onPointerDown={() => {}} // Disable interaction
-            onDoubleClick={() => {}}
-            isDragging={false}
-            isHovered={false}
-            onHoverStart={() => {}}
-            onHoverEnd={() => {}}
-          />
+          actualObject.properties.modelAssetId ? (
+            <ImportedModel
+              key={`actual-${actualObject.id}`}
+              obj={actualObject}
+              isSelected={false}
+              onPointerDown={() => {}} // Disable interaction
+              onDoubleClick={() => {}}
+              isDragging={false}
+              isHovered={false}
+              onHoverStart={() => {}}
+              onHoverEnd={() => {}}
+            />
+          ) : (
+            <IndustrialPrimitive
+              key={`actual-${actualObject.id}`}
+              obj={actualObject}
+              isSelected={false}
+              onPointerDown={() => {}} // Disable interaction
+              onDoubleClick={() => {}}
+              isDragging={false}
+              isHovered={false}
+              onHoverStart={() => {}}
+              onHoverEnd={() => {}}
+            />
+          )
         )}
         {/* Render ghost object during recording (draggable) */}
         {recordingPositionForStepId && ghostObject && ghostObject.properties.visible && (
-          <IndustrialPrimitive
-            key={`ghost-${ghostObject.id}`}
-            obj={ghostObject}
-            isSelected={selectedObjectId === ghostObject.id}
-            onPointerDown={handleObjectPointerDown}
-            onDoubleClick={handleDoubleClick}
-            isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
-            isHovered={hoveredObjectId === ghostObject.id}
-            onHoverStart={() => setHoveredObjectId(ghostObject.id)}
-            onHoverEnd={() => setHoveredObjectId(null)}
-            isGhost={true}
-          />
+          ghostObject.properties.modelAssetId ? (
+            <ImportedModel
+              key={`ghost-${ghostObject.id}`}
+              obj={ghostObject}
+              isSelected={selectedObjectId === ghostObject.id}
+              onPointerDown={handleObjectPointerDown}
+              onDoubleClick={handleDoubleClick}
+              isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
+              isHovered={hoveredObjectId === ghostObject.id}
+              onHoverStart={() => setHoveredObjectId(ghostObject.id)}
+              onHoverEnd={() => setHoveredObjectId(null)}
+              isGhost={true}
+            />
+          ) : (
+            <IndustrialPrimitive
+              key={`ghost-${ghostObject.id}`}
+              obj={ghostObject}
+              isSelected={selectedObjectId === ghostObject.id}
+              onPointerDown={handleObjectPointerDown}
+              onDoubleClick={handleDoubleClick}
+              isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
+              isHovered={hoveredObjectId === ghostObject.id}
+              onHoverStart={() => setHoveredObjectId(ghostObject.id)}
+              onHoverEnd={() => setHoveredObjectId(null)}
+              isGhost={true}
+            />
+          )
         )}
       </group>
 

@@ -9,13 +9,17 @@ import { DebugMenu } from '../components/DebugMenu';
 import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
-import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
+import { INITIAL_OBJECTS, INITIAL_STEPS, MODEL_CAMERA_DISTANCE_MULTIPLIER } from '../constants';
 import { SceneObject, SidebarSection, SimStep } from '../types';
 import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
+import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { useUndoRedo } from '../hooks/useUndoRedo';
+import { getAsset, blobToBase64 } from '../utils/modelAssetStore';
+import { loadAndPreprocessModel } from '../utils/modelLoaders';
+import { AssetMetadata } from '../types/model';
 import {
   createUpdateObjectCommandHelper,
   createDeleteObjectCommandHelper,
@@ -169,6 +173,15 @@ export function EditorPage() {
 
   // Track debug cube count for naming
   const debugCubeCountRef = useRef(0);
+
+  // Model upload hook - handles storage, preprocessing, and caching
+  const {
+    uploadProgress,
+    recentAssets,
+    uploadFile,
+    addRecentAssetToScene,
+    isUploading,
+  } = useModelUpload();
 
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -369,26 +382,78 @@ export function EditorPage() {
     setSelectedObjectId(id);
   }, []);
 
-  const handleFocusObject = useCallback((object: SceneObject) => {
-    const controls = cameraControlsRef.current;
-    if (controls) {
+  const handleFocusObject = useCallback(
+    async (object: SceneObject) => {
+      const controls = cameraControlsRef.current;
+      if (!controls) return;
+
       // Calculate object position in Three.js coordinates
       const x = object.transform.x / 100;
       const y = object.transform.y / 100;
       const z = -object.transform.z / 100;
 
-      // Smoothly focus camera on object
+      // If object has a model, calculate optimal camera distance based on model size
+      let cameraDistance = 5; // Default distance
+      let targetX = x;
+      let targetY = y;
+      let targetZ = z;
+
+      if (object.properties.modelAssetId) {
+        // Try to get metrics from asset metadata first (faster)
+        const assetData = await getAsset(object.properties.modelAssetId);
+        if (assetData?.metadata.metrics) {
+          const maxDimension = assetData.metadata.metrics.maxDimension;
+          cameraDistance = maxDimension * MODEL_CAMERA_DISTANCE_MULTIPLIER;
+          cameraDistance = Math.max(3, Math.min(cameraDistance, 20));
+          
+          // Focus on visual center (bounding box center), not pivot point
+          const modelCenterY = assetData.metadata.metrics.size.y / 2;
+          targetY = y + modelCenterY;
+          targetX = x;
+          targetZ = z;
+        } else if (assetData) {
+          // Fallback: load and preprocess model to get metrics
+          try {
+            const base64 = await blobToBase64(assetData.blob);
+            const preprocessed = await loadAndPreprocessModel(
+              base64,
+              assetData.metadata.fileType
+            );
+            const maxDimension = preprocessed.metrics.maxDimension;
+            cameraDistance = maxDimension * MODEL_CAMERA_DISTANCE_MULTIPLIER;
+            cameraDistance = Math.max(3, Math.min(cameraDistance, 20));
+            
+            // Focus on visual center
+            const modelCenterY = preprocessed.metrics.size.y / 2;
+            targetY = y + modelCenterY;
+            targetX = x;
+            targetZ = z;
+          } catch (error) {
+            console.warn('[EditorPage] Failed to load model for camera focus:', error);
+          }
+        }
+      }
+
+      // Calculate camera position (offset from target)
+      // Position camera at an angle for better viewing
+      const angle = Math.PI / 4; // 45 degrees
+      const cameraX = targetX + Math.cos(angle) * cameraDistance;
+      const cameraY = targetY + cameraDistance * 0.6; // Slightly above
+      const cameraZ = targetZ + Math.sin(angle) * cameraDistance;
+
+      // Smoothly focus camera on visual center of object
       controls.setLookAt(
-        x + 5,
-        y + 3,
-        z + 5, // Camera position offset
-        x,
-        y,
-        z, // Target (object center)
+        cameraX,
+        cameraY,
+        cameraZ,
+        targetX,
+        targetY,
+        targetZ, // Target (visual center)
         true // Enable smooth transition
       );
-    }
-  }, []);
+    },
+    []
+  );
 
   const handleUpdateObject = useCallback(
     (updated: SceneObject) => {
@@ -487,6 +552,68 @@ export function EditorPage() {
     const command = createCreateObjectCommandHelper(newCube, index, `Create ${newCube.name}`);
     executeCommand(command);
   }, [objects.length, executeCommand]);
+
+  // Handle asset upload - uses the useModelUpload hook for storage and preprocessing
+  const handleUploadAsset = useCallback(
+    async (file: File) => {
+      const result = await uploadFile(file, objects);
+      if (!result) {
+        // Error is handled by the hook and shown in the UI
+        return;
+      }
+
+      // Add to scene via undo/redo
+      const index = objects.length;
+      const command = createCreateObjectCommandHelper(
+        result.sceneObject,
+        index,
+        `Upload and add ${result.sceneObject.name}`
+      );
+      executeCommand(command);
+
+      // Focus on the new object
+      setTimeout(() => {
+        handleSelectObject(result.sceneObject.id);
+        setTimeout(() => {
+          if (handleFocusObject) {
+            handleFocusObject(result.sceneObject);
+          }
+        }, 50);
+      }, 100);
+    },
+    [objects, uploadFile, executeCommand, handleSelectObject, handleFocusObject]
+  );
+
+  // Handle adding recent asset to scene
+  const handleAddRecentAsset = useCallback(
+    async (asset: AssetMetadata) => {
+      const result = await addRecentAssetToScene(asset, objects);
+      if (!result) {
+        console.error('[EditorPage] Failed to add recent asset:', asset.id);
+        return;
+      }
+
+      // Add to scene via undo/redo
+      const index = objects.length;
+      const command = createCreateObjectCommandHelper(
+        result.sceneObject,
+        index,
+        `Add ${result.sceneObject.name}`
+      );
+      executeCommand(command);
+
+      // Focus on the new object
+      setTimeout(() => {
+        handleSelectObject(result.sceneObject.id);
+        setTimeout(() => {
+          if (handleFocusObject) {
+            handleFocusObject(result.sceneObject);
+          }
+        }, 50);
+      }, 100);
+    },
+    [objects, addRecentAssetToScene, executeCommand, handleSelectObject, handleFocusObject]
+  );
 
   const handlePopulateTestSteps = useCallback(() => {
     beginBatch();
@@ -876,6 +1003,10 @@ export function EditorPage() {
         onStartRecordingPosition={handleStartRecordingPosition}
         onStopRecordingPosition={handleStopRecordingPosition}
         recordingPositionForStepId={recordingPositionForStepId}
+        onUploadAsset={handleUploadAsset}
+        uploadProgress={uploadProgress}
+        recentAssets={recentAssets}
+        onAddRecentAsset={handleAddRecentAsset}
       />
 
       {selectedObject && (

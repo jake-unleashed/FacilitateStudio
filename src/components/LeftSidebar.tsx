@@ -14,6 +14,9 @@ import {
 import { SidebarSection, SimStep, SceneObject, StepType } from '../types';
 import { OBJECT_ICONS } from '../constants';
 import { StepCard } from './StepCard';
+import { AssetUploadButton } from './AssetUploadButton';
+import { RecentAssetsList } from './RecentAssetsList';
+import { AssetMetadata, UploadProgress } from '../types/model';
 
 // Step type configuration for minimized step indicators
 interface StepTypeConfig {
@@ -55,6 +58,10 @@ interface LeftSidebarProps {
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: (stepId: string) => void;
   recordingPositionForStepId?: string | null;
+  onUploadAsset?: (file: File) => Promise<void>;
+  uploadProgress?: UploadProgress;
+  recentAssets?: AssetMetadata[];
+  onAddRecentAsset?: (asset: AssetMetadata) => void;
 }
 
 interface NavItemProps {
@@ -145,6 +152,10 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   onStartRecordingPosition,
   onStopRecordingPosition,
   recordingPositionForStepId,
+  onUploadAsset,
+  uploadProgress,
+  recentAssets = [],
+  onAddRecentAsset,
 }) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -268,30 +279,41 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
           {activeTab === 'add' && (
             <div className="space-y-6">
               {/* Upload Section - Tier 2 Rounding (20px) */}
-              <div className="group cursor-pointer rounded-[20px] border border-blue-100/50 bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 shadow-sm transition-all hover:border-blue-300">
-                <div className="flex flex-col items-center justify-center gap-3 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-white text-blue-500 shadow-lg shadow-blue-500/10 transition-all duration-300 group-hover:-rotate-6 group-hover:scale-110">
-                    <Upload size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">Upload Asset</p>
+              {onUploadAsset ? (
+                <AssetUploadButton onUpload={onUploadAsset} uploadProgress={uploadProgress} />
+              ) : (
+                <div className="group cursor-pointer rounded-[20px] border border-blue-100/50 bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 shadow-sm transition-all hover:border-blue-300">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-white text-blue-500 shadow-lg shadow-blue-500/10 transition-all duration-300 group-hover:-rotate-6 group-hover:scale-110">
+                      <Upload size={24} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">Upload Asset</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Recent Section */}
               <div>
                 <h3 className="mb-4 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
                   Recent
                 </h3>
-                {/* Empty State */}
-                <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-white/30 px-6 py-8 text-center">
-                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                    <Clock size={20} />
+                {onAddRecentAsset ? (
+                  <RecentAssetsList
+                    assets={recentAssets}
+                    onAddAsset={onAddRecentAsset}
+                    emptyMessage="No recent assets"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-white/30 px-6 py-8 text-center">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <Clock size={20} />
+                    </div>
+                    <p className="text-sm font-medium text-slate-500">No recent assets</p>
+                    <p className="mt-1 text-xs text-slate-400">Uploaded assets will appear here</p>
                   </div>
-                  <p className="text-sm font-medium text-slate-500">No recent assets</p>
-                  <p className="mt-1 text-xs text-slate-400">Uploaded assets will appear here</p>
-                </div>
+                )}
               </div>
             </div>
           )}
