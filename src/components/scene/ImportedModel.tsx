@@ -14,8 +14,9 @@
 import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { useFrame, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SceneObject } from '../../types';
+import { SceneObject, ChildMesh, pathToString } from '../../types';
 import { getOrLoadModel } from '../../utils/modelCache';
+import { findChildByPath } from '../../utils/modelLoaders';
 import { BoundingBox } from './BoundingBox';
 
 // =============================================================================
@@ -28,6 +29,7 @@ const FADE_IN_DURATION_MS = 300;
 /** Colors for selection/hover effects */
 const SELECTION_COLOR = '#3b82f6';
 const SELECTION_COLOR_GHOST = '#a855f7';
+const CHILD_SELECTION_COLOR = '#10b981'; // Emerald for child selection
 const HOVER_COLOR = '#ffffff';
 const SELECTION_INTENSITY = 0.15;
 const HOVER_INTENSITY = 0.08;
@@ -39,7 +41,11 @@ const HOVER_INTENSITY = 0.08;
 interface ImportedModelProps {
   obj: SceneObject;
   isSelected: boolean;
+  /** Path of the selected child mesh (if any) - format: "path.to.child" */
+  selectedChildPath?: string | null;
   onPointerDown: (e: ThreeEvent<PointerEvent>, obj: SceneObject) => void;
+  /** Called when a child mesh is clicked - passes the child path */
+  onChildPointerDown?: (e: ThreeEvent<PointerEvent>, obj: SceneObject, childPath: string) => void;
   onDoubleClick: (obj: SceneObject) => void;
   isDragging: boolean;
   isHovered: boolean;
@@ -67,7 +73,9 @@ const LoadingPlaceholder: React.FC = () => (
 const ImportedModelInner: React.FC<ImportedModelProps> = ({
   obj,
   isSelected,
+  selectedChildPath,
   onPointerDown,
+  onChildPointerDown,
   onDoubleClick,
   isDragging: _isDragging,
   isHovered,
@@ -84,8 +92,15 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   // Start at opacity 1 - models should be visible immediately
   // Fade-in animation will temporarily reduce opacity if enabled
   const [opacity, setOpacity] = useState(1);
+  
+  // Track which child mesh is currently hovered (for visual feedback)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [hoveredChildPath, _setHoveredChildPath] = useState<string | null>(null);
 
   const modelAssetId = obj.properties.modelAssetId as string | undefined;
+  
+  // Check if a specific child is selected
+  const hasChildSelected = selectedChildPath !== null && selectedChildPath !== undefined;
 
   // Load model from shared cache when asset ID changes
   useEffect(() => {
@@ -153,13 +168,64 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     [modelHeight]
   );
 
+  // Build a map of path strings to child mesh info for efficient lookup
+  // Must be defined before findChildPathForMesh which uses it
+  const childPathToMesh = useMemo(() => {
+    const map = new Map<string, { mesh: THREE.Object3D; childInfo: ChildMesh }>();
+    if (!model || !obj.children) return map;
+    
+    for (const child of obj.children) {
+      const pathStr = pathToString(child.path);
+      const meshObj = findChildByPath(model, child.path);
+      if (meshObj) {
+        map.set(pathStr, { mesh: meshObj, childInfo: child });
+      }
+    }
+    return map;
+  }, [model, obj.children]);
+
+  // Find which child (if any) a clicked mesh belongs to
+  const findChildPathForMesh = useCallback((clickedMesh: THREE.Object3D): string | null => {
+    if (!model || !obj.children || obj.children.length === 0) return null;
+    
+    // For each child in our map, check if the clicked mesh is the child or a descendant of it
+    for (const [pathStr, { mesh }] of childPathToMesh) {
+      // Check if clicked mesh IS this child mesh
+      if (mesh === clickedMesh) {
+        return pathStr;
+      }
+      
+      // Check if clicked mesh is a descendant of this child
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let current: any = clickedMesh;
+      while (current && current !== model) {
+        if (current === mesh) {
+          return pathStr;
+        }
+        current = current.parent;
+      }
+    }
+    
+    return null;
+  }, [model, obj.children, childPathToMesh]);
+
   // Memoize event handlers
   const handlePointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      onPointerDown(e, obj);
+      
+      // Check if a specific child was clicked
+      const childPath = findChildPathForMesh(e.object);
+      
+      if (childPath && onChildPointerDown) {
+        // Child mesh was clicked
+        onChildPointerDown(e, obj, childPath);
+      } else {
+        // Parent was clicked (or no children exist)
+        onPointerDown(e, obj);
+      }
     },
-    [onPointerDown, obj]
+    [onPointerDown, onChildPointerDown, obj, findChildPathForMesh]
   );
 
   const handleDoubleClick = useCallback(() => {
@@ -221,9 +287,36 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     });
   }, [model, opacity]);
 
+  // Apply child transforms when they change
+  useEffect(() => {
+    if (!model || !obj.children) return;
+    
+    for (const child of obj.children) {
+      const pathStr = pathToString(child.path);
+      const entry = childPathToMesh.get(pathStr);
+      if (!entry) continue;
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mesh = entry.mesh as any;
+      const lt = entry.childInfo.localTransform;
+      
+      // Apply local transform offset (position only for now)
+      // Scale of 100 matches the parent transform convention
+      mesh.position.set(lt.x / 100, lt.y / 100, -lt.z / 100);
+      mesh.rotation.set(
+        THREE.MathUtils.degToRad(lt.rotationX),
+        THREE.MathUtils.degToRad(lt.rotationY),
+        THREE.MathUtils.degToRad(lt.rotationZ)
+      );
+      mesh.scale.set(lt.scaleX, lt.scaleY, lt.scaleZ);
+    }
+  }, [model, obj.children, childPathToMesh]);
+
   // Selection and hover effects (optimized: only run when needed)
   const prevSelectedRef = useRef(isSelected);
   const prevHoveredRef = useRef(isHovered);
+  const prevSelectedChildPathRef = useRef(selectedChildPath);
+  const prevHoveredChildPathRef = useRef(hoveredChildPath);
 
   useFrame(() => {
     if (!model) return;
@@ -231,23 +324,71 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     // Only update materials if selection/hover state changed
     const selectionChanged = prevSelectedRef.current !== isSelected;
     const hoverChanged = prevHoveredRef.current !== isHovered;
+    const childSelectionChanged = prevSelectedChildPathRef.current !== selectedChildPath;
+    const childHoverChanged = prevHoveredChildPathRef.current !== hoveredChildPath;
 
-    if (selectionChanged || hoverChanged || isSelected || isHovered) {
+    if (selectionChanged || hoverChanged || childSelectionChanged || childHoverChanged || 
+        isSelected || isHovered || hasChildSelected || hoveredChildPath) {
+      
+      // Reset all materials first
       model.traverse((child: THREE.Object3D) => {
         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          if (isSelected) {
-            const highlightColor = isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR;
-            child.material.emissive.set(highlightColor).multiplyScalar(SELECTION_INTENSITY);
-          } else if (isHovered) {
-            child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
-          } else {
-            child.material.emissive.set('#000000');
-          }
+          child.material.emissive.set('#000000');
         }
       });
+      
+      // If a child is selected, only highlight that child
+      if (hasChildSelected && selectedChildPath) {
+        const entry = childPathToMesh.get(selectedChildPath);
+        if (entry) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mesh = entry.mesh as any;
+          mesh.traverse((child: THREE.Object3D) => {
+            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+              child.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY);
+            }
+          });
+          // Also check if it's a single mesh (not a group with children)
+          if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
+            mesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY);
+          }
+        }
+      }
+      // If parent is selected (no child), highlight entire model
+      else if (isSelected) {
+        model.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            const highlightColor = isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR;
+            child.material.emissive.set(highlightColor).multiplyScalar(SELECTION_INTENSITY);
+          }
+        });
+      }
+      // If a child is hovered
+      else if (hoveredChildPath) {
+        const entry = childPathToMesh.get(hoveredChildPath);
+        if (entry) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mesh = entry.mesh as any;
+          mesh.traverse((child: THREE.Object3D) => {
+            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+              child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
+            }
+          });
+        }
+      }
+      // If parent is hovered
+      else if (isHovered) {
+        model.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
+          }
+        });
+      }
 
       prevSelectedRef.current = isSelected;
       prevHoveredRef.current = isHovered;
+      prevSelectedChildPathRef.current = selectedChildPath;
+      prevHoveredChildPathRef.current = hoveredChildPath;
     }
   });
 
@@ -311,7 +452,9 @@ export const ImportedModel = React.memo(ImportedModelInner, (prevProps, nextProp
     prevProps.obj.transform.scaleX === nextProps.obj.transform.scaleX &&
     prevProps.obj.transform.scaleY === nextProps.obj.transform.scaleY &&
     prevProps.obj.transform.scaleZ === nextProps.obj.transform.scaleZ &&
+    prevProps.obj.children === nextProps.obj.children &&
     prevProps.isSelected === nextProps.isSelected &&
+    prevProps.selectedChildPath === nextProps.selectedChildPath &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.isHovered === nextProps.isHovered &&
     prevProps.isGhost === nextProps.isGhost

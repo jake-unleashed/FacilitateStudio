@@ -12,6 +12,34 @@ export interface Transform {
   scaleZ: number;
 }
 
+/**
+ * Represents a child mesh within a 3D model.
+ * Children are automatically extracted from the model's mesh hierarchy.
+ */
+export interface ChildMesh {
+  /** Display name of the child mesh */
+  name: string;
+  /** Path in the Three.js hierarchy (e.g., ["Scene", "Body", "Wheel_FL"]) */
+  path: string[];
+  /** Local transform offset from the default position (applied on top of parent) */
+  localTransform: Transform;
+}
+
+/**
+ * Default transform with no offset - used for child meshes initially
+ */
+export const DEFAULT_TRANSFORM: Transform = {
+  x: 0,
+  y: 0,
+  z: 0,
+  rotationX: 0,
+  rotationY: 0,
+  rotationZ: 0,
+  scaleX: 1,
+  scaleY: 1,
+  scaleZ: 1,
+};
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -24,7 +52,11 @@ export interface SceneObject {
     hasGravity?: boolean;
     locked?: boolean;
     color?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
   };
+  /** Child meshes within this object (for imported 3D models with hierarchy) */
+  children?: ChildMesh[];
 }
 
 export interface SimStep {
@@ -35,3 +67,51 @@ export interface SimStep {
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';
+
+/**
+ * Parsed selection ID for objects and their children.
+ * Format: "objectId" or "objectId/childPath"
+ */
+export interface ParsedSelectionId {
+  objectId: string;
+  childPath: string | null;
+}
+
+/**
+ * Parse a selection ID into object ID and optional child path.
+ * @param selectionId - The full selection ID (e.g., "obj-123" or "obj-123/wheel_fl")
+ */
+export function parseSelectionId(selectionId: string | null): ParsedSelectionId | null {
+  if (!selectionId) return null;
+  const slashIndex = selectionId.indexOf('/');
+  if (slashIndex === -1) {
+    return { objectId: selectionId, childPath: null };
+  }
+  return {
+    objectId: selectionId.substring(0, slashIndex),
+    childPath: selectionId.substring(slashIndex + 1),
+  };
+}
+
+/**
+ * Create a selection ID for a child mesh.
+ * @param objectId - Parent object ID
+ * @param childPath - Child path identifier
+ */
+export function createChildSelectionId(objectId: string, childPath: string): string {
+  return `${objectId}/${childPath}`;
+}
+
+/**
+ * Convert a path array to a path string for use in selection IDs.
+ */
+export function pathToString(path: string[]): string {
+  return path.join('.');
+}
+
+/**
+ * Convert a path string back to a path array.
+ */
+export function stringToPath(pathStr: string): string[] {
+  return pathStr.split('.');
+}

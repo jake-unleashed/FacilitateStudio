@@ -1,5 +1,5 @@
 import React, { Suspense, useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
-import { SceneObject, SimStep } from '../types';
+import { SceneObject, SimStep, parseSelectionId, createChildSelectionId } from '../types';
 import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import {
@@ -511,7 +511,13 @@ const SceneContent: React.FC<SceneContentProps> = ({
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
-  const selectedObject = objects.find((obj) => obj.id === selectedObjectId) || null;
+  
+  // Parse the selection ID to separate parent and child selection
+  const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
+  const selectedParentId = parsedSelection?.objectId ?? null;
+  const selectedChildPath = parsedSelection?.childPath ?? null;
+  
+  const selectedObject = objects.find((obj) => obj.id === selectedParentId) || null;
 
   // Drag state management
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -646,6 +652,26 @@ const SceneContent: React.FC<SceneContentProps> = ({
     [recordingPositionForStepId, targetObjectId, previewMode, onPreviewObjectClick]
   );
 
+  // Handle pointer down on a child mesh - selects the child
+  const handleChildPointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>, obj: SceneObject, childPath: string) => {
+      // Only handle left mouse button
+      if (e.nativeEvent.button !== 0) return;
+
+      // Stop propagation to prevent camera controls from responding
+      e.stopPropagation();
+      e.nativeEvent.stopPropagation();
+      (
+        e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
+      ).stopImmediatePropagation?.();
+
+      // Select the child immediately (clicking a child is always a selection, not a drag)
+      const childSelectionId = createChildSelectionId(obj.id, childPath);
+      onSelectObject(childSelectionId);
+    },
+    [onSelectObject]
+  );
+
   // Handle drag end - select object if it was just a click
   const handleDragEnd = useCallback(
     (wasDrag: boolean) => {
@@ -778,8 +804,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
               <ImportedModel
                 key={obj.id}
                 obj={obj}
-                isSelected={selectedObjectId === obj.id}
+                isSelected={selectedParentId === obj.id}
+                selectedChildPath={selectedParentId === obj.id ? selectedChildPath : null}
                 onPointerDown={handleObjectPointerDown}
+                onChildPointerDown={handleChildPointerDown}
                 onDoubleClick={handleDoubleClick}
                 isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
                 isHovered={hoveredObjectId === obj.id}
@@ -790,7 +818,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
               <IndustrialPrimitive
                 key={obj.id}
                 obj={obj}
-                isSelected={selectedObjectId === obj.id}
+                isSelected={selectedParentId === obj.id}
                 onPointerDown={handleObjectPointerDown}
                 onDoubleClick={handleDoubleClick}
                 isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
@@ -837,8 +865,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
             <ImportedModel
               key={`ghost-${ghostObject.id}`}
               obj={ghostObject}
-              isSelected={selectedObjectId === ghostObject.id}
+              isSelected={selectedParentId === ghostObject.id}
+              selectedChildPath={selectedParentId === ghostObject.id ? selectedChildPath : null}
               onPointerDown={handleObjectPointerDown}
+              onChildPointerDown={handleChildPointerDown}
               onDoubleClick={handleDoubleClick}
               isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
               isHovered={hoveredObjectId === ghostObject.id}
@@ -850,7 +880,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
             <IndustrialPrimitive
               key={`ghost-${ghostObject.id}`}
               obj={ghostObject}
-              isSelected={selectedObjectId === ghostObject.id}
+              isSelected={selectedParentId === ghostObject.id}
               onPointerDown={handleObjectPointerDown}
               onDoubleClick={handleDoubleClick}
               isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}

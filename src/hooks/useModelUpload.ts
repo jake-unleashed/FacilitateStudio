@@ -28,8 +28,9 @@ import {
   hasLegacyAssets,
   blobToArrayBuffer,
 } from '../utils/modelAssetStore';
-import { loadAndPreprocessModelFromArrayBuffer } from '../utils/modelLoaders';
+import { loadAndPreprocessModelFromArrayBuffer, extractChildMeshes } from '../utils/modelLoaders';
 import { cachePreprocessedModel } from '../utils/modelCache';
+import { ChildMesh } from '../types';
 import { MODEL_POSITION_SPACING } from '../constants';
 
 // Re-export types for convenience
@@ -143,7 +144,8 @@ function generateUniqueName(baseName: string, existingObjects: SceneObject[]): s
 function createSceneObject(
   assetId: string,
   name: string,
-  position: { x: number; y: number; z: number }
+  position: { x: number; y: number; z: number },
+  children?: ChildMesh[]
 ): SceneObject {
   return {
     id: crypto.randomUUID(),
@@ -164,6 +166,7 @@ function createSceneObject(
       visible: true,
       modelAssetId: assetId,
     },
+    children: children && children.length > 0 ? children : undefined,
   };
 }
 
@@ -334,10 +337,12 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       assetName: string,
       fileType: AssetMetadata['fileType'],
       existingObjects: SceneObject[],
-      existingMetrics?: ModelMetrics
+      existingMetrics?: ModelMetrics,
+      existingChildren?: ChildMesh[]
     ): Promise<UploadResult | null> => {
       // Get metrics (compute if not provided)
       let metrics = existingMetrics;
+      let children = existingChildren;
 
       if (!metrics) {
         setProgress('processing', 50, { fileName: assetName });
@@ -353,6 +358,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           const arrayBuffer = await blobToArrayBuffer(assetData.blob);
           const preprocessed = await loadAndPreprocessModelFromArrayBuffer(arrayBuffer, fileType);
           metrics = serializeMetrics(preprocessed.metrics);
+
+          // Extract child meshes from the model hierarchy
+          children = extractChildMeshes(preprocessed.model);
 
           // Cache the model
           cachePreprocessedModel(assetId, preprocessed.model, metrics);
@@ -371,7 +379,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
       const position = calculateOptimalPosition(metrics, existingObjects);
       const uniqueName = generateUniqueName(assetName, existingObjects);
-      const sceneObject = createSceneObject(assetId, uniqueName, position);
+      const sceneObject = createSceneObject(assetId, uniqueName, position, children);
 
       // Complete
       setProgress('complete', 100, { fileName: assetName });

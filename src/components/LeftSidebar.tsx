@@ -10,8 +10,9 @@ import {
   Clock,
   Info,
   MoveRight,
+  Layers,
 } from 'lucide-react';
-import { SidebarSection, SimStep, SceneObject, StepType } from '../types';
+import { SidebarSection, SimStep, SceneObject, StepType, createChildSelectionId, parseSelectionId, pathToString } from '../types';
 import { OBJECT_ICONS } from '../constants';
 import { StepCard } from './StepCard';
 import { AssetUploadButton } from './AssetUploadButton';
@@ -72,10 +73,11 @@ interface NavItemProps {
   onClick: () => void;
 }
 
-interface ObjectListItemProps {
+interface HierarchyItemProps {
   obj: SceneObject;
-  isSelected: boolean;
-  onSelect: () => void;
+  selectedObjectId: string | null;
+  onSelectObject: (id: string) => void;
+  onFocusObject?: (obj: SceneObject) => void;
 }
 
 // ============================================================================
@@ -107,33 +109,160 @@ const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClick }) =>
 });
 NavItem.displayName = 'NavItem';
 
-// Memoized object list item to prevent entire list re-rendering on selection change
-const ObjectListItem = memo<ObjectListItemProps>(({ obj, isSelected, onSelect }) => {
+// Memoized hierarchy item with expandable children support
+const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelectObject, onFocusObject }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const Icon = OBJECT_ICONS[obj.type] || Box;
+  const hasChildren = obj.children && obj.children.length > 0;
+  
+  // Parse the current selection to check if this object or any of its children is selected
+  const parsedSelection = parseSelectionId(selectedObjectId);
+  const isParentSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath === null;
+  const isAnyChildSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath !== null;
+  
+  // Auto-expand when a child is selected
+  useEffect(() => {
+    if (isAnyChildSelected && !isExpanded) {
+      setIsExpanded(true);
+    }
+  }, [isAnyChildSelected, isExpanded]);
+
+  const handleParentClick = useCallback(() => {
+    onSelectObject(obj.id);
+    if (onFocusObject) {
+      onFocusObject(obj);
+    }
+  }, [obj, onSelectObject, onFocusObject]);
+
+  const handleToggleExpand = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded);
+  }, [isExpanded]);
+
+  const handleChildClick = useCallback((childPath: string) => {
+    const childSelectionId = createChildSelectionId(obj.id, childPath);
+    onSelectObject(childSelectionId);
+    // Note: Focus camera is handled for the parent - child focusing will be done in the 3D scene
+  }, [obj.id, onSelectObject]);
 
   return (
-    <div
-      onClick={onSelect}
-      className={`
-        flex cursor-pointer items-center gap-3 rounded-[20px] p-3 text-sm transition-all duration-200
-        ${
-          isSelected
-            ? 'scale-[1.02] bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-            : 'text-slate-700 hover:scale-[1.01] hover:bg-white/60'
-        }
-      `}
-    >
+    <div className="space-y-0.5">
+      {/* Parent Item */}
       <div
-        className={`rounded-[12px] p-1.5 ${isSelected ? 'bg-blue-500 text-white' : 'bg-white text-slate-400 shadow-sm'}`}
+        onClick={handleParentClick}
+        className={`
+          group flex cursor-pointer items-center gap-2 rounded-[16px] p-2.5 text-sm transition-all duration-200
+          ${
+            isParentSelected
+              ? 'scale-[1.02] bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+              : isAnyChildSelected
+                ? 'bg-blue-50 text-slate-800'
+                : 'text-slate-700 hover:scale-[1.01] hover:bg-white/60'
+          }
+        `}
       >
-        <Icon size={14} />
+        {/* Expand/Collapse Toggle */}
+        {hasChildren ? (
+          <button
+            onClick={handleToggleExpand}
+            className={`
+              flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md transition-all duration-200
+              ${isParentSelected 
+                ? 'hover:bg-blue-500 text-blue-100' 
+                : 'hover:bg-slate-100 text-slate-400'
+              }
+            `}
+          >
+            <ChevronRight 
+              size={14} 
+              className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+            />
+          </button>
+        ) : (
+          <div className="w-6 flex-shrink-0" />
+        )}
+        
+        {/* Icon */}
+        <div
+          className={`rounded-[10px] p-1.5 transition-all duration-200 ${
+            isParentSelected 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-white text-slate-400 shadow-sm group-hover:shadow'
+          }`}
+        >
+          <Icon size={14} />
+        </div>
+        
+        {/* Name */}
+        <span className="flex-1 truncate font-medium">{obj.name}</span>
+        
+        {/* Children count badge */}
+        {hasChildren && (
+          <span className={`
+            rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-all
+            ${isParentSelected 
+              ? 'bg-blue-500 text-blue-100' 
+              : 'bg-slate-100 text-slate-500'
+            }
+          `}>
+            {obj.children!.length}
+          </span>
+        )}
       </div>
-      <span className="flex-1 truncate font-medium">{obj.name}</span>
-      {isSelected && <ChevronRight size={14} className="text-blue-200" />}
+      
+      {/* Children List (Expandable with animation) */}
+      {hasChildren && (
+        <div 
+          className={`
+            ml-3 space-y-0.5 border-l-2 border-slate-100 pl-2 overflow-hidden transition-all duration-200 ease-out
+            ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
+          `}
+          style={{ maxHeight: isExpanded ? `${(obj.children?.length || 0) * 44}px` : '0px' }}
+        >
+          {obj.children!.map((child) => {
+            const childPathStr = pathToString(child.path);
+            const isChildSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath === childPathStr;
+            
+            return (
+              <div
+                key={childPathStr}
+                onClick={() => handleChildClick(childPathStr)}
+                className={`
+                  group flex cursor-pointer items-center gap-2 rounded-[12px] p-2 text-sm transition-all duration-200
+                  ${
+                    isChildSelected
+                      ? 'scale-[1.02] bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                      : 'text-slate-600 hover:scale-[1.01] hover:bg-white/70'
+                  }
+                `}
+              >
+                {/* Child Icon */}
+                <div
+                  className={`rounded-[8px] p-1 transition-all duration-200 ${
+                    isChildSelected 
+                      ? 'bg-emerald-400 text-white' 
+                      : 'bg-slate-50 text-slate-400 group-hover:bg-white'
+                  }`}
+                >
+                  <Layers size={12} />
+                </div>
+                
+                {/* Child Name */}
+                <span className="flex-1 truncate font-medium text-xs">{child.name}</span>
+                
+                {/* Selection Indicator */}
+                {isChildSelected && (
+                  <ChevronRight size={12} className="text-emerald-200" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 });
-ObjectListItem.displayName = 'ObjectListItem';
+HierarchyItem.displayName = 'HierarchyItem';
 
 // ============================================================================
 // Main Component
@@ -440,16 +569,12 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
               ) : (
                 <div className="space-y-1">
                   {objects.map((obj) => (
-                    <ObjectListItem
+                    <HierarchyItem
                       key={obj.id}
                       obj={obj}
-                      isSelected={selectedObjectId === obj.id}
-                      onSelect={() => {
-                        onSelectObject(obj.id);
-                        if (onFocusObject) {
-                          onFocusObject(obj);
-                        }
-                      }}
+                      selectedObjectId={selectedObjectId}
+                      onSelectObject={onSelectObject}
+                      onFocusObject={onFocusObject}
                     />
                   ))}
                 </div>
