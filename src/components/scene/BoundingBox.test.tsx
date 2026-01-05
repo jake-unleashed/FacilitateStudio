@@ -9,11 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
-import {
-  BoundingBox,
-  createEdgeGeometry,
-  calculateBoundingBoxData,
-} from './BoundingBox';
+import { BoundingBox, createEdgeGeometry, calculateBoundingBoxData } from './BoundingBox';
 
 // ============================================================================
 // Mocks

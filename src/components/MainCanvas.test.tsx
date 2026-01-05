@@ -431,7 +431,7 @@ describe('Drag Flow Integration', () => {
       const grabOffsetZ = movement.intersectZ - objectWorldZ;
 
       expect(grabOffsetX).toBeCloseTo(initialGrabX - initialObjectX / SCENE_TO_WORLD_SCALE);
-      expect(grabOffsetZ).toBeCloseTo(initialGrabZ - (-initialObjectZ / SCENE_TO_WORLD_SCALE));
+      expect(grabOffsetZ).toBeCloseTo(initialGrabZ - -initialObjectZ / SCENE_TO_WORLD_SCALE);
     }
   });
 });
@@ -495,4 +495,3 @@ describe('Edge Cases', () => {
     expect(newZ).toBe(400); // 300 - (-100)
   });
 });
-

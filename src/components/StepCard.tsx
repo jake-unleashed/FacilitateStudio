@@ -132,8 +132,8 @@ export const StepCard: React.FC<StepCardProps> = ({
 }) => {
   // Local state for form fields
   const [stepName, setStepName] = useState(step.title);
-  const [selectedType, setSelectedType] = useState<StepType>(step.type);
-  const [showTypeSelection, setShowTypeSelection] = useState(step.type === null);
+  const [selectedType, setSelectedType] = useState<StepType>(step.type || 'info-card');
+  const [showTypeSelection, setShowTypeSelection] = useState(step.type === null || step.type === undefined);
   const [heading, setHeading] = useState(step.heading || '');
   const [bodyText, setBodyText] = useState(step.bodyText || '');
   const [buttonText, setButtonText] = useState(step.buttonText || '');

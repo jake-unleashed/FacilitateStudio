@@ -1,8 +1,19 @@
 import React, { useState, memo, useCallback, useMemo, useRef } from 'react';
-import { SceneObject, ChildMesh } from '../types';
+import { SceneObject, ChildMesh, pathToString } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
-import { Box, Eye, EyeOff, Trash2, Copy, Rotate3d, Scaling, X, ArrowUpDown, Layers } from 'lucide-react';
+import {
+  Box,
+  Eye,
+  EyeOff,
+  Trash2,
+  Copy,
+  Rotate3d,
+  Scaling,
+  X,
+  ArrowUpDown,
+  Layers,
+} from 'lucide-react';
 import { OBJECT_ICONS } from '../constants';
 import {
   calculateLowestPointOffset,
@@ -993,10 +1004,7 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
             // Child mode: show same controls as parent but for child's local transform
             <>
               <ChildNameSection name={selectedChild.name} />
-              <ChildInfoSection
-                pathDepth={selectedChild.path.length}
-                parentName={object.name}
-              />
+              <ChildInfoSection pathDepth={selectedChild.path.length} parentName={object.name} />
 
               <HeightSection
                 groundRelativeHeight={childGroundRelativeHeight}

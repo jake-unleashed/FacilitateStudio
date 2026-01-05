@@ -10,7 +10,14 @@ import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
 import { INITIAL_OBJECTS, INITIAL_STEPS, MODEL_CAMERA_DISTANCE_MULTIPLIER } from '../constants';
-import { SceneObject, SidebarSection, SimStep, ChildMesh, parseSelectionId, stringToPath } from '../types';
+import {
+  SceneObject,
+  SidebarSection,
+  SimStep,
+  ChildMesh,
+  parseSelectionId,
+  stringToPath,
+} from '../types';
 import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
@@ -957,9 +964,10 @@ export function EditorPage() {
     }
     // Find the child whose path matches the selected child path
     const childPathArray = stringToPath(parsedSelection.childPath);
-    return selectedObject.children.find(
-      (child) => child.path.join('.') === childPathArray.join('.')
-    ) ?? null;
+    return (
+      selectedObject.children.find((child) => child.path.join('.') === childPathArray.join('.')) ??
+      null
+    );
   }, [selectedObject, parsedSelection]);
 
   const hasSelectedObject = useMemo(() => !!selectedObject, [selectedObject]);

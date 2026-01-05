@@ -144,11 +144,7 @@ describe('smartMaterialFallback', () => {
 
       ensureVisibleMaterial(material);
 
-      const maxEmissive = Math.max(
-        material.emissive.r,
-        material.emissive.g,
-        material.emissive.b
-      );
+      const maxEmissive = Math.max(material.emissive.r, material.emissive.g, material.emissive.b);
       expect(maxEmissive).toBeLessThanOrEqual(0.5);
     });
   });
@@ -324,4 +320,3 @@ describe('smartMaterialFallback', () => {
     });
   });
 });
-

@@ -64,9 +64,28 @@ export interface SimStep {
   title: string;
   description: string;
   completed: boolean;
+  /** Step type - determines the step behavior */
+  type?: StepType | null;
+  /** For info-card steps: heading text */
+  heading?: string;
+  /** For info-card steps: body text */
+  bodyText?: string;
+  /** For info-card steps: button text */
+  buttonText?: string;
+  /** For info-card steps: card color theme */
+  cardColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  /** For move-item steps: ID of the object to move */
+  targetObjectId?: string;
+  /** For move-item steps: starting position of the object */
+  startPosition?: { x: number; y: number; z: number };
+  /** For move-item steps: target/end position of the object */
+  endPosition?: { x: number; y: number; z: number };
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';
+
+/** Step type for simulation steps */
+export type StepType = 'info-card' | 'move-item';
 
 /**
  * Parsed selection ID for objects and their children.

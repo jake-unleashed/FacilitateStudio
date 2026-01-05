@@ -2,7 +2,7 @@
  * Tests for AssetUploadButton component
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssetUploadButton } from './AssetUploadButton';
@@ -741,9 +741,7 @@ describe('AssetUploadButton', () => {
   describe('internal state management', () => {
     it('uses internal state when no external progress provided', async () => {
       // Make upload take some time so we can see the processing state
-      mockOnUpload.mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 100))
-      );
+      mockOnUpload.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 100)));
       render(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;

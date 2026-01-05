@@ -130,10 +130,7 @@ export function centerModelPivot(model: THREE.Group): THREE.Vector3 {
  * Auto-scale model to target size
  * Preserves aspect ratio and handles edge cases
  */
-export function autoScaleModel(
-  model: THREE.Group,
-  targetSize: number = MODEL_TARGET_SIZE
-): number {
+export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TARGET_SIZE): number {
   const box = getModelBoundingBox(model);
   const size = new THREE.Vector3();
   box.getSize(size);
@@ -226,7 +223,10 @@ export function disableModelAnimations(model: THREE.Group): void {
 /**
  * Validate model before preprocessing
  */
-export function validateModel(model: THREE.Group | THREE.Object3D): { valid: boolean; error?: string } {
+export function validateModel(model: THREE.Group | THREE.Object3D): {
+  valid: boolean;
+  error?: string;
+} {
   // Check if model has geometry
   let hasGeometry = false;
   model.traverse((child) => {

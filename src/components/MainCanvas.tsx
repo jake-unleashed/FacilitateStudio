@@ -1,5 +1,11 @@
 import React, { Suspense, useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
-import { SceneObject, SimStep, parseSelectionId, createChildSelectionId, pathToString } from '../types';
+import {
+  SceneObject,
+  SimStep,
+  parseSelectionId,
+  createChildSelectionId,
+  pathToString,
+} from '../types';
 import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import {
@@ -259,7 +265,6 @@ const CursorManager: React.FC<{
 
   return null;
 };
-
 
 /**
  * DragHandler - Manages pointer events for object translation in the 3D scene.
@@ -538,12 +543,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
-  
+
   // Parse the selection ID to separate parent and child selection
   const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
   const selectedParentId = parsedSelection?.objectId ?? null;
   const selectedChildPath = parsedSelection?.childPath ?? null;
-  
+
   const selectedObject = objects.find((obj) => obj.id === selectedParentId) || null;
 
   // Drag state management
@@ -693,7 +698,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       ).stopImmediatePropagation?.();
 
       // Find the child's current local transform
-      const child = obj.children?.find(c => pathToString(c.path) === childPath);
+      const child = obj.children?.find((c) => pathToString(c.path) === childPath);
       if (!child) return;
 
       const clickPoint = e.point;

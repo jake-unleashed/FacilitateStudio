@@ -92,13 +92,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   // Start at opacity 1 - models should be visible immediately
   // Fade-in animation will temporarily reduce opacity if enabled
   const [opacity, setOpacity] = useState(1);
-  
+
   // Track which child mesh is currently hovered (for visual feedback)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [hoveredChildPath, _setHoveredChildPath] = useState<string | null>(null);
 
   const modelAssetId = obj.properties.modelAssetId as string | undefined;
-  
+
   // Check if a specific child is selected
   const hasChildSelected = selectedChildPath !== null && selectedChildPath !== undefined;
 
@@ -173,7 +173,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   const childPathToMesh = useMemo(() => {
     const map = new Map<string, { mesh: THREE.Object3D; childInfo: ChildMesh }>();
     if (!model || !obj.children) return map;
-    
+
     for (const child of obj.children) {
       const pathStr = pathToString(child.path);
       const meshObj = findChildByPath(model, child.path);
@@ -185,38 +185,41 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   }, [model, obj.children]);
 
   // Find which child (if any) a clicked mesh belongs to
-  const findChildPathForMesh = useCallback((clickedMesh: THREE.Object3D): string | null => {
-    if (!model || !obj.children || obj.children.length === 0) return null;
-    
-    // For each child in our map, check if the clicked mesh is the child or a descendant of it
-    for (const [pathStr, { mesh }] of childPathToMesh) {
-      // Check if clicked mesh IS this child mesh
-      if (mesh === clickedMesh) {
-        return pathStr;
-      }
-      
-      // Check if clicked mesh is a descendant of this child
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let current: any = clickedMesh;
-      while (current && current !== model) {
-        if (current === mesh) {
+  const findChildPathForMesh = useCallback(
+    (clickedMesh: THREE.Object3D): string | null => {
+      if (!model || !obj.children || obj.children.length === 0) return null;
+
+      // For each child in our map, check if the clicked mesh is the child or a descendant of it
+      for (const [pathStr, { mesh }] of childPathToMesh) {
+        // Check if clicked mesh IS this child mesh
+        if (mesh === clickedMesh) {
           return pathStr;
         }
-        current = current.parent;
+
+        // Check if clicked mesh is a descendant of this child
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = clickedMesh;
+        while (current && current !== model) {
+          if (current === mesh) {
+            return pathStr;
+          }
+          current = current.parent;
+        }
       }
-    }
-    
-    return null;
-  }, [model, obj.children, childPathToMesh]);
+
+      return null;
+    },
+    [model, obj.children, childPathToMesh]
+  );
 
   // Memoize event handlers
   const handlePointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      
+
       // Check if a specific child was clicked
       const childPath = findChildPathForMesh(e.object);
-      
+
       if (childPath && onChildPointerDown) {
         // Child mesh was clicked
         onChildPointerDown(e, obj, childPath);
@@ -290,16 +293,16 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   // Apply child transforms when they change
   useEffect(() => {
     if (!model || !obj.children) return;
-    
+
     for (const child of obj.children) {
       const pathStr = pathToString(child.path);
       const entry = childPathToMesh.get(pathStr);
       if (!entry) continue;
-      
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mesh = entry.mesh as any;
       const lt = entry.childInfo.localTransform;
-      
+
       // Apply local transform offset (position only for now)
       // Scale of 100 matches the parent transform convention
       mesh.position.set(lt.x / 100, lt.y / 100, -lt.z / 100);
@@ -327,16 +330,23 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     const childSelectionChanged = prevSelectedChildPathRef.current !== selectedChildPath;
     const childHoverChanged = prevHoveredChildPathRef.current !== hoveredChildPath;
 
-    if (selectionChanged || hoverChanged || childSelectionChanged || childHoverChanged || 
-        isSelected || isHovered || hasChildSelected || hoveredChildPath) {
-      
+    if (
+      selectionChanged ||
+      hoverChanged ||
+      childSelectionChanged ||
+      childHoverChanged ||
+      isSelected ||
+      isHovered ||
+      hasChildSelected ||
+      hoveredChildPath
+    ) {
       // Reset all materials first
       model.traverse((child: THREE.Object3D) => {
         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
           child.material.emissive.set('#000000');
         }
       });
-      
+
       // If a child is selected, only highlight that child
       if (hasChildSelected && selectedChildPath) {
         const entry = childPathToMesh.get(selectedChildPath);
@@ -344,8 +354,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const mesh = entry.mesh as any;
           mesh.traverse((child: THREE.Object3D) => {
-            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-              child.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY);
+            if (
+              child instanceof THREE.Mesh &&
+              child.material instanceof THREE.MeshStandardMaterial
+            ) {
+              child.material.emissive
+                .set(CHILD_SELECTION_COLOR)
+                .multiplyScalar(SELECTION_INTENSITY);
             }
           });
           // Also check if it's a single mesh (not a group with children)
@@ -370,7 +385,10 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const mesh = entry.mesh as any;
           mesh.traverse((child: THREE.Object3D) => {
-            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            if (
+              child instanceof THREE.Mesh &&
+              child.material instanceof THREE.MeshStandardMaterial
+            ) {
               child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
             }
           });

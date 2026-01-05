@@ -493,7 +493,7 @@ export interface ExtractedChildInfo {
  * 2. Recursively traverse the ENTIRE hierarchy (all levels deep)
  * 3. Add every named mesh/group that contains geometry
  * 4. Use meaningful names from the model or generate fallbacks
- * 
+ *
  * Children are stored in a flat list with full paths - the UI uses path depth for indentation.
  */
 export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
@@ -597,7 +597,10 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
   }
 
   if (IS_DEV) {
-    console.log(`[extractChildMeshes] Extracted ${children.length} children:`, children.map(c => ({ name: c.name, depth: c.path.length })));
+    console.log(
+      `[extractChildMeshes] Extracted ${children.length} children:`,
+      children.map((c) => ({ name: c.name, depth: c.path.length }))
+    );
   }
 
   return children;
