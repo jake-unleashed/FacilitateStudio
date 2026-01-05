@@ -368,19 +368,6 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
         
         {/* Name */}
         <span className="flex-1 truncate font-medium">{obj.name}</span>
-        
-        {/* Children count badge */}
-        {hasChildren && (
-          <span className={`
-            rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-all
-            ${isParentSelected 
-              ? 'bg-blue-500 text-blue-100' 
-              : 'bg-slate-100 text-slate-500'
-            }
-          `}>
-            {obj.children!.length}
-          </span>
-        )}
       </div>
       
       {/* Children List (Expandable with animation) */}
