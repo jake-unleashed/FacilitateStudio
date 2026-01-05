@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState, useEffect } from 'react';
+import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   ListOrdered,
@@ -128,28 +128,50 @@ const ChildItem = memo<ChildItemProps>(({ child, parentObj, selectedObjectId, on
   const isChildSelected = parsedSelection?.objectId === parentObj.id && parsedSelection.childPath === childPathStr;
   
   // Get nested children (children whose path starts with this child's path and is exactly one level deeper)
-  const nestedChildren = parentObj.children?.filter(c => {
-    if (c.path.length !== child.path.length + 1) return false;
-    // Check if this child's path is a prefix of the nested child's path
-    for (let i = 0; i < child.path.length; i++) {
-      if (c.path[i] !== child.path[i]) return false;
-    }
-    return true;
-  }) ?? [];
+  // We need to be careful: a nested child must have this child's path as a prefix AND be exactly one level deeper
+  const nestedChildren = useMemo(() => {
+    if (!parentObj.children) return [];
+    
+    const childPathStr = pathToString(child.path);
+    return parentObj.children.filter(c => {
+      // Must be exactly one level deeper
+      if (c.path.length !== child.path.length + 1) return false;
+      
+      // Check if this child's path is a prefix of the nested child's path
+      // All path segments up to this child's length must match exactly
+      for (let i = 0; i < child.path.length; i++) {
+        if (c.path[i] !== child.path[i]) return false;
+      }
+      return true;
+    });
+  }, [parentObj.children, child.path]);
 
   const hasNestedChildren = nestedChildren.length > 0;
 
-  // Auto-expand when this child or one of its descendants is selected
+  // Auto-expand only when a descendant (not this child itself) is selected
+  // This ensures the path to the selected child is visible, but doesn't auto-open on selection
   useEffect(() => {
-    if (isChildSelected || (parsedSelection?.objectId === parentObj.id && parsedSelection.childPath?.startsWith(childPathStr + '.'))) {
-      setIsExpanded(true);
+    if (parsedSelection?.objectId === parentObj.id && parsedSelection.childPath && parsedSelection.childPath !== childPathStr) {
+      // Check if the selected child is a descendant of this child
+      if (parsedSelection.childPath.startsWith(childPathStr + '.')) {
+        setIsExpanded(true);
+      }
     }
-  }, [isChildSelected, parsedSelection, parentObj.id, childPathStr]);
+  }, [parsedSelection, parentObj.id, childPathStr]);
 
   const handleToggleExpand = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
-  }, [isExpanded]);
+    e.preventDefault(); // Also prevent default to ensure it doesn't bubble
+    const newExpanded = !isExpanded;
+    setIsExpanded(newExpanded);
+    
+    // If closing and a descendant is selected, deselect it
+    if (!newExpanded && parsedSelection?.objectId === parentObj.id && parsedSelection.childPath) {
+      if (parsedSelection.childPath.startsWith(childPathStr + '.') || parsedSelection.childPath === childPathStr) {
+        onSelectObject(null);
+      }
+    }
+  }, [isExpanded, parsedSelection, parentObj.id, childPathStr, onSelectObject]);
 
   const handleChildClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -215,8 +237,8 @@ const ChildItem = memo<ChildItemProps>(({ child, parentObj, selectedObjectId, on
         )}
       </div>
 
-      {/* Nested Children List */}
-      {hasNestedChildren && (
+      {/* Nested Children List - only render if there are actually nested children */}
+      {hasNestedChildren && nestedChildren.length > 0 && (
         <div 
           className={`
             ml-3 space-y-0.5 border-l-2 border-slate-100 pl-2 overflow-hidden transition-all duration-200 ease-out
@@ -253,12 +275,20 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
   const isParentSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath === null;
   const isAnyChildSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath !== null;
   
-  // Auto-expand when a child is selected
+  // Get direct children (path.length === 1) - memoized to avoid recalculating
+  const directChildren = useMemo(() => {
+    if (!obj.children) return [];
+    return obj.children.filter(child => child.path.length === 1);
+  }, [obj.children]);
+  
+  // Auto-expand only when a descendant is selected (to show the path), but not when just selecting
+  // This ensures the path to the selected child is visible without auto-opening on every selection
   useEffect(() => {
-    if (isAnyChildSelected && !isExpanded) {
+    if (isAnyChildSelected && parsedSelection.childPath && !isExpanded) {
+      // Only auto-expand if there's actually a selected child path
       setIsExpanded(true);
     }
-  }, [isAnyChildSelected, isExpanded]);
+  }, [isAnyChildSelected, parsedSelection?.childPath, isExpanded]);
 
   const handleParentClick = useCallback(() => {
     onSelectObject(obj.id);
@@ -269,8 +299,15 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
 
   const handleToggleExpand = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
-  }, [isExpanded]);
+    e.preventDefault(); // Also prevent default to ensure it doesn't bubble
+    const newExpanded = !isExpanded;
+    setIsExpanded(newExpanded);
+    
+    // If closing and a child is selected, deselect it
+    if (!newExpanded && isAnyChildSelected) {
+      onSelectObject(null);
+    }
+  }, [isExpanded, isAnyChildSelected, onSelectObject]);
 
   const handleChildClick = useCallback((childPath: string) => {
     const childSelectionId = createChildSelectionId(obj.id, childPath);
@@ -297,8 +334,8 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
           }
         `}
       >
-        {/* Expand/Collapse Toggle */}
-        {hasChildren ? (
+        {/* Expand/Collapse Toggle - only show if there are direct children to display */}
+        {hasChildren && directChildren.length > 0 ? (
           <button
             onClick={handleToggleExpand}
             className={`
@@ -347,27 +384,25 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
       </div>
       
       {/* Children List (Expandable with animation) */}
-      {hasChildren && (
+      {hasChildren && directChildren.length > 0 && (
         <div 
           className={`
             ml-3 space-y-0.5 border-l-2 border-slate-100 pl-2 overflow-hidden transition-all duration-200 ease-out
             ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
           `}
         >
-          {/* Only show direct children (path.length === 1) - nested children are handled recursively by ChildItem */}
-          {obj.children!
-            .filter(child => child.path.length === 1) // Only direct children of the root
-            .map((child) => (
-              <ChildItem
-                key={pathToString(child.path)}
-                child={child}
-                parentObj={obj}
-                selectedObjectId={selectedObjectId}
-                onSelectObject={onSelectObject}
-                onFocusObject={onFocusObject}
-                depth={0}
-              />
-            ))}
+          {/* Direct children - nested children are handled recursively by ChildItem */}
+          {directChildren.map((child) => (
+            <ChildItem
+              key={pathToString(child.path)}
+              child={child}
+              parentObj={obj}
+              selectedObjectId={selectedObjectId}
+              onSelectObject={onSelectObject}
+              onFocusObject={onFocusObject}
+              depth={0}
+            />
+          ))}
         </div>
       )}
     </div>
