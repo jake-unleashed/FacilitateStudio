@@ -14,6 +14,7 @@ import CameraControlsImpl from 'camera-controls';
 import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
 import { PreviewMoveItemStepRenderer } from './preview/PreviewMoveItemStepRenderer';
 import { ImportedModel } from './scene/ImportedModel';
+import { BoundingBox } from './scene/BoundingBox';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,7 +55,6 @@ interface SceneContentProps {
 
 // Shared geometry instances - created once and reused across all primitives
 const sharedBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
-const sharedSelectionGeometry = new THREE.BoxGeometry(1.05, 1.05, 1.05);
 
 interface IndustrialPrimitiveProps {
   obj: SceneObject;
@@ -79,8 +79,17 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   onHoverEnd,
   isGhost = false,
 }) => {
-  const meshRef = useRef<THREE.Group>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const boxMeshRef = useRef<THREE.Mesh>(null);
+  const [meshReady, setMeshReady] = useState(false);
   const color = obj.properties.color || '#3b82f6';
+
+  // Ensure BoundingBox can access the mesh ref after mount
+  useEffect(() => {
+    if (boxMeshRef.current && !meshReady) {
+      setMeshReady(true);
+    }
+  }, [meshReady]);
 
   // Memoize position array to prevent unnecessary re-renders
   const position = useMemo<[number, number, number]>(
@@ -143,7 +152,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
 
   return (
     <group
-      ref={meshRef}
+      ref={groupRef}
       position={position}
       rotation={rotation}
       scale={scale}
@@ -153,7 +162,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
       onPointerLeave={handlePointerLeave}
     >
       {/* eslint-disable-next-line react/no-unknown-property */}
-      <mesh geometry={sharedBoxGeometry}>
+      <mesh ref={boxMeshRef} geometry={sharedBoxGeometry}>
         <meshStandardMaterial
           color={color}
           roughness={0.2}
@@ -167,11 +176,8 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
         />
       </mesh>
 
-      {isSelected && (
-        // eslint-disable-next-line react/no-unknown-property
-        <mesh geometry={sharedSelectionGeometry} scale={[1.1, 1.1, 1.1]}>
-          <meshBasicMaterial color={color} wireframe transparent opacity={0.6} />
-        </mesh>
+      {isSelected && meshReady && boxMeshRef.current && (
+        <BoundingBox model={boxMeshRef.current} color={color} visible={isSelected} />
       )}
     </group>
   );
@@ -740,37 +746,38 @@ const SceneContent: React.FC<SceneContentProps> = ({
           (obj) =>
             obj.properties.visible &&
             // During recording, don't render the target object normally (we'll render it as actual + ghost)
-            !(recordingPositionForStepId && obj.id === targetObjectId) && (
-              obj.properties.modelAssetId ? (
-                <ImportedModel
-                  key={obj.id}
-                  obj={obj}
-                  isSelected={selectedObjectId === obj.id}
-                  onPointerDown={handleObjectPointerDown}
-                  onDoubleClick={handleDoubleClick}
-                  isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
-                  isHovered={hoveredObjectId === obj.id}
-                  onHoverStart={() => setHoveredObjectId(obj.id)}
-                  onHoverEnd={() => setHoveredObjectId(null)}
-                />
-              ) : (
-                <IndustrialPrimitive
-                  key={obj.id}
-                  obj={obj}
-                  isSelected={selectedObjectId === obj.id}
-                  onPointerDown={handleObjectPointerDown}
-                  onDoubleClick={handleDoubleClick}
-                  isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
-                  isHovered={hoveredObjectId === obj.id}
-                  onHoverStart={() => setHoveredObjectId(obj.id)}
-                  onHoverEnd={() => setHoveredObjectId(null)}
-                />
-              )
-            )
+            !(recordingPositionForStepId && obj.id === targetObjectId) &&
+            (obj.properties.modelAssetId ? (
+              <ImportedModel
+                key={obj.id}
+                obj={obj}
+                isSelected={selectedObjectId === obj.id}
+                onPointerDown={handleObjectPointerDown}
+                onDoubleClick={handleDoubleClick}
+                isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
+                isHovered={hoveredObjectId === obj.id}
+                onHoverStart={() => setHoveredObjectId(obj.id)}
+                onHoverEnd={() => setHoveredObjectId(null)}
+              />
+            ) : (
+              <IndustrialPrimitive
+                key={obj.id}
+                obj={obj}
+                isSelected={selectedObjectId === obj.id}
+                onPointerDown={handleObjectPointerDown}
+                onDoubleClick={handleDoubleClick}
+                isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
+                isHovered={hoveredObjectId === obj.id}
+                onHoverStart={() => setHoveredObjectId(obj.id)}
+                onHoverEnd={() => setHoveredObjectId(null)}
+              />
+            ))
         )}
         {/* Render actual object at start position during recording (non-draggable) */}
-        {recordingPositionForStepId && actualObject && actualObject.properties.visible && (
-          actualObject.properties.modelAssetId ? (
+        {recordingPositionForStepId &&
+          actualObject &&
+          actualObject.properties.visible &&
+          (actualObject.properties.modelAssetId ? (
             <ImportedModel
               key={`actual-${actualObject.id}`}
               obj={actualObject}
@@ -794,11 +801,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
               onHoverStart={() => {}}
               onHoverEnd={() => {}}
             />
-          )
-        )}
+          ))}
         {/* Render ghost object during recording (draggable) */}
-        {recordingPositionForStepId && ghostObject && ghostObject.properties.visible && (
-          ghostObject.properties.modelAssetId ? (
+        {recordingPositionForStepId &&
+          ghostObject &&
+          ghostObject.properties.visible &&
+          (ghostObject.properties.modelAssetId ? (
             <ImportedModel
               key={`ghost-${ghostObject.id}`}
               obj={ghostObject}
@@ -824,8 +832,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
               onHoverEnd={() => setHoveredObjectId(null)}
               isGhost={true}
             />
-          )
-        )}
+          ))}
       </group>
 
       <ContactShadows

@@ -45,12 +45,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   isSelected,
   onPointerDown,
   onDoubleClick,
-  isDragging,
+  isDragging: _isDragging,
   isHovered,
   onHoverStart,
   onHoverEnd,
   isGhost = false,
 }) => {
+  // Note: _isDragging is available for future use but currently unused
   const outerGroupRef = useRef<THREE.Group>(null);
   const [model, setModel] = useState<THREE.Object3D | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,14 +102,11 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
 
   // Outer group position: visual center for rotation pivot
   // pivotY = groundLevel + modelHeight/2
-  const position = useMemo<[number, number, number]>(
-    () => {
-      const groundLevel = obj.transform.y / 100;
-      const pivotY = groundLevel + modelHeight / 2;
-      return [obj.transform.x / 100, pivotY, -obj.transform.z / 100];
-    },
-    [obj.transform.x, obj.transform.y, obj.transform.z, modelHeight]
-  );
+  const position = useMemo<[number, number, number]>(() => {
+    const groundLevel = obj.transform.y / 100;
+    const pivotY = groundLevel + modelHeight / 2;
+    return [obj.transform.x / 100, pivotY, -obj.transform.z / 100];
+  }, [obj.transform.x, obj.transform.y, obj.transform.z, modelHeight]);
 
   // Rotation calculation
   const rotation = useMemo<[number, number, number]>(
@@ -260,12 +258,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
 
         {/* Premium bounding box selection indicator - non-interactive */}
         {isSelected && (
-          <BoundingBox
-            model={model}
-            color={isGhost ? '#a855f7' : '#3b82f6'}
-            visible={isSelected}
-            animated={!isDragging}
-          />
+          <BoundingBox model={model} color={isGhost ? '#a855f7' : '#3b82f6'} visible={isSelected} />
         )}
       </group>
     </group>
