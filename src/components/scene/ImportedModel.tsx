@@ -392,6 +392,14 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     }
   });
 
+  // Get the selected child mesh object for bounding box rendering
+  // NOTE: This hook MUST be called before any early returns to satisfy React's rules of hooks
+  const selectedChildMesh = useMemo(() => {
+    if (!hasChildSelected || !selectedChildPath || !model) return null;
+    const entry = childPathToMesh.get(selectedChildPath);
+    return entry?.mesh ?? null;
+  }, [hasChildSelected, selectedChildPath, childPathToMesh, model]);
+
   // Render error state
   if (error) {
     return (
@@ -412,13 +420,6 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
       </group>
     );
   }
-
-  // Get the selected child mesh object for bounding box rendering
-  const selectedChildMesh = useMemo(() => {
-    if (!hasChildSelected || !selectedChildPath) return null;
-    const entry = childPathToMesh.get(selectedChildPath);
-    return entry?.mesh ?? null;
-  }, [hasChildSelected, selectedChildPath, childPathToMesh]);
 
   // Render model with two-group structure
   // Outer group: positioned at visual center, handles rotation/scale
