@@ -830,6 +830,127 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     onDelete(object.id);
   }, [object, onDelete]);
 
+  // ============================================================================
+  // Child Transform Handlers (when a child is selected)
+  // ============================================================================
+
+  // Update child's local transform in the parent object's children array
+  const updateChildTransform = useCallback(
+    (updates: Partial<ChildMesh['localTransform']>) => {
+      if (!object || !selectedChild || !object.children) return;
+
+      const updatedChildren = object.children.map((child) => {
+        const childPathStr = pathToString(child.path);
+        const selectedPathStr = pathToString(selectedChild.path);
+        if (childPathStr === selectedPathStr) {
+          return {
+            ...child,
+            localTransform: {
+              ...child.localTransform,
+              ...updates,
+            },
+          };
+        }
+        return child;
+      });
+
+      onUpdate({
+        ...object,
+        children: updatedChildren,
+      });
+    },
+    [object, selectedChild, onUpdate]
+  );
+
+  // Child height change handler
+  const handleChildHeightChange = useCallback(
+    (newHeight: number) => {
+      // Height is stored in Y position (in internal units where 100 = 1 meter)
+      updateChildTransform({ y: newHeight });
+    },
+    [updateChildTransform]
+  );
+
+  const handleChildHeightCommit = useCallback(
+    (newHeight: number) => {
+      handleChildHeightChange(newHeight);
+    },
+    [handleChildHeightChange]
+  );
+
+  const handleChildHeightBatchStart = useCallback(() => {
+    if (onBatchStart) {
+      onBatchStart();
+    }
+  }, [onBatchStart]);
+
+  const handleChildHeightBatchEnd = useCallback(() => {
+    if (onBatchEnd) {
+      onBatchEnd();
+    }
+  }, [onBatchEnd]);
+
+  // Child scale change handler
+  const handleChildScaleChange = useCallback(
+    (scale: number) => {
+      updateChildTransform({
+        scaleX: scale,
+        scaleY: scale,
+        scaleZ: scale,
+      });
+    },
+    [updateChildTransform]
+  );
+
+  const handleChildScaleCommit = useCallback(
+    (scale: number) => {
+      handleChildScaleChange(scale);
+    },
+    [handleChildScaleChange]
+  );
+
+  const handleChildScaleBatchStart = useCallback(() => {
+    if (onBatchStart) {
+      onBatchStart();
+    }
+  }, [onBatchStart]);
+
+  const handleChildScaleBatchEnd = useCallback(() => {
+    if (onBatchEnd) {
+      onBatchEnd();
+    }
+  }, [onBatchEnd]);
+
+  // Child rotation change handler
+  const handleChildRotationChange = useCallback(
+    (rotation: number) => {
+      const rotationKey = getRotationKey(activeRotAxis);
+      updateChildTransform({
+        [rotationKey]: rotation,
+      });
+    },
+    [activeRotAxis, updateChildTransform]
+  );
+
+  const handleChildRotationCommit = useCallback(
+    (rotation: number) => {
+      handleChildRotationChange(rotation);
+    },
+    [handleChildRotationChange]
+  );
+
+  const handleChildRotationBatchStart = useCallback(() => {
+    if (onBatchStart) {
+      onBatchStart();
+    }
+  }, [onBatchStart]);
+
+  const handleChildRotationBatchEnd = useCallback(() => {
+    if (onBatchEnd) {
+      onBatchEnd();
+    }
+  }, [onBatchEnd]);
+
   // ---- Early return after all hooks ----
   if (!object) return null;
 
@@ -838,6 +959,13 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
   const currentRotation = object.transform[rotationKey];
   const displayRotation = normalizeAngle(currentRotation);
   const currentScale = object.transform.scaleX;
+
+  // Child-specific computed values
+  const childRotationKey = getRotationKey(activeRotAxis);
+  const childCurrentRotation = selectedChild?.localTransform[childRotationKey] ?? 0;
+  const childDisplayRotation = normalizeAngle(childCurrentRotation);
+  const childCurrentScale = selectedChild?.localTransform.scaleX ?? 1;
+  const childGroundRelativeHeight = selectedChild ? selectedChild.localTransform.y : 0;
 
   // ---- Render ----
 
@@ -862,43 +990,39 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
         {/* Content - different sections for parent vs child */}
         <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
           {isChildMode && selectedChild ? (
-            // Child mode: show child-specific information
+            // Child mode: show same controls as parent but for child's local transform
             <>
               <ChildNameSection name={selectedChild.name} />
               <ChildInfoSection
                 pathDepth={selectedChild.path.length}
                 parentName={object.name}
               />
-              {/* Child transform info (read-only for now) */}
-              <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                  Local Transform
-                </label>
-                <div className="space-y-1.5 text-xs text-slate-600">
-                  <div className="flex justify-between">
-                    <span>Position</span>
-                    <span className="font-mono text-slate-500">
-                      ({(selectedChild.localTransform.x / 100).toFixed(2)}, 
-                      {(selectedChild.localTransform.y / 100).toFixed(2)}, 
-                      {(selectedChild.localTransform.z / 100).toFixed(2)})
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Rotation</span>
-                    <span className="font-mono text-slate-500">
-                      ({selectedChild.localTransform.rotationX.toFixed(0)}°, 
-                      {selectedChild.localTransform.rotationY.toFixed(0)}°, 
-                      {selectedChild.localTransform.rotationZ.toFixed(0)}°)
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Scale</span>
-                    <span className="font-mono text-slate-500">
-                      {selectedChild.localTransform.scaleX.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+
+              <HeightSection
+                groundRelativeHeight={childGroundRelativeHeight}
+                onHeightChange={handleChildHeightChange}
+                onHeightCommit={handleChildHeightCommit}
+                onBatchStart={handleChildHeightBatchStart}
+                onBatchEnd={handleChildHeightBatchEnd}
+              />
+
+              <ScaleSection
+                currentScale={childCurrentScale}
+                onScaleChange={handleChildScaleChange}
+                onScaleCommit={handleChildScaleCommit}
+                onBatchStart={handleChildScaleBatchStart}
+                onBatchEnd={handleChildScaleBatchEnd}
+              />
+
+              <RotationSection
+                activeAxis={activeRotAxis}
+                displayRotation={childDisplayRotation}
+                onAxisChange={setActiveRotAxis}
+                onRotationChange={handleChildRotationChange}
+                onRotationCommit={handleChildRotationCommit}
+                onBatchStart={handleChildRotationBatchStart}
+                onBatchEnd={handleChildRotationBatchEnd}
+              />
             </>
           ) : (
             // Parent mode: show full object controls

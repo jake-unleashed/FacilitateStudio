@@ -82,6 +82,15 @@ interface HierarchyItemProps {
   onFocusObject?: (obj: SceneObject, childPath?: string) => void;
 }
 
+interface ChildItemProps {
+  child: ChildMesh;
+  parentObj: SceneObject;
+  selectedObjectId: string | null;
+  onSelectObject: (id: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  depth: number;
+}
+
 // ============================================================================
 // Memoized Sub-Components
 // ============================================================================
@@ -110,6 +119,128 @@ const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClick }) =>
   );
 });
 NavItem.displayName = 'NavItem';
+
+// Recursive child item component - supports nested children
+const ChildItem = memo<ChildItemProps>(({ child, parentObj, selectedObjectId, onSelectObject, onFocusObject, depth }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const childPathStr = pathToString(child.path);
+  const parsedSelection = parseSelectionId(selectedObjectId);
+  const isChildSelected = parsedSelection?.objectId === parentObj.id && parsedSelection.childPath === childPathStr;
+  
+  // Get nested children (children whose path starts with this child's path and is exactly one level deeper)
+  const nestedChildren = parentObj.children?.filter(c => {
+    if (c.path.length !== child.path.length + 1) return false;
+    // Check if this child's path is a prefix of the nested child's path
+    for (let i = 0; i < child.path.length; i++) {
+      if (c.path[i] !== child.path[i]) return false;
+    }
+    return true;
+  }) ?? [];
+
+  const hasNestedChildren = nestedChildren.length > 0;
+
+  // Auto-expand when this child or one of its descendants is selected
+  useEffect(() => {
+    if (isChildSelected || (parsedSelection?.objectId === parentObj.id && parsedSelection.childPath?.startsWith(childPathStr + '.'))) {
+      setIsExpanded(true);
+    }
+  }, [isChildSelected, parsedSelection, parentObj.id, childPathStr]);
+
+  const handleToggleExpand = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded);
+  }, [isExpanded]);
+
+  const handleChildClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const childSelectionId = createChildSelectionId(parentObj.id, childPathStr);
+    onSelectObject(childSelectionId);
+    if (onFocusObject) {
+      onFocusObject(parentObj, childPathStr);
+    }
+  }, [parentObj, childPathStr, onSelectObject, onFocusObject]);
+
+  return (
+    <div className="space-y-0.5">
+      <div
+        onClick={handleChildClick}
+        className={`
+          group flex cursor-pointer items-center gap-2 rounded-[12px] p-2 text-sm transition-all duration-200
+          ${
+            isChildSelected
+              ? 'scale-[1.02] bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+              : 'text-slate-600 hover:scale-[1.01] hover:bg-white/70'
+          }
+        `}
+        style={{ marginLeft: `${depth * 12}px` }}
+      >
+        {/* Expand/Collapse Toggle for nested children */}
+        {hasNestedChildren ? (
+          <button
+            onClick={handleToggleExpand}
+            className={`
+              flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md transition-all duration-200
+              ${isChildSelected 
+                ? 'hover:bg-emerald-400 text-emerald-100' 
+                : 'hover:bg-slate-100 text-slate-400'
+              }
+            `}
+          >
+            <ChevronRight 
+              size={12} 
+              className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+            />
+          </button>
+        ) : (
+          <div className="w-5 flex-shrink-0" />
+        )}
+
+        {/* Child Icon */}
+        <div
+          className={`rounded-[8px] p-1 transition-all duration-200 ${
+            isChildSelected 
+              ? 'bg-emerald-400 text-white' 
+              : 'bg-slate-50 text-slate-400 group-hover:bg-white'
+          }`}
+        >
+          <Layers size={12} />
+        </div>
+        
+        {/* Child Name */}
+        <span className="flex-1 truncate font-medium text-xs">{child.name}</span>
+        
+        {/* Selection Indicator */}
+        {isChildSelected && (
+          <ChevronRight size={12} className="text-emerald-200" />
+        )}
+      </div>
+
+      {/* Nested Children List */}
+      {hasNestedChildren && (
+        <div 
+          className={`
+            ml-3 space-y-0.5 border-l-2 border-slate-100 pl-2 overflow-hidden transition-all duration-200 ease-out
+            ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
+          `}
+          style={{ maxHeight: isExpanded ? `${nestedChildren.length * 44}px` : '0px' }}
+        >
+          {nestedChildren.map((nestedChild) => (
+            <ChildItem
+              key={pathToString(nestedChild.path)}
+              child={nestedChild}
+              parentObj={parentObj}
+              selectedObjectId={selectedObjectId}
+              onSelectObject={onSelectObject}
+              onFocusObject={onFocusObject}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+ChildItem.displayName = 'ChildItem';
 
 // Memoized hierarchy item with expandable children support
 const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelectObject, onFocusObject }) => {
@@ -222,56 +353,21 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
             ml-3 space-y-0.5 border-l-2 border-slate-100 pl-2 overflow-hidden transition-all duration-200 ease-out
             ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
           `}
-          style={{ maxHeight: isExpanded ? `${(obj.children?.length || 0) * 44}px` : '0px' }}
         >
-          {obj.children!.map((child) => {
-            const childPathStr = pathToString(child.path);
-            const isChildSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath === childPathStr;
-            // Calculate depth from path length for indentation (min depth is 1)
-            const depth = Math.max(0, child.path.length - 1);
-            // Cap indentation at 3 levels to prevent excessive nesting
-            const indentLevel = Math.min(depth, 3);
-            
-            return (
-              <div
-                key={childPathStr}
-                onClick={() => handleChildClick(childPathStr)}
-                className={`
-                  group flex cursor-pointer items-center gap-2 rounded-[12px] p-2 text-sm transition-all duration-200
-                  ${
-                    isChildSelected
-                      ? 'scale-[1.02] bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
-                      : 'text-slate-600 hover:scale-[1.01] hover:bg-white/70'
-                  }
-                `}
-                style={{ marginLeft: `${indentLevel * 12}px` }}
-              >
-                {/* Child Icon */}
-                <div
-                  className={`rounded-[8px] p-1 transition-all duration-200 ${
-                    isChildSelected 
-                      ? 'bg-emerald-400 text-white' 
-                      : 'bg-slate-50 text-slate-400 group-hover:bg-white'
-                  }`}
-                >
-                  <Layers size={12} />
-                </div>
-                
-                {/* Child Name */}
-                <span className="flex-1 truncate font-medium text-xs">{child.name}</span>
-                
-                {/* Depth indicator for nested items */}
-                {depth > 0 && !isChildSelected && (
-                  <span className="text-[9px] text-slate-400">L{depth + 1}</span>
-                )}
-                
-                {/* Selection Indicator */}
-                {isChildSelected && (
-                  <ChevronRight size={12} className="text-emerald-200" />
-                )}
-              </div>
-            );
-          })}
+          {/* Only show direct children (path.length === 1) - nested children are handled recursively by ChildItem */}
+          {obj.children!
+            .filter(child => child.path.length === 1) // Only direct children of the root
+            .map((child) => (
+              <ChildItem
+                key={pathToString(child.path)}
+                child={child}
+                parentObj={obj}
+                selectedObjectId={selectedObjectId}
+                onSelectObject={onSelectObject}
+                onFocusObject={onFocusObject}
+                depth={0}
+              />
+            ))}
         </div>
       )}
     </div>

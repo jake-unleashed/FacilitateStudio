@@ -1,5 +1,5 @@
 import React, { Suspense, useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
-import { SceneObject, SimStep, parseSelectionId, createChildSelectionId } from '../types';
+import { SceneObject, SimStep, parseSelectionId, createChildSelectionId, pathToString } from '../types';
 import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import {
@@ -47,11 +47,13 @@ interface DragState {
   objectId: string;
   /** Reference to the scene object being dragged */
   object: SceneObject;
+  /** Path of the child being dragged (if any) - format: "path.to.child" */
+  childPath?: string | null;
   /** Y-coordinate of the drag plane (set to click point Y for consistent projection) */
   groundPlaneY: number;
-  /** Object's starting X position in scene units (before drag began) */
+  /** Object's starting X position in scene units (before drag began) - for parent OR child's local X */
   initialObjectX: number;
-  /** Object's starting Z position in scene units (before drag began) */
+  /** Object's starting Z position in scene units (before drag began) - for parent OR child's local Z */
   initialObjectZ: number;
   /** X-coordinate where user grabbed on the drag plane (world units) */
   initialGrabX: number;
@@ -328,21 +330,46 @@ const DragHandler: React.FC<{
         const deltaX = intersection.current.x - dragState.initialGrabX;
         const deltaZ = intersection.current.z - dragState.initialGrabZ;
 
-        // Apply delta to initial object position (convert from world to scene units)
+        // Apply delta to initial position (convert from world to scene units)
         // Note: Z is negated because Three.js Z is opposite to scene transform Z
         const newX = dragState.initialObjectX + deltaX * SCENE_TO_WORLD_SCALE;
         const newZ = dragState.initialObjectZ - deltaZ * SCENE_TO_WORLD_SCALE;
 
-        // Update object with new position
-        const updatedObject: SceneObject = {
-          ...dragState.object,
-          transform: {
-            ...dragState.object.transform,
-            x: newX,
-            z: newZ,
-          },
-        };
-        onUpdateObject(updatedObject);
+        // Check if we're dragging a child
+        if (dragState.childPath && dragState.object.children) {
+          // Update child's localTransform in the parent object's children array
+          const updatedChildren = dragState.object.children.map((child) => {
+            const childPathStr = pathToString(child.path);
+            if (childPathStr === dragState.childPath) {
+              return {
+                ...child,
+                localTransform: {
+                  ...child.localTransform,
+                  x: newX,
+                  z: newZ,
+                },
+              };
+            }
+            return child;
+          });
+
+          const updatedObject: SceneObject = {
+            ...dragState.object,
+            children: updatedChildren,
+          };
+          onUpdateObject(updatedObject);
+        } else {
+          // Update parent object's transform
+          const updatedObject: SceneObject = {
+            ...dragState.object,
+            transform: {
+              ...dragState.object.transform,
+              x: newX,
+              z: newZ,
+            },
+          };
+          onUpdateObject(updatedObject);
+        }
       }
     };
 
@@ -652,7 +679,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
     [recordingPositionForStepId, targetObjectId, previewMode, onPreviewObjectClick]
   );
 
-  // Handle pointer down on a child mesh - selects the child
+  // Handle pointer down on a child mesh - selects the child and sets up drag state
   const handleChildPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>, obj: SceneObject, childPath: string) => {
       // Only handle left mouse button
@@ -665,7 +692,35 @@ const SceneContent: React.FC<SceneContentProps> = ({
         e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
       ).stopImmediatePropagation?.();
 
-      // Select the child immediately (clicking a child is always a selection, not a drag)
+      // Find the child's current local transform
+      const child = obj.children?.find(c => pathToString(c.path) === childPath);
+      if (!child) return;
+
+      const clickPoint = e.point;
+      const groundPlaneY = clickPoint.y;
+
+      // Get child's current local position (in scene units)
+      const initialChildX = child.localTransform.x;
+      const initialChildZ = child.localTransform.z;
+
+      // Reset hasMovedRef synchronously before setting drag state
+      hasMovedRef.current = false;
+
+      // Set up drag state for the child
+      setDragState({
+        objectId: obj.id,
+        object: obj,
+        childPath: childPath,
+        groundPlaneY,
+        initialObjectX: initialChildX,
+        initialObjectZ: initialChildZ,
+        initialGrabX: clickPoint.x,
+        initialGrabZ: clickPoint.z,
+        hasMoved: false,
+        startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
+      });
+
+      // Select the child
       const childSelectionId = createChildSelectionId(obj.id, childPath);
       onSelectObject(childSelectionId);
     },
