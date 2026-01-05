@@ -91,6 +91,11 @@ export interface AssetMetadata {
   uploadDate: string;
   /** Computed metrics (populated after preprocessing) */
   metrics?: ModelMetrics;
+  /** 
+   * Extracted child mesh hierarchy (populated after preprocessing).
+   * Stored to avoid re-extraction when adding from recent assets.
+   */
+  children?: import('../types').ChildMesh[];
 }
 
 // =============================================================================

@@ -490,8 +490,11 @@ export interface ExtractedChildInfo {
  *
  * The extraction strategy:
  * 1. Skip single-mesh models (no hierarchy to show)
- * 2. For groups, extract named children that contain meshes
- * 3. Use meaningful names from the model or generate fallbacks
+ * 2. Recursively traverse the ENTIRE hierarchy (all levels deep)
+ * 3. Add every named mesh/group that contains geometry
+ * 4. Use meaningful names from the model or generate fallbacks
+ * 
+ * Children are stored in a flat list with full paths - the UI uses path depth for indentation.
  */
 export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
   const children: ChildMesh[] = [];
@@ -517,12 +520,17 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
     return children;
   }
 
-  // Second pass: extract children at appropriate level
-  // Strategy: Find meshes and named groups that are direct children or one level deep
+  // Track visited paths to avoid duplicates
   const visitedPaths = new Set<string>();
 
+  /**
+   * Recursively extract ALL children at ALL levels.
+   * This differs from the previous implementation by:
+   * 1. Always recursing into named groups (not stopping at them)
+   * 2. Collecting meshes and groups at every level of the hierarchy
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function extractChildren(obj: any, currentPath: string[]): void {
+  function extractChildrenRecursive(obj: any, currentPath: string[]): void {
     for (const child of obj.children) {
       const childPath = [...currentPath, child.name || `child_${child.id}`];
       const pathKey = childPath.join('/');
@@ -548,9 +556,9 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
           path: childPath,
           localTransform: { ...DEFAULT_TRANSFORM },
         });
-      }
-      // If this is a named group with content, add it as a child
-      else {
+        // Meshes don't have meaningful children, so no recursion needed
+      } else {
+        // This is a group (Group or Object3D with children)
         const hasName = child.name && child.name !== '' && !child.name.startsWith('_');
 
         if (hasName) {
@@ -560,17 +568,18 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
             path: childPath,
             localTransform: { ...DEFAULT_TRANSFORM },
           });
-        } else {
-          // Recurse into unnamed groups to find named children
-          extractChildren(child, childPath);
         }
+
+        // ALWAYS recurse into groups to find nested children (this is the key change)
+        // Even if this group was named and added, we still want to find its children
+        extractChildrenRecursive(child, childPath);
       }
     }
   }
 
-  extractChildren(model, []);
+  extractChildrenRecursive(model, []);
 
-  // If we didn't find any named children, extract top-level meshes with generated names
+  // If we didn't find any named children, extract all meshes with generated names
   if (children.length === 0 && meshCount > 1) {
     let partIndex = 1;
     model.traverse((child: THREE.Object3D) => {
@@ -588,7 +597,7 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
   }
 
   if (IS_DEV) {
-    console.log(`[extractChildMeshes] Extracted ${children.length} children:`, children.map(c => c.name));
+    console.log(`[extractChildMeshes] Extracted ${children.length} children:`, children.map(c => ({ name: c.name, depth: c.path.length })));
   }
 
   return children;

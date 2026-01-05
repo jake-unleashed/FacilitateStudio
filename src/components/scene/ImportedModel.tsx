@@ -413,6 +413,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     );
   }
 
+  // Get the selected child mesh object for bounding box rendering
+  const selectedChildMesh = useMemo(() => {
+    if (!hasChildSelected || !selectedChildPath) return null;
+    const entry = childPathToMesh.get(selectedChildPath);
+    return entry?.mesh ?? null;
+  }, [hasChildSelected, selectedChildPath, childPathToMesh]);
+
   // Render model with two-group structure
   // Outer group: positioned at visual center, handles rotation/scale
   // Inner group: fixed offset to keep bottom at ground
@@ -429,9 +436,14 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           onPointerOut={onHoverEnd}
         />
 
-        {/* Premium bounding box selection indicator - non-interactive */}
-        {isSelected && (
-          <BoundingBox model={model} color={isGhost ? '#a855f7' : '#3b82f6'} visible={isSelected} />
+        {/* Bounding box for parent selection (when no child is selected) */}
+        {isSelected && !hasChildSelected && (
+          <BoundingBox model={model} color={isGhost ? '#a855f7' : '#3b82f6'} visible={true} />
+        )}
+
+        {/* Bounding box for child selection (emerald color) */}
+        {hasChildSelected && selectedChildMesh && (
+          <BoundingBox model={selectedChildMesh} color="#10b981" visible={true} />
         )}
       </group>
     </group>

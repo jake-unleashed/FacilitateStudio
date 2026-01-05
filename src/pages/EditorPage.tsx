@@ -10,7 +10,7 @@ import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
 import { INITIAL_OBJECTS, INITIAL_STEPS, MODEL_CAMERA_DISTANCE_MULTIPLIER } from '../constants';
-import { SceneObject, SidebarSection, SimStep } from '../types';
+import { SceneObject, SidebarSection, SimStep, ChildMesh, parseSelectionId, stringToPath } from '../types';
 import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
@@ -376,7 +376,7 @@ export function EditorPage() {
     setSelectedObjectId(id);
   }, []);
 
-  const handleFocusObject = useCallback(async (object: SceneObject) => {
+  const handleFocusObject = useCallback(async (object: SceneObject, childPath?: string) => {
     const controls = cameraControlsRef.current;
     if (!controls) return;
 
@@ -404,6 +404,12 @@ export function EditorPage() {
         targetY = y + modelCenterY;
         targetX = x;
         targetZ = z;
+
+        // If focusing on a specific child, adjust camera distance for smaller view
+        if (childPath) {
+          // Use a smaller camera distance for child focus (1/2 of parent)
+          cameraDistance = Math.max(2, cameraDistance * 0.5);
+        }
       } else if (assetData) {
         // Fallback: load and preprocess model to get metrics
         try {
@@ -418,6 +424,11 @@ export function EditorPage() {
           targetY = y + modelCenterY;
           targetX = x;
           targetZ = z;
+
+          // Adjust for child focus
+          if (childPath) {
+            cameraDistance = Math.max(2, cameraDistance * 0.5);
+          }
         } catch (error) {
           console.warn('[EditorPage] Failed to load model for camera focus:', error);
         }
@@ -930,10 +941,26 @@ export function EditorPage() {
   // Memoized Derived State
   // ============================================================================
 
+  // Parse selection ID to extract parent object ID and optional child path
+  const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
+
+  // Get the parent object based on parsed selection
   const selectedObject = useMemo(
-    () => objects.find((obj) => obj.id === selectedObjectId) || null,
-    [objects, selectedObjectId]
+    () => objects.find((obj) => obj.id === parsedSelection?.objectId) || null,
+    [objects, parsedSelection]
   );
+
+  // Get the selected child mesh if a child is selected
+  const selectedChild = useMemo((): ChildMesh | null => {
+    if (!selectedObject || !parsedSelection?.childPath || !selectedObject.children) {
+      return null;
+    }
+    // Find the child whose path matches the selected child path
+    const childPathArray = stringToPath(parsedSelection.childPath);
+    return selectedObject.children.find(
+      (child) => child.path.join('.') === childPathArray.join('.')
+    ) ?? null;
+  }, [selectedObject, parsedSelection]);
 
   const hasSelectedObject = useMemo(() => !!selectedObject, [selectedObject]);
 
@@ -1000,6 +1027,7 @@ export function EditorPage() {
       {selectedObject && (
         <RightSidebar
           object={selectedObject}
+          selectedChild={selectedChild}
           onUpdate={handleUpdateObject}
           onDelete={handleDeleteObject}
           onClose={handleCloseRightSidebar}

@@ -53,7 +53,8 @@ interface LeftSidebarProps {
   objects: SceneObject[];
   onSelectObject: (id: string) => void;
   selectedObjectId: string | null;
-  onFocusObject?: (object: SceneObject) => void;
+  /** Focus camera on object (with optional child path for child-level focus) */
+  onFocusObject?: (object: SceneObject, childPath?: string) => void;
   onAddStep?: (step: Omit<SimStep, 'id'>) => void;
   onUpdateStep?: (step: SimStep) => void;
   onStartRecordingPosition?: (stepId: string) => void;
@@ -77,7 +78,8 @@ interface HierarchyItemProps {
   obj: SceneObject;
   selectedObjectId: string | null;
   onSelectObject: (id: string) => void;
-  onFocusObject?: (obj: SceneObject) => void;
+  /** Focus camera on object (with optional child path for child-level focus) */
+  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
 }
 
 // ============================================================================
@@ -142,8 +144,11 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
   const handleChildClick = useCallback((childPath: string) => {
     const childSelectionId = createChildSelectionId(obj.id, childPath);
     onSelectObject(childSelectionId);
-    // Note: Focus camera is handled for the parent - child focusing will be done in the 3D scene
-  }, [obj.id, onSelectObject]);
+    // Focus camera on parent object with child path for proper zoom
+    if (onFocusObject) {
+      onFocusObject(obj, childPath);
+    }
+  }, [obj, onSelectObject, onFocusObject]);
 
   return (
     <div className="space-y-0.5">
@@ -222,6 +227,10 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
           {obj.children!.map((child) => {
             const childPathStr = pathToString(child.path);
             const isChildSelected = parsedSelection?.objectId === obj.id && parsedSelection.childPath === childPathStr;
+            // Calculate depth from path length for indentation (min depth is 1)
+            const depth = Math.max(0, child.path.length - 1);
+            // Cap indentation at 3 levels to prevent excessive nesting
+            const indentLevel = Math.min(depth, 3);
             
             return (
               <div
@@ -235,6 +244,7 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
                       : 'text-slate-600 hover:scale-[1.01] hover:bg-white/70'
                   }
                 `}
+                style={{ marginLeft: `${indentLevel * 12}px` }}
               >
                 {/* Child Icon */}
                 <div
@@ -249,6 +259,11 @@ const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, onSelec
                 
                 {/* Child Name */}
                 <span className="flex-1 truncate font-medium text-xs">{child.name}</span>
+                
+                {/* Depth indicator for nested items */}
+                {depth > 0 && !isChildSelected && (
+                  <span className="text-[9px] text-slate-400">L{depth + 1}</span>
+                )}
                 
                 {/* Selection Indicator */}
                 {isChildSelected && (

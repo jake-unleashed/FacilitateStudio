@@ -365,8 +365,8 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           // Cache the model
           cachePreprocessedModel(assetId, preprocessed.model, metrics);
 
-          // Persist metrics
-          await updateAssetMetadata(assetId, { metrics });
+          // Persist metrics AND children to asset metadata for reuse
+          await updateAssetMetadata(assetId, { metrics, children });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to process model';
           setError(assetName, `Invalid model: ${msg}`);
@@ -460,12 +460,15 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   const addRecentAssetToScene = useCallback(
     async (asset: AssetMetadata, existingObjects: SceneObject[]): Promise<UploadResult | null> => {
       try {
+        // Pass cached metrics AND children from asset metadata
+        // This avoids re-extraction when adding from recent assets
         return await processAsset(
           asset.id,
           asset.name,
           asset.fileType,
           existingObjects,
-          asset.metrics
+          asset.metrics,
+          asset.children
         );
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Failed to add asset';

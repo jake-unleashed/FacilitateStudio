@@ -1,8 +1,8 @@
 import React, { useState, memo, useCallback, useMemo, useRef } from 'react';
-import { SceneObject } from '../types';
+import { SceneObject, ChildMesh } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
-import { Box, Eye, EyeOff, Trash2, Copy, Rotate3d, Scaling, X, ArrowUpDown } from 'lucide-react';
+import { Box, Eye, EyeOff, Trash2, Copy, Rotate3d, Scaling, X, ArrowUpDown, Layers } from 'lucide-react';
 import { OBJECT_ICONS } from '../constants';
 import {
   calculateLowestPointOffset,
@@ -18,6 +18,8 @@ type RotationAxis = 'x' | 'y' | 'z';
 
 interface RightSidebarProps {
   object: SceneObject | null;
+  /** Selected child mesh (if any) - when set, shows child details instead of parent */
+  selectedChild?: ChildMesh | null;
   onUpdate: (updated: SceneObject) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
@@ -99,6 +101,87 @@ const PanelHeader = memo<PanelHeaderProps>(({ objectType, onClose }) => {
   );
 });
 PanelHeader.displayName = 'PanelHeader';
+
+interface ChildPanelHeaderProps {
+  childName: string;
+  parentName: string;
+  onClose: () => void;
+}
+
+const ChildPanelHeader = memo<ChildPanelHeaderProps>(({ childName, parentName, onClose }) => {
+  const handleClose = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onClose();
+    },
+    [onClose]
+  );
+
+  return (
+    <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
+      <div className="flex items-center gap-3 overflow-hidden">
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20"
+          title="Child Object"
+          data-testid="child-type-icon"
+        >
+          <Layers size={16} />
+        </div>
+        <div className="flex flex-col overflow-hidden">
+          <h2 className="truncate text-sm font-bold text-slate-900">{childName}</h2>
+          <span className="truncate text-xs text-slate-500">Part of {parentName}</span>
+        </div>
+      </div>
+      <button
+        onClick={handleClose}
+        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[12px] text-slate-500 transition-colors hover:bg-white/50 hover:text-slate-800 active:scale-95"
+        aria-label="Close"
+        data-testid="close-button"
+      >
+        <X size={18} />
+      </button>
+    </div>
+  );
+});
+ChildPanelHeader.displayName = 'ChildPanelHeader';
+
+interface ChildNameSectionProps {
+  name: string;
+}
+
+const ChildNameSection = memo<ChildNameSectionProps>(({ name }) => {
+  return (
+    <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
+      <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-600">
+        Name
+      </label>
+      <div className="text-sm font-semibold text-slate-800">{name}</div>
+    </div>
+  );
+});
+ChildNameSection.displayName = 'ChildNameSection';
+
+interface ChildInfoSectionProps {
+  pathDepth: number;
+  parentName: string;
+}
+
+const ChildInfoSection = memo<ChildInfoSectionProps>(({ pathDepth, parentName }) => {
+  return (
+    <div className="rounded-[16px] border border-emerald-200/60 bg-emerald-50/50 px-3 py-2.5 shadow-sm">
+      <div className="flex items-center gap-2 text-emerald-700">
+        <Layers size={14} />
+        <span className="text-xs font-medium">
+          Child of <span className="font-semibold">{parentName}</span>
+        </span>
+      </div>
+      <div className="mt-1 text-[10px] text-emerald-600/80">
+        Hierarchy depth: {pathDepth} level{pathDepth > 1 ? 's' : ''}
+      </div>
+    </div>
+  );
+});
+ChildInfoSection.displayName = 'ChildInfoSection';
 
 interface NameAndVisibilitySectionProps {
   name: string;
@@ -531,6 +614,7 @@ ActionsSection.displayName = 'ActionsSection';
 
 const RightSidebarInner: React.FC<RightSidebarProps> = ({
   object,
+  selectedChild,
   onUpdate,
   onDelete,
   onClose,
@@ -541,6 +625,9 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
 
   // Store initial object state when slider interaction starts
   const initialObjectRef = useRef<SceneObject | null>(null);
+
+  // Determine if we're in child editing mode
+  const isChildMode = !!selectedChild;
 
   // ---- Memoized Calculations ----
   // Note: All hooks must be called unconditionally (before any early returns)
@@ -761,44 +848,97 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     >
       {/* Floating Panel - Tier 1 Rounding (32px) */}
       <div className="pointer-events-auto flex flex-1 origin-right flex-col overflow-hidden rounded-[32px] border border-white/40 bg-white/70 shadow-glass backdrop-blur-xl transition-all duration-500 ease-out">
-        <PanelHeader objectType={object.type} onClose={onClose} />
+        {/* Header - changes based on whether parent or child is selected */}
+        {isChildMode && selectedChild ? (
+          <ChildPanelHeader
+            childName={selectedChild.name}
+            parentName={object.name}
+            onClose={onClose}
+          />
+        ) : (
+          <PanelHeader objectType={object.type} onClose={onClose} />
+        )}
 
-        {/* Content */}
+        {/* Content - different sections for parent vs child */}
         <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
-          <NameAndVisibilitySection
-            name={object.name}
-            visible={object.properties.visible}
-            onNameChange={handleNameChange}
-            onVisibilityToggle={handleVisibilityToggle}
-          />
+          {isChildMode && selectedChild ? (
+            // Child mode: show child-specific information
+            <>
+              <ChildNameSection name={selectedChild.name} />
+              <ChildInfoSection
+                pathDepth={selectedChild.path.length}
+                parentName={object.name}
+              />
+              {/* Child transform info (read-only for now) */}
+              <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                  Local Transform
+                </label>
+                <div className="space-y-1.5 text-xs text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Position</span>
+                    <span className="font-mono text-slate-500">
+                      ({(selectedChild.localTransform.x / 100).toFixed(2)}, 
+                      {(selectedChild.localTransform.y / 100).toFixed(2)}, 
+                      {(selectedChild.localTransform.z / 100).toFixed(2)})
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Rotation</span>
+                    <span className="font-mono text-slate-500">
+                      ({selectedChild.localTransform.rotationX.toFixed(0)}°, 
+                      {selectedChild.localTransform.rotationY.toFixed(0)}°, 
+                      {selectedChild.localTransform.rotationZ.toFixed(0)}°)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Scale</span>
+                    <span className="font-mono text-slate-500">
+                      {selectedChild.localTransform.scaleX.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            // Parent mode: show full object controls
+            <>
+              <NameAndVisibilitySection
+                name={object.name}
+                visible={object.properties.visible}
+                onNameChange={handleNameChange}
+                onVisibilityToggle={handleVisibilityToggle}
+              />
 
-          <HeightSection
-            groundRelativeHeight={groundRelativeHeight}
-            onHeightChange={handleHeightChange}
-            onHeightCommit={handleHeightCommit}
-            onBatchStart={handleHeightBatchStart}
-            onBatchEnd={handleHeightBatchEnd}
-          />
+              <HeightSection
+                groundRelativeHeight={groundRelativeHeight}
+                onHeightChange={handleHeightChange}
+                onHeightCommit={handleHeightCommit}
+                onBatchStart={handleHeightBatchStart}
+                onBatchEnd={handleHeightBatchEnd}
+              />
 
-          <ScaleSection
-            currentScale={currentScale}
-            onScaleChange={handleScaleChange}
-            onScaleCommit={handleScaleCommit}
-            onBatchStart={handleScaleBatchStart}
-            onBatchEnd={handleScaleBatchEnd}
-          />
+              <ScaleSection
+                currentScale={currentScale}
+                onScaleChange={handleScaleChange}
+                onScaleCommit={handleScaleCommit}
+                onBatchStart={handleScaleBatchStart}
+                onBatchEnd={handleScaleBatchEnd}
+              />
 
-          <RotationSection
-            activeAxis={activeRotAxis}
-            displayRotation={displayRotation}
-            onAxisChange={setActiveRotAxis}
-            onRotationChange={handleRotationChange}
-            onRotationCommit={handleRotationCommit}
-            onBatchStart={handleRotationBatchStart}
-            onBatchEnd={handleRotationBatchEnd}
-          />
+              <RotationSection
+                activeAxis={activeRotAxis}
+                displayRotation={displayRotation}
+                onAxisChange={setActiveRotAxis}
+                onRotationChange={handleRotationChange}
+                onRotationCommit={handleRotationCommit}
+                onBatchStart={handleRotationBatchStart}
+                onBatchEnd={handleRotationBatchEnd}
+              />
 
-          <ActionsSection onDuplicate={handleDuplicate} onDelete={handleDelete} />
+              <ActionsSection onDuplicate={handleDuplicate} onDelete={handleDelete} />
+            </>
+          )}
         </div>
       </div>
     </div>
