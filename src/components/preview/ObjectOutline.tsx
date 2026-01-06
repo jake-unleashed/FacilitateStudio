@@ -108,7 +108,6 @@ export const ObjectOutline: React.FC<ObjectOutlineProps> = ({
   return (
     <group position={worldPos} rotation={worldRotation} scale={worldScale}>
       {/* Outline - rendered as a slightly larger version with back faces for outline effect */}
-      {/* eslint-disable-next-line react/no-unknown-property -- react-three-fiber passes this through to three.js */}
       <mesh ref={outlineRef} renderOrder={1}>
         <primitive object={baseGeometry} />
         <primitive object={outlineMaterial} />

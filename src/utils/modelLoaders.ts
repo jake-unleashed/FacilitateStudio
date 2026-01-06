@@ -667,7 +667,6 @@ export function findChildByPath(model: any, path: string[]): any | null {
   let current: any = model;
 
   for (const segment of path) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const child = current.children.find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c: any) => c.name === segment || `child_${c.id}` === segment

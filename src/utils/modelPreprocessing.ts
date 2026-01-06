@@ -174,11 +174,6 @@ export function normalizeModelOrientation(model: THREE.Group): void {
   const size = new THREE.Vector3();
   box.getSize(size);
 
-  // Determine primary orientation
-  const maxDim = Math.max(size.x, size.y, size.z);
-  // Note: isFlat detection for very flat models (ratio > 5) is reserved for future orientation logic
-  void (maxDim / Math.min(size.x, size.y, size.z) > 5); // eslint-disable-line @typescript-eslint/no-unused-expressions
-
   // If model is wider than tall, it might be lying down
   // Check if X or Z is the "up" dimension
   if (size.x > size.y * 1.5 && size.x > size.z * 1.5) {

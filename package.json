@@ -19,8 +19,10 @@
   "dependencies": {
     "@react-three/drei": "9.92.7",
     "@react-three/fiber": "8.15.11",
+    "@react-three/postprocessing": "^2.19.1",
     "idb": "^8.0.3",
     "lucide-react": "0.344.0",
+    "postprocessing": "^6.36.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.10.1",
@@ -44,6 +46,7 @@
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^24.0.0",
     "postcss": "^8.4.32",
     "prettier": "^3.2.4",

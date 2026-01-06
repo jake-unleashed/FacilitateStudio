@@ -20,7 +20,13 @@ import CameraControlsImpl from 'camera-controls';
 import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
 import { PreviewMoveItemStepRenderer } from './preview/PreviewMoveItemStepRenderer';
 import { ImportedModel } from './scene/ImportedModel';
-import { BoundingBox } from './scene/BoundingBox';
+import {
+  ChildSelectionProvider,
+  ChildOutlineEffect,
+  Select,
+  SelectionOutlineEffect,
+} from './scene/SelectionOutline';
+import { Selection } from '@react-three/postprocessing';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,7 +126,7 @@ interface IndustrialPrimitiveProps {
 
 const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   obj,
-  isSelected,
+  isSelected: _isSelected,
   onPointerDown,
   onDoubleClick,
   isDragging,
@@ -130,16 +136,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   isGhost = false,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
-  const boxMeshRef = useRef<THREE.Mesh>(null);
-  const [meshReady, setMeshReady] = useState(false);
   const color = obj.properties.color || '#3b82f6';
-
-  // Ensure BoundingBox can access the mesh ref after mount
-  useEffect(() => {
-    if (boxMeshRef.current && !meshReady) {
-      setMeshReady(true);
-    }
-  }, [meshReady]);
 
   // Memoize position array to prevent unnecessary re-renders
   const position = useMemo<[number, number, number]>(
@@ -196,9 +193,9 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
     [onHoverEnd]
   );
 
-  // Calculate emissive properties
-  const emissiveColor = isHovered && !isDragging ? color : '#000000';
-  const emissiveIntensity = isHovered && !isDragging ? 0.1 : 0;
+  // Calculate emissive properties - increased intensity for clearer pre-selection feedback
+  const emissiveColor = isHovered && !isDragging ? '#ffffff' : '#000000';
+  const emissiveIntensity = isHovered && !isDragging ? 0.18 : 0;
 
   return (
     <group
@@ -212,7 +209,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
       onPointerLeave={handlePointerLeave}
     >
       {/* eslint-disable-next-line react/no-unknown-property */}
-      <mesh ref={boxMeshRef} geometry={sharedBoxGeometry}>
+      <mesh geometry={sharedBoxGeometry}>
         <meshStandardMaterial
           color={color}
           roughness={0.2}
@@ -225,10 +222,6 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
           opacity={isGhost ? 0.45 : 1.0}
         />
       </mesh>
-
-      {isSelected && meshReady && boxMeshRef.current && (
-        <BoundingBox model={boxMeshRef.current} color={color} visible={isSelected} />
-      )}
     </group>
   );
 };
@@ -313,6 +306,14 @@ const DragHandler: React.FC<{
     groundPlane.current.constant = -dragState.groundPlaneY;
 
     const handlePointerMove = (event: PointerEvent) => {
+      // Safety check: if the primary button is no longer pressed, end the drag
+      // This catches cases where the pointer up event was missed due to React re-render timing
+      if ((event.buttons & 1) === 0) {
+        // Primary button (left click) is not pressed - end drag immediately
+        onDragEnd(hasMovedRef.current);
+        return;
+      }
+
       // Always block events while a pointer is down on an object (even before we
       // cross the drag threshold). This prevents accidental camera movement
       // from small hand jitter on click/drag.
@@ -590,6 +591,37 @@ const SceneContent: React.FC<SceneContentProps> = ({
     hasMovedRef.current = dragState?.hasMoved ?? false;
   }, [dragState?.hasMoved]);
 
+  // Ref to store the drag state for use in global pointer up listener
+  // This avoids stale closure issues since the effect can capture the ref
+  const dragStateRef = useRef<DragState | null>(null);
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+
+  // CRITICAL: Global safety listener for pointer up events
+  // This catches pointer up events that might be missed due to React re-render timing
+  // when switching between child selections. This runs ALWAYS, not just when dragState exists.
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      // Only act if we have drag state
+      if (dragStateRef.current) {
+        // Clear the drag state - the child was already selected in handleChildPointerDown
+        // so we just need to clean up
+        setDragState(null);
+      }
+    };
+
+    // Listen on window WITHOUT capture phase - this runs AFTER DragHandler's listener
+    // If DragHandler handled it, dragState will already be null
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
+
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
+    };
+  }, []); // Empty deps - this listener is always active
+
   // Track if we've already notified parent
   const hasNotifiedRef = useRef(false);
 
@@ -829,16 +861,20 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       if (dragState && !wasDrag) {
         // It was a click, not a drag
-        // Check if there's a pending child path (two-tier selection)
+        // Check if there's a pending child path (two-tier selection from parent)
         if (dragState.pendingChildPath) {
-          // Select the child that was clicked
+          // Select the child that was clicked (drilling down from parent selection)
           const childSelectionId = createChildSelectionId(
             dragState.objectId,
             dragState.pendingChildPath
           );
           onSelectObject(childSelectionId);
+        } else if (dragState.childPath) {
+          // Already selecting a child directly (sibling navigation or child re-click)
+          // The child was already selected in handleChildPointerDown, so just keep it
+          // Don't re-select - this prevents accidentally selecting the parent on click release
         } else {
-          // No pending child, select the parent object
+          // No pending child and no current child, select the parent object
           onSelectObject(dragState.objectId);
         }
       }
@@ -955,103 +991,125 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       <PerspectiveCamera makeDefault position={DEFAULT_CAMERA_POSITION} fov={35} />
 
-      <group>
-        {objects.map(
-          (obj) =>
-            obj.properties.visible &&
-            // During recording, don't render the target object normally (we'll render it as actual + ghost)
-            !(recordingPositionForStepId && obj.id === targetObjectId) &&
-            (obj.properties.modelAssetId ? (
-              <ImportedModel
-                key={obj.id}
-                obj={obj}
-                isSelected={selectedParentId === obj.id}
-                selectedChildPath={selectedParentId === obj.id ? selectedChildPath : null}
-                onPointerDown={handleObjectPointerDown}
-                onChildPointerDown={handleChildPointerDown}
-                onDoubleClick={handleDoubleClick}
-                isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
-                isHovered={hoveredObjectId === obj.id}
-                onHoverStart={() => setHoveredObjectId(obj.id)}
-                onHoverEnd={() => setHoveredObjectId(null)}
-              />
-            ) : (
-              <IndustrialPrimitive
-                key={obj.id}
-                obj={obj}
-                isSelected={selectedParentId === obj.id}
-                onPointerDown={handleObjectPointerDown}
-                onDoubleClick={handleDoubleClick}
-                isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
-                isHovered={hoveredObjectId === obj.id}
-                onHoverStart={() => setHoveredObjectId(obj.id)}
-                onHoverEnd={() => setHoveredObjectId(null)}
-              />
-            ))
-        )}
-        {/* Render actual object at start position during recording (non-draggable) */}
-        {recordingPositionForStepId &&
-          actualObject &&
-          actualObject.properties.visible &&
-          (actualObject.properties.modelAssetId ? (
-            <ImportedModel
-              key={`actual-${actualObject.id}`}
-              obj={actualObject}
-              isSelected={false}
-              onPointerDown={() => {}} // Disable interaction
-              onDoubleClick={() => {}}
-              isDragging={false}
-              isHovered={false}
-              onHoverStart={() => {}}
-              onHoverEnd={() => {}}
-            />
-          ) : (
-            <IndustrialPrimitive
-              key={`actual-${actualObject.id}`}
-              obj={actualObject}
-              isSelected={false}
-              onPointerDown={() => {}} // Disable interaction
-              onDoubleClick={() => {}}
-              isDragging={false}
-              isHovered={false}
-              onHoverStart={() => {}}
-              onHoverEnd={() => {}}
-            />
-          ))}
-        {/* Render ghost object during recording (draggable) */}
-        {recordingPositionForStepId &&
-          ghostObject &&
-          ghostObject.properties.visible &&
-          (ghostObject.properties.modelAssetId ? (
-            <ImportedModel
-              key={`ghost-${ghostObject.id}`}
-              obj={ghostObject}
-              isSelected={selectedParentId === ghostObject.id}
-              selectedChildPath={selectedParentId === ghostObject.id ? selectedChildPath : null}
-              onPointerDown={handleObjectPointerDown}
-              onChildPointerDown={handleChildPointerDown}
-              onDoubleClick={handleDoubleClick}
-              isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
-              isHovered={hoveredObjectId === ghostObject.id}
-              onHoverStart={() => setHoveredObjectId(ghostObject.id)}
-              onHoverEnd={() => setHoveredObjectId(null)}
-              isGhost={true}
-            />
-          ) : (
-            <IndustrialPrimitive
-              key={`ghost-${ghostObject.id}`}
-              obj={ghostObject}
-              isSelected={selectedParentId === ghostObject.id}
-              onPointerDown={handleObjectPointerDown}
-              onDoubleClick={handleDoubleClick}
-              isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
-              isHovered={hoveredObjectId === ghostObject.id}
-              onHoverStart={() => setHoveredObjectId(ghostObject.id)}
-              onHoverEnd={() => setHoveredObjectId(null)}
-              isGhost={true}
-            />
-          ))}
-      </group>
+      {/* ChildSelectionProvider wraps everything for child outline support */}
+      <ChildSelectionProvider>
+        {/* Selection context for parent outlines (blue) */}
+        <Selection>
+          <group>
+            {objects.map(
+              (obj) =>
+                obj.properties.visible &&
+                // During recording, don't render the target object normally (we'll render it as actual + ghost)
+                !(recordingPositionForStepId && obj.id === targetObjectId) && (
+                  <Select
+                    key={obj.id}
+                    enabled={
+                      selectedParentId === obj.id &&
+                      // For imported models, only outline parent when no child is selected
+                      // (child selection uses emissive highlighting instead)
+                      !(obj.properties.modelAssetId && selectedChildPath)
+                    }
+                  >
+                    {obj.properties.modelAssetId ? (
+                      <ImportedModel
+                        obj={obj}
+                        isSelected={selectedParentId === obj.id}
+                        selectedChildPath={selectedParentId === obj.id ? selectedChildPath : null}
+                        onPointerDown={handleObjectPointerDown}
+                        onChildPointerDown={handleChildPointerDown}
+                        onDoubleClick={handleDoubleClick}
+                        isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
+                        isHovered={hoveredObjectId === obj.id}
+                        onHoverStart={() => setHoveredObjectId(obj.id)}
+                        onHoverEnd={() => setHoveredObjectId(null)}
+                      />
+                    ) : (
+                      <IndustrialPrimitive
+                        obj={obj}
+                        isSelected={selectedParentId === obj.id}
+                        onPointerDown={handleObjectPointerDown}
+                        onDoubleClick={handleDoubleClick}
+                        isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
+                        isHovered={hoveredObjectId === obj.id}
+                        onHoverStart={() => setHoveredObjectId(obj.id)}
+                        onHoverEnd={() => setHoveredObjectId(null)}
+                      />
+                    )}
+                  </Select>
+                )
+            )}
+            {/* Render actual object at start position during recording (non-draggable) */}
+            {recordingPositionForStepId &&
+              actualObject &&
+              actualObject.properties.visible &&
+              (actualObject.properties.modelAssetId ? (
+                <ImportedModel
+                  key={`actual-${actualObject.id}`}
+                  obj={actualObject}
+                  isSelected={false}
+                  onPointerDown={() => {}} // Disable interaction
+                  onDoubleClick={() => {}}
+                  isDragging={false}
+                  isHovered={false}
+                  onHoverStart={() => {}}
+                  onHoverEnd={() => {}}
+                />
+              ) : (
+                <IndustrialPrimitive
+                  key={`actual-${actualObject.id}`}
+                  obj={actualObject}
+                  isSelected={false}
+                  onPointerDown={() => {}} // Disable interaction
+                  onDoubleClick={() => {}}
+                  isDragging={false}
+                  isHovered={false}
+                  onHoverStart={() => {}}
+                  onHoverEnd={() => {}}
+                />
+              ))}
+            {/* Render ghost object during recording (draggable) */}
+            {recordingPositionForStepId && ghostObject && ghostObject.properties.visible && (
+              <Select key={`ghost-${ghostObject.id}`} enabled={selectedParentId === ghostObject.id}>
+                {ghostObject.properties.modelAssetId ? (
+                  <ImportedModel
+                    obj={ghostObject}
+                    isSelected={selectedParentId === ghostObject.id}
+                    selectedChildPath={
+                      selectedParentId === ghostObject.id ? selectedChildPath : null
+                    }
+                    onPointerDown={handleObjectPointerDown}
+                    onChildPointerDown={handleChildPointerDown}
+                    onDoubleClick={handleDoubleClick}
+                    isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
+                    isHovered={hoveredObjectId === ghostObject.id}
+                    onHoverStart={() => setHoveredObjectId(ghostObject.id)}
+                    onHoverEnd={() => setHoveredObjectId(null)}
+                    isGhost={true}
+                  />
+                ) : (
+                  <IndustrialPrimitive
+                    obj={ghostObject}
+                    isSelected={selectedParentId === ghostObject.id}
+                    onPointerDown={handleObjectPointerDown}
+                    onDoubleClick={handleDoubleClick}
+                    isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
+                    isHovered={hoveredObjectId === ghostObject.id}
+                    onHoverStart={() => setHoveredObjectId(ghostObject.id)}
+                    onHoverEnd={() => setHoveredObjectId(null)}
+                    isGhost={true}
+                  />
+                )}
+              </Select>
+            )}
+          </group>
+
+          {/* Post-processing outline effect for parent objects (blue) */}
+          <SelectionOutlineEffect />
+        </Selection>
+
+        {/* Child outline effect (green) - MUST be outside Selection context */}
+        <ChildOutlineEffect />
+      </ChildSelectionProvider>
 
       <ContactShadows
         position={[0, -0.01, 0]}

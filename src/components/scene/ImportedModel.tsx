@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { SceneObject, ChildMesh, pathToString } from '../../types';
 import { getOrLoadModel } from '../../utils/modelCache';
 import { findChildByPath } from '../../utils/modelLoaders';
-import { BoundingBox } from './BoundingBox';
+import { SelectObject } from './SelectionOutline';
 
 // =============================================================================
 // Constants
@@ -31,8 +31,10 @@ const SELECTION_COLOR = '#3b82f6';
 const SELECTION_COLOR_GHOST = '#a855f7';
 const CHILD_SELECTION_COLOR = '#10b981'; // Emerald for child selection
 const HOVER_COLOR = '#ffffff';
-const SELECTION_INTENSITY = 0.15;
-const HOVER_INTENSITY = 0.08;
+/** Selection emissive intensity - increased for clearer visibility */
+const SELECTION_INTENSITY = 0.25;
+/** Hover emissive intensity - increased for clearer pre-selection feedback */
+const HOVER_INTENSITY = 0.18;
 
 // =============================================================================
 // Types
@@ -314,6 +316,77 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     [model, obj.children, childPathToMesh]
   );
 
+  // Find a sibling child at the same hierarchy level as the currently selected child
+  // Used for sibling navigation - clicking on adjacent children selects them at the same depth
+  const findSiblingAtSameLevel = useCallback(
+    (clickedMesh: THREE.Object3D, currentSelectionPath: string): string | null => {
+      if (!model || !obj.children || obj.children.length === 0) return null;
+
+      const currentDepth = currentSelectionPath.split('.').length;
+      const currentParentPath = currentSelectionPath.split('.').slice(0, -1).join('.');
+
+      // Find all children whose mesh contains the clicked point
+      const matchingPaths: { path: string; depth: number }[] = [];
+
+      for (const [pathStr, { mesh }] of childPathToMesh) {
+        // Check if clickedMesh is this mesh or a descendant of it
+        let isMatch = false;
+
+        if (mesh === clickedMesh) {
+          isMatch = true;
+        } else {
+          // Traverse up from clickedMesh to see if we hit this mesh
+          let current = clickedMesh.parent;
+          while (current && current !== model) {
+            if (current === mesh) {
+              isMatch = true;
+              break;
+            }
+            current = current.parent;
+          }
+        }
+
+        if (isMatch) {
+          matchingPaths.push({
+            path: pathStr,
+            depth: pathStr.split('.').length,
+          });
+        }
+      }
+
+      if (matchingPaths.length === 0) return null;
+
+      // Sort by depth (shallowest first)
+      matchingPaths.sort((a, b) => a.depth - b.depth);
+
+      // Strategy 1: Find a match at exactly the same depth
+      const sameLevelMatch = matchingPaths.find((m) => m.depth === currentDepth);
+      if (sameLevelMatch) {
+        return sameLevelMatch.path;
+      }
+
+      // Strategy 2: Find a sibling (same parent path prefix)
+      if (currentParentPath) {
+        const siblingMatch = matchingPaths.find(
+          (m) => m.path.startsWith(currentParentPath + '.') && m.depth === currentDepth
+        );
+        if (siblingMatch) {
+          return siblingMatch.path;
+        }
+      }
+
+      // Strategy 3: Return the shallowest match (closest to the current level without drilling)
+      const shallowerMatch = matchingPaths.find((m) => m.depth <= currentDepth);
+      if (shallowerMatch) {
+        return shallowerMatch.path;
+      }
+
+      // Fallback: return shallowest overall
+      return matchingPaths[0].path;
+    },
+    [model, obj.children, childPathToMesh]
+  );
+
   // Memoize event handlers
   // Multi-tier selection: keep clicking to drill deeper into the hierarchy
   const handlePointerDown = useCallback(
@@ -361,8 +434,11 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
             }
           }
         } else if (childPath && onChildPointerDown) {
-          // Clicked on a different child (outside the selected subtree) - select it
-          onChildPointerDown(e, obj, childPath);
+          // Clicked on a different child (outside the selected subtree)
+          // Find a sibling at the same depth level as the current selection
+          // This allows horizontal navigation between children at the same level
+          const siblingPath = findSiblingAtSameLevel(e.object, selectedChildPath);
+          onChildPointerDown(e, obj, siblingPath || childPath);
         } else {
           // Clicked on non-child area - keep parent selected, allow drag of root
           onPointerDown(e, obj);
@@ -386,6 +462,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
       findChildPathForMesh,
       findDeeperChild,
       findFirstLevelChild,
+      findSiblingAtSameLevel,
       isSelected,
       hasChildSelected,
       selectedChildPath,
@@ -675,7 +752,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     }
   });
 
-  // Get the selected child mesh object for bounding box rendering
+  // Get the selected child mesh for outline rendering
   // NOTE: This hook MUST be called before any early returns to satisfy React's rules of hooks
   const selectedChildMesh = useMemo(() => {
     if (!hasChildSelected || !selectedChildPath || !model) return null;
@@ -721,15 +798,11 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           onPointerMove={handlePointerMove}
         />
 
-        {/* Bounding box for parent selection (when no child is selected) */}
-        {isSelected && !hasChildSelected && (
-          <BoundingBox model={model} color={isGhost ? '#a855f7' : '#3b82f6'} visible={true} />
-        )}
-
-        {/* Bounding box for child selection (emerald color) */}
-        {hasChildSelected && selectedChildMesh && (
-          <BoundingBox model={selectedChildMesh} color="#10b981" visible={true} />
-        )}
+        {/* Post-processing outline for selected child mesh */}
+        <SelectObject
+          object={selectedChildMesh}
+          enabled={hasChildSelected && selectedChildMesh !== null}
+        />
       </group>
     </group>
   );

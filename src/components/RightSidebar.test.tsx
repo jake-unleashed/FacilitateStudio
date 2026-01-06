@@ -133,49 +133,7 @@ describe('RightSidebar', () => {
       );
     });
 
-    it('renders visibility toggle button', () => {
-      render(<RightSidebar {...defaultProps} />);
-      expect(screen.getByTitle('Toggle Visibility')).toBeInTheDocument();
-    });
-
-    it('shows Eye icon when object is visible', () => {
-      render(<RightSidebar {...defaultProps} />);
-      const visibilityButton = screen.getByTitle('Toggle Visibility');
-      expect(visibilityButton).toHaveClass('text-blue-600');
-    });
-
-    it('shows EyeOff icon styling when object is not visible', () => {
-      const hiddenObject = createMockObject({
-        properties: { visible: false },
-      });
-      render(<RightSidebar {...defaultProps} object={hiddenObject} />);
-      const visibilityButton = screen.getByTitle('Toggle Visibility');
-      expect(visibilityButton).toHaveClass('bg-slate-100/50');
-    });
-
-    it('toggles visibility when button is clicked', () => {
-      render(<RightSidebar {...defaultProps} />);
-      fireEvent.click(screen.getByTitle('Toggle Visibility'));
-
-      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          properties: expect.objectContaining({ visible: false }),
-        })
-      );
-    });
-
-    it('has correct aria-label for visible state', () => {
-      render(<RightSidebar {...defaultProps} />);
-      expect(screen.getByLabelText('Hide object')).toBeInTheDocument();
-    });
-
-    it('has correct aria-label for hidden state', () => {
-      const hiddenObject = createMockObject({
-        properties: { visible: false },
-      });
-      render(<RightSidebar {...defaultProps} object={hiddenObject} />);
-      expect(screen.getByLabelText('Show object')).toBeInTheDocument();
-    });
+    // Note: Visibility toggle was removed from the UI - tests removed
   });
 
   describe('Scale Section', () => {

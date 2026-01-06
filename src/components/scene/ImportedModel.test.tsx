@@ -27,13 +27,6 @@ vi.mock('../../utils/modelCache', () => ({
   getOrLoadModel: vi.fn(),
 }));
 
-// Mock BoundingBox component
-vi.mock('./BoundingBox', () => ({
-  BoundingBox: ({ visible }: { visible?: boolean }) => {
-    return visible ? <div data-testid="bounding-box">BoundingBox</div> : null;
-  },
-}));
-
 // Import after mocks are set up
 import { ImportedModel } from './ImportedModel';
 import { getOrLoadModel } from '../../utils/modelCache';

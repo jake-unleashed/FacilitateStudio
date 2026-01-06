@@ -6,6 +6,7 @@
  * Clicking an asset adds it to the scene.
  */
 
+/* eslint-disable react-refresh/only-export-components */
 import React, { useMemo } from 'react';
 import { Clock, Package } from 'lucide-react';
 import { AssetMetadata } from '../types/model';

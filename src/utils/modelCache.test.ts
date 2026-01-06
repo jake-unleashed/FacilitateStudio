@@ -30,7 +30,7 @@ describe('modelCache', () => {
   // Test Data
   // ===========================================================================
 
-  function createMockModel(): THREE.Object3D {
+  function createMockModel(): THREE.Group {
     const group = new THREE.Group();
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });

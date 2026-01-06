@@ -318,7 +318,7 @@ describe('Focus Logic', () => {
         properties: { visible: true },
       };
 
-      const key = 'g';
+      const key = 'g' as string;
       if (key === 'f' && selectedObject && mockOnFocusObject) {
         mockOnFocusObject(selectedObject);
       }

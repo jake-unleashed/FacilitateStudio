@@ -4,8 +4,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import * as THREE from 'three';
 import { useModelUpload } from './useModelUpload';
-import type { AssetMetadata, ModelMetrics } from '../types/model';
+import type { AssetMetadata } from '../types/model';
+import type { ModelMetrics, PreprocessedModel } from '../utils/modelPreprocessing';
 
 // Mock dependencies
 vi.mock('../utils/modelAssetStore', () => ({
@@ -20,6 +22,7 @@ vi.mock('../utils/modelAssetStore', () => ({
 
 vi.mock('../utils/modelLoaders', () => ({
   loadAndPreprocessModelFromArrayBuffer: vi.fn(),
+  extractChildMeshes: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('../utils/modelCache', () => ({
@@ -59,16 +62,21 @@ describe('useModelUpload', () => {
 
   function createMockMetrics(): ModelMetrics {
     return {
-      boundingBox: {
-        min: { x: -0.5, y: 0, z: -0.5 },
-        max: { x: 0.5, y: 1, z: 0.5 },
-      },
-      center: { x: 0, y: 0.5, z: 0 },
-      size: { x: 1, y: 1, z: 1 },
+      boundingBox: new THREE.Box3(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 1, 0.5)),
+      center: new THREE.Vector3(0, 0.5, 0),
+      size: new THREE.Vector3(1, 1, 1),
       bottomY: 0,
       topY: 1,
       maxDimension: 1,
       triangleCount: 12,
+    };
+  }
+
+  function createMockPreprocessedModel(): PreprocessedModel {
+    return {
+      model: new THREE.Group(),
+      metrics: createMockMetrics(),
+      originalScale: 1,
     };
   }
 
@@ -235,11 +243,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -264,11 +270,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
       const file = createMockFile('model.obj');
@@ -306,11 +310,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -328,11 +330,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -351,21 +351,18 @@ describe('useModelUpload', () => {
   describe('uploadFile - result', () => {
     it('returns upload result with scene object', async () => {
       const metadata = createMockMetadata();
-      const metrics = createMockMetrics();
       vi.mocked(saveAsset).mockResolvedValue(metadata);
       vi.mocked(getAsset).mockResolvedValue({
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics,
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
-      let uploadResult: Awaited<ReturnType<typeof result.current.uploadFile>>;
+      let uploadResult: Awaited<ReturnType<typeof result.current.uploadFile>> = null;
       await act(async () => {
         uploadResult = await result.current.uploadFile(createMockFile('model.obj'), []);
       });
@@ -383,11 +380,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -412,11 +407,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload({ onSuccess }));
 
@@ -467,11 +460,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -488,7 +479,7 @@ describe('useModelUpload', () => {
 
       const { result } = renderHook(() => useModelUpload());
 
-      let addResult: Awaited<ReturnType<typeof result.current.addRecentAssetToScene>>;
+      let addResult: Awaited<ReturnType<typeof result.current.addRecentAssetToScene>> = null;
       await act(async () => {
         addResult = await result.current.addRecentAssetToScene(metadata, []);
       });
@@ -518,11 +509,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -579,11 +568,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -613,11 +600,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -651,11 +636,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -726,11 +709,9 @@ describe('useModelUpload', () => {
         blob: new Blob(['test']),
         metadata,
       });
-      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue({
-        model: {} as THREE.Object3D,
-        metrics: createMockMetrics(),
-        originalScale: 1,
-      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
 
       const { result, unmount } = renderHook(() => useModelUpload());
 
