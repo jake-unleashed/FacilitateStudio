@@ -2,18 +2,7 @@ import React, { useState, memo, useCallback, useMemo, useRef } from 'react';
 import { SceneObject, ChildMesh, pathToString } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
-import {
-  Box,
-  Eye,
-  EyeOff,
-  Trash2,
-  Copy,
-  Rotate3d,
-  Scaling,
-  X,
-  ArrowUpDown,
-  Layers,
-} from 'lucide-react';
+import { Box, Trash2, Copy, Rotate3d, Scaling, X, ArrowUpDown, Layers } from 'lucide-react';
 import { OBJECT_ICONS } from '../constants';
 import {
   calculateLowestPointOffset,
@@ -74,11 +63,13 @@ const getRotationKey = (axis: RotationAxis): 'rotationX' | 'rotationY' | 'rotati
 
 interface PanelHeaderProps {
   objectType: SceneObject['type'];
+  isChild?: boolean;
   onClose: () => void;
 }
 
-const PanelHeader = memo<PanelHeaderProps>(({ objectType, onClose }) => {
-  const Icon = OBJECT_ICONS[objectType] || Box;
+const PanelHeader = memo<PanelHeaderProps>(({ objectType, isChild = false, onClose }) => {
+  // Use Layers icon for children, object type icon for parents
+  const Icon = isChild ? Layers : OBJECT_ICONS[objectType] || Box;
 
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
@@ -88,12 +79,17 @@ const PanelHeader = memo<PanelHeaderProps>(({ objectType, onClose }) => {
     [onClose]
   );
 
+  // Blue for parents, emerald/green for children (matching Scene Objects panel)
+  const iconClasses = isChild
+    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+    : 'bg-blue-500 text-white shadow-md shadow-blue-500/20';
+
   return (
     <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
       <div className="flex items-center gap-3 overflow-hidden">
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-purple-500/20"
-          title={`Type: ${objectType}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] ${iconClasses}`}
+          title={isChild ? 'Child Object' : `Type: ${objectType}`}
           data-testid="object-type-icon"
         >
           <Icon size={16} />
@@ -113,132 +109,30 @@ const PanelHeader = memo<PanelHeaderProps>(({ objectType, onClose }) => {
 });
 PanelHeader.displayName = 'PanelHeader';
 
-interface ChildPanelHeaderProps {
-  childName: string;
-  parentName: string;
-  onClose: () => void;
-}
-
-const ChildPanelHeader = memo<ChildPanelHeaderProps>(({ childName, parentName, onClose }) => {
-  const handleClose = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onClose();
-    },
-    [onClose]
-  );
-
-  return (
-    <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
-      <div className="flex items-center gap-3 overflow-hidden">
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20"
-          title="Child Object"
-          data-testid="child-type-icon"
-        >
-          <Layers size={16} />
-        </div>
-        <div className="flex flex-col overflow-hidden">
-          <h2 className="truncate text-sm font-bold text-slate-900">{childName}</h2>
-          <span className="truncate text-xs text-slate-500">Part of {parentName}</span>
-        </div>
-      </div>
-      <button
-        onClick={handleClose}
-        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[12px] text-slate-500 transition-colors hover:bg-white/50 hover:text-slate-800 active:scale-95"
-        aria-label="Close"
-        data-testid="close-button"
-      >
-        <X size={18} />
-      </button>
-    </div>
-  );
-});
-ChildPanelHeader.displayName = 'ChildPanelHeader';
-
-interface ChildNameSectionProps {
+interface NameSectionProps {
   name: string;
-}
-
-const ChildNameSection = memo<ChildNameSectionProps>(({ name }) => {
-  return (
-    <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
-      <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-600">
-        Name
-      </label>
-      <div className="text-sm font-semibold text-slate-800">{name}</div>
-    </div>
-  );
-});
-ChildNameSection.displayName = 'ChildNameSection';
-
-interface ChildInfoSectionProps {
-  pathDepth: number;
-  parentName: string;
-}
-
-const ChildInfoSection = memo<ChildInfoSectionProps>(({ pathDepth, parentName }) => {
-  return (
-    <div className="rounded-[16px] border border-emerald-200/60 bg-emerald-50/50 px-3 py-2.5 shadow-sm">
-      <div className="flex items-center gap-2 text-emerald-700">
-        <Layers size={14} />
-        <span className="text-xs font-medium">
-          Child of <span className="font-semibold">{parentName}</span>
-        </span>
-      </div>
-      <div className="mt-1 text-[10px] text-emerald-600/80">
-        Hierarchy depth: {pathDepth} level{pathDepth > 1 ? 's' : ''}
-      </div>
-    </div>
-  );
-});
-ChildInfoSection.displayName = 'ChildInfoSection';
-
-interface NameAndVisibilitySectionProps {
-  name: string;
-  visible: boolean;
   onNameChange: (name: string) => void;
-  onVisibilityToggle: () => void;
 }
 
-const NameAndVisibilitySection = memo<NameAndVisibilitySectionProps>(
-  ({ name, visible, onNameChange, onVisibilityToggle }) => {
-    const visibilityButtonClasses = visible
-      ? 'border-white/50 bg-white/50 text-blue-600 hover:bg-white hover:shadow-sm'
-      : 'border-transparent bg-slate-100/50 text-slate-400 hover:bg-slate-200';
+const NameSection = memo<NameSectionProps>(({ name, onNameChange }) => {
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onNameChange(e.target.value);
+    },
+    [onNameChange]
+  );
 
-    const handleChange = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        onNameChange(e.target.value);
-      },
-      [onNameChange]
-    );
-
-    return (
-      <div className="flex items-end gap-3">
-        <div className="flex-1">
-          <Input
-            label="Name"
-            value={name}
-            onChange={handleChange}
-            className="text-sm font-semibold"
-            data-testid="object-name-input"
-          />
-        </div>
-        <button
-          onClick={onVisibilityToggle}
-          className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[20px] border transition-all duration-200 ${visibilityButtonClasses}`}
-          title="Toggle Visibility"
-          aria-label={visible ? 'Hide object' : 'Show object'}
-          data-testid="visibility-toggle"
-        >
-          {visible ? <Eye size={20} /> : <EyeOff size={20} />}
-        </button>
-      </div>
-    );
-  }
-);
-NameAndVisibilitySection.displayName = 'NameAndVisibilitySection';
+  return (
+    <Input
+      label="Name"
+      value={name}
+      onChange={handleChange}
+      className="text-sm font-semibold"
+      data-testid="object-name-input"
+    />
+  );
+});
+NameSection.displayName = 'NameSection';
 
 interface HeightSectionProps {
   /** Height above ground in internal units (where 100 = 1 meter) */
@@ -672,17 +566,6 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     [object, onUpdate]
   );
 
-  const handleVisibilityToggle = useCallback(() => {
-    if (!object) return;
-    onUpdate({
-      ...object,
-      properties: {
-        ...object.properties,
-        visible: !object.properties.visible,
-      },
-    });
-  }, [object, onUpdate]);
-
   // Height change handler - updates visual state only (for real-time feedback during drag)
   const handleHeightChange = useCallback(
     (newHeight: number) => {
@@ -962,6 +845,31 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     }
   }, [onBatchEnd]);
 
+  // Child name change handler
+  const handleChildNameChange = useCallback(
+    (name: string) => {
+      if (!object || !selectedChild || !object.children) return;
+
+      const updatedChildren = object.children.map((child) => {
+        const childPathStr = pathToString(child.path);
+        const selectedPathStr = pathToString(selectedChild.path);
+        if (childPathStr === selectedPathStr) {
+          return {
+            ...child,
+            name: name,
+          };
+        }
+        return child;
+      });
+
+      onUpdate({
+        ...object,
+        children: updatedChildren,
+      });
+    },
+    [object, selectedChild, onUpdate]
+  );
+
   // ---- Early return after all hooks ----
   if (!object) return null;
 
@@ -987,24 +895,15 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     >
       {/* Floating Panel - Tier 1 Rounding (32px) */}
       <div className="pointer-events-auto flex flex-1 origin-right flex-col overflow-hidden rounded-[32px] border border-white/40 bg-white/70 shadow-glass backdrop-blur-xl transition-all duration-500 ease-out">
-        {/* Header - changes based on whether parent or child is selected */}
-        {isChildMode && selectedChild ? (
-          <ChildPanelHeader
-            childName={selectedChild.name}
-            parentName={object.name}
-            onClose={onClose}
-          />
-        ) : (
-          <PanelHeader objectType={object.type} onClose={onClose} />
-        )}
+        {/* Header - same layout, different icon/color for parent vs child */}
+        <PanelHeader objectType={object.type} isChild={isChildMode} onClose={onClose} />
 
-        {/* Content - different sections for parent vs child */}
+        {/* Content - standardized sections for both parent and child */}
         <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
           {isChildMode && selectedChild ? (
-            // Child mode: show same controls as parent but for child's local transform
+            // Child mode: same controls as parent but for child's local transform
             <>
-              <ChildNameSection name={selectedChild.name} />
-              <ChildInfoSection pathDepth={selectedChild.path.length} parentName={object.name} />
+              <NameSection name={selectedChild.name} onNameChange={handleChildNameChange} />
 
               <HeightSection
                 groundRelativeHeight={childGroundRelativeHeight}
@@ -1031,16 +930,13 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
                 onBatchStart={handleChildRotationBatchStart}
                 onBatchEnd={handleChildRotationBatchEnd}
               />
+
+              <ActionsSection onDuplicate={handleDuplicate} onDelete={handleDelete} />
             </>
           ) : (
-            // Parent mode: show full object controls
+            // Parent mode: same controls
             <>
-              <NameAndVisibilitySection
-                name={object.name}
-                visible={object.properties.visible}
-                onNameChange={handleNameChange}
-                onVisibilityToggle={handleVisibilityToggle}
-              />
+              <NameSection name={object.name} onNameChange={handleNameChange} />
 
               <HeightSection
                 groundRelativeHeight={groundRelativeHeight}

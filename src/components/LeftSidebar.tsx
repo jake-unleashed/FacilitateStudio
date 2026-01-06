@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
+import React, { memo, useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
   ListOrdered,
@@ -138,20 +138,37 @@ const ChildItem = memo<ChildItemProps>(
     const isChildSelected =
       parsedSelection?.objectId === parentObj.id && parsedSelection.childPath === childPathStr;
 
-    // Get nested children (children whose path starts with this child's path and is exactly one level deeper)
-    // We need to be careful: a nested child must have this child's path as a prefix AND be exactly one level deeper
+    // Get nested children - children that are direct descendants of this child
+    // A child is a "direct descendant" if:
+    // 1. Its path starts with this child's path
+    // 2. No intermediate path (between this child and that child) exists in the children list
     const nestedChildren = useMemo(() => {
       if (!parentObj.children) return [];
 
-      return parentObj.children.filter((c) => {
-        // Must be exactly one level deeper
-        if (c.path.length !== child.path.length + 1) return false;
+      // Build a set of all child path strings for quick lookup
+      const allPathStrings = new Set(parentObj.children.map((c) => pathToString(c.path)));
+      const thisPathStr = pathToString(child.path);
 
-        // Check if this child's path is a prefix of the nested child's path
-        // All path segments up to this child's length must match exactly
+      return parentObj.children.filter((c) => {
+        // Must be longer than this child's path
+        if (c.path.length <= child.path.length) return false;
+
+        // Check if this child's path is a prefix of the candidate's path
         for (let i = 0; i < child.path.length; i++) {
           if (c.path[i] !== child.path[i]) return false;
         }
+
+        // Check that no intermediate path exists between this child and the candidate
+        // For example, if this is "A" and candidate is "A.B.C", check if "A.B" exists
+        for (let i = child.path.length + 1; i < c.path.length; i++) {
+          const intermediatePath = c.path.slice(0, i);
+          const intermediatePathStr = pathToString(intermediatePath);
+          if (allPathStrings.has(intermediatePathStr) && intermediatePathStr !== thisPathStr) {
+            // An intermediate parent exists, so this isn't a direct descendant
+            return false;
+          }
+        }
+
         return true;
       });
     }, [parentObj.children, child.path]);
@@ -209,10 +226,14 @@ const ChildItem = memo<ChildItemProps>(
       [parentObj, childPathStr, onSelectObject, onFocusObject]
     );
 
+    // Create selection ID for this child (used for scroll-to-view)
+    const childSelectionId = createChildSelectionId(parentObj.id, childPathStr);
+
     return (
       <div className="space-y-0.5">
         <div
           onClick={handleChildClick}
+          data-selection-id={childSelectionId}
           className={`
           group flex cursor-pointer items-center gap-2 rounded-[12px] p-2 text-sm transition-all duration-200
           ${
@@ -268,9 +289,8 @@ const ChildItem = memo<ChildItemProps>(
           <div
             className={`
             ml-3 space-y-0.5 overflow-hidden border-l-2 border-slate-100 pl-2 transition-all duration-200 ease-out
-            ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
+            ${isExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}
           `}
-            style={{ maxHeight: isExpanded ? `${nestedChildren.length * 44}px` : '0px' }}
           >
             {nestedChildren.map((nestedChild) => (
               <ChildItem
@@ -305,10 +325,28 @@ const HierarchyItem = memo<HierarchyItemProps>(
     const isAnyChildSelected =
       parsedSelection?.objectId === obj.id && parsedSelection.childPath !== null;
 
-    // Get direct children (path.length === 1) - memoized to avoid recalculating
+    // Get direct children - children that are at the "top level" of the hierarchy
+    // These are children whose path doesn't have a parent in the children list
+    // (i.e., no other child is a prefix of their path)
     const directChildren = useMemo(() => {
-      if (!obj.children) return [];
-      return obj.children.filter((child) => child.path.length === 1);
+      if (!obj.children || obj.children.length === 0) return [];
+
+      // Build a set of all child path strings for quick lookup
+      const allPathStrings = new Set(obj.children.map((c) => pathToString(c.path)));
+
+      // A child is a "direct" child if none of its path prefixes are in the children list
+      return obj.children.filter((child) => {
+        // Check if any prefix of this child's path is another child
+        for (let i = 1; i < child.path.length; i++) {
+          const prefixPath = child.path.slice(0, i);
+          const prefixPathStr = pathToString(prefixPath);
+          if (allPathStrings.has(prefixPathStr)) {
+            // This child has a parent in the children list, so it's not a direct child
+            return false;
+          }
+        }
+        return true;
+      });
     }, [obj.children]);
 
     // Auto-expand only when a descendant is selected (to show the path), but not when just selecting
@@ -327,26 +365,27 @@ const HierarchyItem = memo<HierarchyItemProps>(
       }
     }, [obj, onSelectObject, onFocusObject]);
 
-  const handleToggleExpand = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault(); // Also prevent default to ensure it doesn't bubble
-      const newExpanded = !isExpanded;
-      setIsExpanded(newExpanded);
+    const handleToggleExpand = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault(); // Also prevent default to ensure it doesn't bubble
+        const newExpanded = !isExpanded;
+        setIsExpanded(newExpanded);
 
-      // If closing and a child is selected, deselect it
-      if (!newExpanded && isAnyChildSelected) {
-        onSelectObject(null);
-      }
-    },
-    [isExpanded, isAnyChildSelected, onSelectObject]
-  );
+        // If closing and a child is selected, deselect it
+        if (!newExpanded && isAnyChildSelected) {
+          onSelectObject(null);
+        }
+      },
+      [isExpanded, isAnyChildSelected, onSelectObject]
+    );
 
     return (
       <div className="space-y-0.5">
         {/* Parent Item */}
         <div
           onClick={handleParentClick}
+          data-selection-id={obj.id}
           className={`
           group flex cursor-pointer items-center gap-2 rounded-[16px] p-2.5 text-sm transition-all duration-200
           ${
@@ -400,7 +439,7 @@ const HierarchyItem = memo<HierarchyItemProps>(
           <div
             className={`
             ml-3 space-y-0.5 overflow-hidden border-l-2 border-slate-100 pl-2 transition-all duration-200 ease-out
-            ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
+            ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}
           `}
           >
             {/* Direct children - nested children are handled recursively by ChildItem */}
@@ -447,6 +486,37 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
 }) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
+
+  // Ref for scrollable content area (used for auto-scroll to selected item)
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to selected object when selection changes
+  useEffect(() => {
+    if (!selectedObjectId || activeTab !== 'objects') return;
+
+    // Small delay to allow DOM updates (expansion animations, etc.)
+    const timeoutId = setTimeout(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      // Find the element with the matching selection ID
+      const selectedElement = container.querySelector(
+        `[data-selection-id="${CSS.escape(selectedObjectId)}"]`
+      );
+
+      if (selectedElement) {
+        // Scroll the element into view with smooth animation, centered vertically
+        selectedElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+      }
+    }, 150); // Delay to allow expand animations to complete
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedObjectId, activeTab]);
+
   // Memoized click handlers for nav items
   const handleAddClick = useCallback(() => {
     setActiveTab(activeTab === 'add' ? null : 'add');
@@ -562,7 +632,10 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
         </div>
 
         {/* Content Area */}
-        <div className="custom-scrollbar min-w-[20rem] flex-1 space-y-5 overflow-y-auto p-5">
+        <div
+          ref={scrollContainerRef}
+          className="custom-scrollbar min-w-[20rem] flex-1 space-y-5 overflow-y-auto p-5"
+        >
           {/* Add Panel */}
           {activeTab === 'add' && (
             <div className="space-y-6">

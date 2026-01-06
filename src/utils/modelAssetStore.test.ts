@@ -7,7 +7,6 @@ import { IDBFactory } from 'fake-indexeddb';
 import {
   saveAsset,
   getAsset,
-  getAssetMetadata,
   updateAssetMetadata,
   deleteAsset,
   getRecentAssets,

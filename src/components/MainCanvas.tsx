@@ -55,6 +55,12 @@ interface DragState {
   object: SceneObject;
   /** Path of the child being dragged (if any) - format: "path.to.child" */
   childPath?: string | null;
+  /**
+   * Path of a child that was clicked but should only be selected if interaction is a click (not drag).
+   * Used for two-tier selection: when parent is selected, clicking on a child should select it only
+   * if it's a discrete click, not a drag (drag should move the parent instead).
+   */
+  pendingChildPath?: string | null;
   /** Y-coordinate of the drag plane (set to click point Y for consistent projection) */
   groundPlaneY: number;
   /** Object's starting X position in scene units (before drag began) - for parent OR child's local X */
@@ -69,6 +75,13 @@ interface DragState {
   hasMoved: boolean;
   /** Initial mouse screen position for threshold calculation */
   startPosition: { x: number; y: number };
+  /**
+   * Effective world scale of the child mesh (for child dragging only).
+   * This accounts for ALL transforms: parent scale, model preprocessing scale, etc.
+   * Used to convert world-space drag delta to local-space position change.
+   */
+  childWorldScaleX?: number;
+  childWorldScaleZ?: number;
 }
 
 interface SceneContentProps {
@@ -335,13 +348,21 @@ const DragHandler: React.FC<{
         const deltaX = intersection.current.x - dragState.initialGrabX;
         const deltaZ = intersection.current.z - dragState.initialGrabZ;
 
-        // Apply delta to initial position (convert from world to scene units)
-        // Note: Z is negated because Three.js Z is opposite to scene transform Z
-        const newX = dragState.initialObjectX + deltaX * SCENE_TO_WORLD_SCALE;
-        const newZ = dragState.initialObjectZ - deltaZ * SCENE_TO_WORLD_SCALE;
-
         // Check if we're dragging a child
         if (dragState.childPath && dragState.object.children) {
+          // Use the effective world scale calculated at drag start.
+          // This accounts for ALL transforms: parent's obj.transform.scale, model preprocessing scale, etc.
+          // We divide the world delta by this scale to convert from world movement to local movement.
+          const effectiveScaleX = dragState.childWorldScaleX || 1;
+          const effectiveScaleZ = dragState.childWorldScaleZ || 1;
+
+          // Divide world delta by effective world scale to get correct local movement
+          // This ensures child moves 1:1 with cursor, just like root objects
+          const childNewX =
+            dragState.initialObjectX + (deltaX / effectiveScaleX) * SCENE_TO_WORLD_SCALE;
+          const childNewZ =
+            dragState.initialObjectZ - (deltaZ / effectiveScaleZ) * SCENE_TO_WORLD_SCALE;
+
           // Update child's localTransform in the parent object's children array
           const updatedChildren = dragState.object.children.map((child) => {
             const childPathStr = pathToString(child.path);
@@ -350,8 +371,8 @@ const DragHandler: React.FC<{
                 ...child,
                 localTransform: {
                   ...child.localTransform,
-                  x: newX,
-                  z: newZ,
+                  x: childNewX,
+                  z: childNewZ,
                 },
               };
             }
@@ -365,6 +386,11 @@ const DragHandler: React.FC<{
           onUpdateObject(updatedObject);
         } else {
           // Update parent object's transform
+          // Apply delta to initial position (convert from world to scene units)
+          // Note: Z is negated because Three.js Z is opposite to scene transform Z
+          const newX = dragState.initialObjectX + deltaX * SCENE_TO_WORLD_SCALE;
+          const newZ = dragState.initialObjectZ - deltaZ * SCENE_TO_WORLD_SCALE;
+
           const updatedObject: SceneObject = {
             ...dragState.object,
             transform: {
@@ -629,8 +655,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
   }, [targetObject, recordingStep]);
 
   // Handle pointer down on object - start potential drag
+  // pendingChildPath is used for two-tier selection: when parent is already selected
+  // and user clicks on a child, we store the child path but only select it if it's a click (not a drag)
   const handleObjectPointerDown = useCallback(
-    (e: ThreeEvent<PointerEvent>, obj: SceneObject) => {
+    (
+      e: ThreeEvent<PointerEvent>,
+      obj: SceneObject,
+      pendingChildPath?: string | null,
+      dragChildPath?: string | null
+    ) => {
       // Only handle left mouse button
       if (e.nativeEvent.button !== 0) return;
 
@@ -669,9 +702,46 @@ const SceneContent: React.FC<SceneContentProps> = ({
       // Reset hasMovedRef synchronously before setting drag state
       hasMovedRef.current = false;
 
+      // If dragChildPath is provided, set up drag for that child instead of root
+      if (dragChildPath) {
+        const child = obj.children?.find((c) => pathToString(c.path) === dragChildPath);
+        if (child) {
+          // Extract effective world scale from clicked mesh for child dragging
+          const clickedMesh = e.object;
+          clickedMesh.updateMatrixWorld(true);
+          const worldMatrix = clickedMesh.matrixWorld;
+          const elements = worldMatrix.elements;
+          const childWorldScaleX = Math.sqrt(
+            elements[0] * elements[0] + elements[1] * elements[1] + elements[2] * elements[2]
+          );
+          const childWorldScaleZ = Math.sqrt(
+            elements[8] * elements[8] + elements[9] * elements[9] + elements[10] * elements[10]
+          );
+
+          setDragState({
+            objectId: obj.id,
+            object: obj,
+            childPath: dragChildPath, // Set childPath for dragging
+            pendingChildPath: pendingChildPath ?? null, // Keep pending for selection on click
+            groundPlaneY,
+            initialObjectX: child.localTransform.x,
+            initialObjectZ: child.localTransform.z,
+            initialGrabX: clickPoint.x,
+            initialGrabZ: clickPoint.z,
+            hasMoved: false,
+            startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
+            childWorldScaleX,
+            childWorldScaleZ,
+          });
+          return;
+        }
+      }
+
+      // Default: set up drag for root object
       setDragState({
         objectId: obj.id,
         object: obj,
+        pendingChildPath: pendingChildPath ?? null,
         groundPlaneY,
         initialObjectX: obj.transform.x,
         initialObjectZ: obj.transform.z,
@@ -708,6 +778,24 @@ const SceneContent: React.FC<SceneContentProps> = ({
       const initialChildX = child.localTransform.x;
       const initialChildZ = child.localTransform.z;
 
+      // Extract effective world scale from the clicked mesh's world matrix.
+      // This accounts for ALL transforms: parent's obj.transform.scale, model preprocessing scale, etc.
+      // The world matrix contains position, rotation, and scale. We extract scale by measuring
+      // the length of the basis vectors (columns of the upper 3x3 rotation/scale matrix).
+      const clickedMesh = e.object;
+      clickedMesh.updateMatrixWorld(true); // Ensure matrix is up-to-date
+      const worldMatrix = clickedMesh.matrixWorld;
+
+      // Extract scale from world matrix by getting the length of basis vectors
+      // X basis vector is elements [0,1,2], Z basis vector is elements [8,9,10]
+      const elements = worldMatrix.elements;
+      const childWorldScaleX = Math.sqrt(
+        elements[0] * elements[0] + elements[1] * elements[1] + elements[2] * elements[2]
+      );
+      const childWorldScaleZ = Math.sqrt(
+        elements[8] * elements[8] + elements[9] * elements[9] + elements[10] * elements[10]
+      );
+
       // Reset hasMovedRef synchronously before setting drag state
       hasMovedRef.current = false;
 
@@ -723,6 +811,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
         initialGrabZ: clickPoint.z,
         hasMoved: false,
         startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
+        childWorldScaleX,
+        childWorldScaleZ,
       });
 
       // Select the child
@@ -738,8 +828,19 @@ const SceneContent: React.FC<SceneContentProps> = ({
       console.log('[DRAG] End - wasDrag:', wasDrag, 'hasMovedRef:', hasMovedRef.current);
 
       if (dragState && !wasDrag) {
-        // It was a click, not a drag - select the object
-        onSelectObject(dragState.objectId);
+        // It was a click, not a drag
+        // Check if there's a pending child path (two-tier selection)
+        if (dragState.pendingChildPath) {
+          // Select the child that was clicked
+          const childSelectionId = createChildSelectionId(
+            dragState.objectId,
+            dragState.pendingChildPath
+          );
+          onSelectObject(childSelectionId);
+        } else {
+          // No pending child, select the parent object
+          onSelectObject(dragState.objectId);
+        }
       }
 
       // Notify parent that drag ended (for undo/redo batching)

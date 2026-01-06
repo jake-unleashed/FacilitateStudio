@@ -161,8 +161,9 @@ describe('modelCache', () => {
       const geometry = mesh.geometry;
       const material = mesh.material as THREE.Material;
 
-      const geometryDisposeSpy = vi.spyOn(geometry, 'dispose');
-      const materialDisposeSpy = vi.spyOn(material, 'dispose');
+      // Create spies to track if dispose is called (kept for future verification)
+      vi.spyOn(geometry, 'dispose');
+      vi.spyOn(material, 'dispose');
 
       cachePreprocessedModel('asset_123', model, createMockMetrics());
       removeFromCache('asset_123');

@@ -43,8 +43,18 @@ interface ImportedModelProps {
   isSelected: boolean;
   /** Path of the selected child mesh (if any) - format: "path.to.child" */
   selectedChildPath?: string | null;
-  onPointerDown: (e: ThreeEvent<PointerEvent>, obj: SceneObject) => void;
-  /** Called when a child mesh is clicked - passes the child path */
+  /**
+   * Called when the parent object is clicked.
+   * - pendingChildPath: child to select if interaction is a click (not drag)
+   * - dragChildPath: child to move if interaction is a drag (if not provided, moves root)
+   */
+  onPointerDown: (
+    e: ThreeEvent<PointerEvent>,
+    obj: SceneObject,
+    pendingChildPath?: string | null,
+    dragChildPath?: string | null
+  ) => void;
+  /** Called when a child mesh is clicked and should be directly selected/dragged */
   onChildPointerDown?: (e: ThreeEvent<PointerEvent>, obj: SceneObject, childPath: string) => void;
   onDoubleClick: (obj: SceneObject) => void;
   isDragging: boolean;
@@ -93,9 +103,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   // Fade-in animation will temporarily reduce opacity if enabled
   const [opacity, setOpacity] = useState(1);
 
-  // Track which child mesh is currently hovered (for visual feedback)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [hoveredChildPath, _setHoveredChildPath] = useState<string | null>(null);
+  // Track which child mesh is currently hovered (for visual feedback when parent is selected)
+  const [hoveredChildPath, setHoveredChildPath] = useState<string | null>(null);
 
   const modelAssetId = obj.properties.modelAssetId as string | undefined;
 
@@ -185,15 +194,19 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   }, [model, obj.children]);
 
   // Find which child (if any) a clicked mesh belongs to
+  // Returns the DEEPEST matching child (most specific) to support nested hierarchies
   const findChildPathForMesh = useCallback(
     (clickedMesh: THREE.Object3D): string | null => {
       if (!model || !obj.children || obj.children.length === 0) return null;
 
-      // For each child in our map, check if the clicked mesh is the child or a descendant of it
+      // Collect all matching children (those that contain the clicked mesh)
+      const matches: { pathStr: string; depth: number }[] = [];
+
       for (const [pathStr, { mesh }] of childPathToMesh) {
         // Check if clicked mesh IS this child mesh
         if (mesh === clickedMesh) {
-          return pathStr;
+          matches.push({ pathStr, depth: pathStr.split('.').length });
+          continue;
         }
 
         // Check if clicked mesh is a descendant of this child
@@ -201,39 +214,233 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
         let current: any = clickedMesh;
         while (current && current !== model) {
           if (current === mesh) {
-            return pathStr;
+            matches.push({ pathStr, depth: pathStr.split('.').length });
+            break;
           }
           current = current.parent;
         }
       }
 
-      return null;
+      if (matches.length === 0) return null;
+
+      // Return the deepest match (most specific child)
+      matches.sort((a, b) => b.depth - a.depth);
+      return matches[0].pathStr;
+    },
+    [model, obj.children, childPathToMesh]
+  );
+
+  // Find a child that is deeper than the current selection and contains the clicked mesh
+  // Used for drilling down into nested hierarchies
+  const findDeeperChild = useCallback(
+    (currentChildPath: string, clickedMesh: THREE.Object3D): string | null => {
+      if (!model || !obj.children || obj.children.length === 0) return null;
+
+      const currentDepth = currentChildPath.split('.').length;
+
+      // Find children that are deeper than the current selection
+      const deeperMatches: { pathStr: string; depth: number }[] = [];
+
+      for (const [pathStr, { mesh }] of childPathToMesh) {
+        const pathDepth = pathStr.split('.').length;
+
+        // Only consider children that are deeper than current selection
+        // AND whose path starts with the current selection path
+        if (pathDepth <= currentDepth) continue;
+        if (!pathStr.startsWith(currentChildPath + '.') && pathStr !== currentChildPath) continue;
+
+        // Check if clicked mesh IS this child mesh or a descendant of it
+        if (mesh === clickedMesh) {
+          deeperMatches.push({ pathStr, depth: pathDepth });
+          continue;
+        }
+
+        // Check if clicked mesh is a descendant of this child
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = clickedMesh;
+        while (current && current !== model) {
+          if (current === mesh) {
+            deeperMatches.push({ pathStr, depth: pathDepth });
+            break;
+          }
+          current = current.parent;
+        }
+      }
+
+      if (deeperMatches.length === 0) return null;
+
+      // Return the shallowest of the deeper matches (next level down)
+      // This allows step-by-step drilling into the hierarchy
+      deeperMatches.sort((a, b) => a.depth - b.depth);
+      return deeperMatches[0].pathStr;
+    },
+    [model, obj.children, childPathToMesh]
+  );
+
+  // Find the shallowest (first-level) child that contains the clicked mesh
+  // Used when first selecting a child from parent selection - always start at top level
+  const findFirstLevelChild = useCallback(
+    (clickedMesh: THREE.Object3D): string | null => {
+      if (!model || !obj.children || obj.children.length === 0) return null;
+
+      // Find all matching children
+      const matches: { pathStr: string; depth: number }[] = [];
+
+      for (const [pathStr, { mesh }] of childPathToMesh) {
+        // Check if clicked mesh IS this child mesh
+        if (mesh === clickedMesh) {
+          matches.push({ pathStr, depth: pathStr.split('.').length });
+          continue;
+        }
+
+        // Check if clicked mesh is a descendant of this child
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = clickedMesh;
+        while (current && current !== model) {
+          if (current === mesh) {
+            matches.push({ pathStr, depth: pathStr.split('.').length });
+            break;
+          }
+          current = current.parent;
+        }
+      }
+
+      if (matches.length === 0) return null;
+
+      // Return the shallowest match (first-level child)
+      matches.sort((a, b) => a.depth - b.depth);
+      return matches[0].pathStr;
     },
     [model, obj.children, childPathToMesh]
   );
 
   // Memoize event handlers
+  // Multi-tier selection: keep clicking to drill deeper into the hierarchy
   const handlePointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
 
-      // Check if a specific child was clicked
+      // Check if a specific child was clicked (returns deepest matching child)
       const childPath = findChildPathForMesh(e.object);
 
-      if (childPath && onChildPointerDown) {
-        // Child mesh was clicked
-        onChildPointerDown(e, obj, childPath);
+      // Multi-tier selection logic:
+      // 1. If parent is NOT selected: always select the parent (ignore child)
+      // 2. If parent IS selected but NO child is selected:
+      //    - Set up drag for parent with pending child path (first-level child)
+      //    - Child will only be selected if it's a click (not a drag)
+      // 3. If a child IS already selected:
+      //    - Check for deeper children: if clicked area has a deeper child, select it
+      //    - If no deeper child and clicking same child: drag that child
+      //    - If clicking a different child at same/shallower level: select it
+
+      if (!isSelected) {
+        // Parent not selected - first click always selects the parent
+        onPointerDown(e, obj);
+      } else if (hasChildSelected && selectedChildPath) {
+        // A child is already selected
+        // Check if the clicked mesh is part of the selected child's subtree
+        const isClickedOnSelectedSubtree =
+          childPath &&
+          (childPath === selectedChildPath || childPath.startsWith(selectedChildPath + '.'));
+
+        if (isClickedOnSelectedSubtree) {
+          // Clicked on the selected child or one of its descendants
+          // First check if there's a deeper child we can drill down to
+          const deeperChild = findDeeperChild(selectedChildPath, e.object);
+
+          if (deeperChild) {
+            // There's a deeper child - use pending selection mechanism
+            // Click = select the deeper child, Drag = move the currently selected child
+            // Pass selectedChildPath as dragChildPath so dragging moves the selected child, not root
+            onPointerDown(e, obj, deeperChild, selectedChildPath);
+          } else {
+            // No deeper child available - start drag for the selected child
+            // This moves the selected subtree
+            if (onChildPointerDown) {
+              onChildPointerDown(e, obj, selectedChildPath);
+            }
+          }
+        } else if (childPath && onChildPointerDown) {
+          // Clicked on a different child (outside the selected subtree) - select it
+          onChildPointerDown(e, obj, childPath);
+        } else {
+          // Clicked on non-child area - keep parent selected, allow drag of root
+          onPointerDown(e, obj);
+        }
+      } else if (childPath) {
+        // Parent is selected, no child selected yet, clicked on a child
+        // Find the shallowest child that contains the clicked mesh (first level only)
+        const firstLevelChild = findFirstLevelChild(e.object);
+        // Pass the first-level child path as "pending" - only select if it's a click (not a drag)
+        onPointerDown(e, obj, firstLevelChild || childPath);
       } else {
-        // Parent was clicked (or no children exist)
+        // Parent is selected, clicking on non-child area or no children exist
+        // Keep parent selected and allow drag
         onPointerDown(e, obj);
       }
     },
-    [onPointerDown, onChildPointerDown, obj, findChildPathForMesh]
+    [
+      onPointerDown,
+      onChildPointerDown,
+      obj,
+      findChildPathForMesh,
+      findDeeperChild,
+      findFirstLevelChild,
+      isSelected,
+      hasChildSelected,
+      selectedChildPath,
+    ]
   );
 
   const handleDoubleClick = useCallback(() => {
     onDoubleClick(obj);
   }, [onDoubleClick, obj]);
+
+  // Handle pointer move to track which child is being hovered
+  // Shows hover for:
+  // - First-level children when parent is selected (no child selected)
+  // - Deeper children when a child is selected (to show what can be drilled into)
+  const handlePointerMove = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (!isSelected) {
+        // Parent not selected - no hover tracking needed
+        if (hoveredChildPath !== null) {
+          setHoveredChildPath(null);
+        }
+        return;
+      }
+
+      if (hasChildSelected && selectedChildPath) {
+        // A child is selected - check for deeper children that can be selected
+        const deeperChild = findDeeperChild(selectedChildPath, e.object);
+        if (deeperChild !== hoveredChildPath) {
+          setHoveredChildPath(deeperChild);
+        }
+      } else {
+        // Parent selected, no child - show first-level child hover
+        const firstLevelChild = findFirstLevelChild(e.object);
+        if (firstLevelChild !== hoveredChildPath) {
+          setHoveredChildPath(firstLevelChild);
+        }
+      }
+    },
+    [
+      isSelected,
+      hasChildSelected,
+      selectedChildPath,
+      hoveredChildPath,
+      findDeeperChild,
+      findFirstLevelChild,
+    ]
+  );
+
+  // Clear hover state when pointer leaves the model
+  const handlePointerLeave = useCallback(() => {
+    if (hoveredChildPath !== null) {
+      setHoveredChildPath(null);
+    }
+    onHoverEnd();
+  }, [hoveredChildPath, onHoverEnd]);
 
   // Fade-in animation with proper cleanup
   useEffect(() => {
@@ -347,7 +554,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
         }
       });
 
-      // If a child is selected, only highlight that child
+      // If a child is selected, highlight that child + any hovered deeper child
       if (hasChildSelected && selectedChildPath) {
         const entry = childPathToMesh.get(selectedChildPath);
         if (entry) {
@@ -368,17 +575,75 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
             mesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY);
           }
         }
+
+        // If hovering over a deeper child, highlight it more intensely
+        // This indicates it can be selected by clicking again
+        if (hoveredChildPath && hoveredChildPath !== selectedChildPath) {
+          const hoverEntry = childPathToMesh.get(hoveredChildPath);
+          if (hoverEntry) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const hoverMesh = hoverEntry.mesh as any;
+            hoverMesh.traverse((childMesh: THREE.Object3D) => {
+              if (
+                childMesh instanceof THREE.Mesh &&
+                childMesh.material instanceof THREE.MeshStandardMaterial
+              ) {
+                // Use brighter emerald to indicate deeper child can be selected
+                childMesh.material.emissive
+                  .set(CHILD_SELECTION_COLOR)
+                  .multiplyScalar(SELECTION_INTENSITY * 2);
+              }
+            });
+            if (
+              hoverMesh instanceof THREE.Mesh &&
+              hoverMesh.material instanceof THREE.MeshStandardMaterial
+            ) {
+              hoverMesh.material.emissive
+                .set(CHILD_SELECTION_COLOR)
+                .multiplyScalar(SELECTION_INTENSITY * 2);
+            }
+          }
+        }
       }
-      // If parent is selected (no child), highlight entire model
+      // If parent is selected (no child selected yet)
       else if (isSelected) {
+        // First, apply subtle parent selection to entire model
         model.traverse((child: THREE.Object3D) => {
           if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
             const highlightColor = isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR;
             child.material.emissive.set(highlightColor).multiplyScalar(SELECTION_INTENSITY);
           }
         });
+
+        // If a child is being hovered while parent is selected, add stronger highlight to that child
+        // This indicates the child can be selected with a click
+        if (hoveredChildPath) {
+          const entry = childPathToMesh.get(hoveredChildPath);
+          if (entry) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const mesh = entry.mesh as any;
+            mesh.traverse((childMesh: THREE.Object3D) => {
+              if (
+                childMesh instanceof THREE.Mesh &&
+                childMesh.material instanceof THREE.MeshStandardMaterial
+              ) {
+                // Use emerald color (same as child selection) but with hover intensity
+                // This creates a preview of what will be selected
+                childMesh.material.emissive
+                  .set(CHILD_SELECTION_COLOR)
+                  .multiplyScalar(SELECTION_INTENSITY * 1.5);
+              }
+            });
+            // Also check if it's a single mesh
+            if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
+              mesh.material.emissive
+                .set(CHILD_SELECTION_COLOR)
+                .multiplyScalar(SELECTION_INTENSITY * 1.5);
+            }
+          }
+        }
       }
-      // If a child is hovered
+      // If a child is hovered (parent not selected) - shouldn't happen with two-tier selection
       else if (hoveredChildPath) {
         const entry = childPathToMesh.get(hoveredChildPath);
         if (entry) {
@@ -394,7 +659,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           });
         }
       }
-      // If parent is hovered
+      // If parent is hovered (not selected)
       else if (isHovered) {
         model.traverse((child: THREE.Object3D) => {
           if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
@@ -452,7 +717,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           onPointerDown={handlePointerDown}
           onDoubleClick={handleDoubleClick}
           onPointerOver={onHoverStart}
-          onPointerOut={onHoverEnd}
+          onPointerOut={handlePointerLeave}
+          onPointerMove={handlePointerMove}
         />
 
         {/* Bounding box for parent selection (when no child is selected) */}

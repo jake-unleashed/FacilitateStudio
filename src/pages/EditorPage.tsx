@@ -379,9 +379,17 @@ export function EditorPage() {
     canvasRef.current = canvas;
   }, []);
 
-  const handleSelectObject = useCallback((id: string | null) => {
-    setSelectedObjectId(id);
-  }, []);
+  const handleSelectObject = useCallback(
+    (id: string | null) => {
+      setSelectedObjectId(id);
+      // When selecting an object (not deselecting), ensure the Objects tab is active
+      // This syncs the scene selection with the sidebar hierarchy
+      if (id !== null && activeTab !== 'objects') {
+        setActiveTab('objects');
+      }
+    },
+    [activeTab]
+  );
 
   const handleFocusObject = useCallback(async (object: SceneObject, childPath?: string) => {
     const controls = cameraControlsRef.current;

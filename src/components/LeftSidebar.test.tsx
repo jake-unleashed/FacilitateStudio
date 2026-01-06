@@ -317,41 +317,29 @@ describe('LeftSidebar', () => {
     };
 
     it('shows dropdown button for objects with children', () => {
-      render(
-        <LeftSidebar
-          {...defaultProps}
-          activeTab="objects"
-          objects={[objectWithChildren]}
-        />
-      );
+      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
       expect(dropdownButton).toBeInTheDocument();
     });
 
     it('expands to show children when dropdown is clicked', async () => {
-      render(
-        <LeftSidebar
-          {...defaultProps}
-          activeTab="objects"
-          objects={[objectWithChildren]}
-        />
-      );
+      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
-      
+
       expect(dropdownButton).toBeInTheDocument();
-      
+
       // Click dropdown to expand
       if (dropdownButton) {
         fireEvent.click(dropdownButton);
       }
-      
+
       // Wait for children to appear (they should be visible after expansion)
       // Note: We check that children can be toggled, not their initial state
       await screen.findByText('Child 1', {}, { timeout: 1000 }).catch(() => null);
       await screen.findByText('Child 2', {}, { timeout: 1000 }).catch(() => null);
-      
+
       // At least verify the dropdown button exists and is clickable
       // The actual visibility depends on animation timing
       expect(dropdownButton).toBeInTheDocument();
@@ -367,17 +355,17 @@ describe('LeftSidebar', () => {
           onSelectObject={onSelectObject}
         />
       );
-      
+
       // Expand dropdown
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
       if (dropdownButton) {
         fireEvent.click(dropdownButton);
       }
-      
+
       // Click child
       fireEvent.click(screen.getByText('Child 1'));
-      
+
       // Should call onSelectObject with child selection ID
       expect(onSelectObject).toHaveBeenCalledWith('obj-with-children/Child1');
     });
@@ -391,14 +379,14 @@ describe('LeftSidebar', () => {
           selectedObjectId="obj-with-children/Child1"
         />
       );
-      
+
       // Expand dropdown (should auto-expand when child is selected)
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
       if (dropdownButton) {
         fireEvent.click(dropdownButton);
       }
-      
+
       const childItem = screen.getByText('Child 1').closest('div');
       expect(childItem).toHaveClass('bg-emerald-500');
     });
@@ -414,19 +402,19 @@ describe('LeftSidebar', () => {
           onSelectObject={onSelectObject}
         />
       );
-      
+
       // Expand dropdown
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
       if (dropdownButton) {
         fireEvent.click(dropdownButton);
       }
-      
+
       // Close dropdown
       if (dropdownButton) {
         fireEvent.click(dropdownButton);
       }
-      
+
       // Should deselect child
       expect(onSelectObject).toHaveBeenCalledWith(null);
     });
@@ -469,33 +457,29 @@ describe('LeftSidebar', () => {
       };
 
       render(
-        <LeftSidebar
-          {...defaultProps}
-          activeTab="objects"
-          objects={[objectWithNestedChildren]}
-        />
+        <LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithNestedChildren]} />
       );
-      
+
       // Expand parent dropdown
       const parentItem = screen.getByText('Parent Object').closest('div');
       const parentDropdown = parentItem?.querySelector('button');
       if (parentDropdown) {
         fireEvent.click(parentDropdown);
       }
-      
+
       // Should see Parent Child
       expect(screen.getByText('Parent Child')).toBeInTheDocument();
-      
+
       // Parent Child should have its own dropdown
       const parentChildItem = screen.getByText('Parent Child').closest('div');
       const childDropdown = parentChildItem?.querySelector('button');
       expect(childDropdown).toBeInTheDocument();
-      
+
       // Expand child dropdown
       if (childDropdown) {
         fireEvent.click(childDropdown);
       }
-      
+
       // Should see nested child
       expect(screen.getByText('Nested Child')).toBeInTheDocument();
     });

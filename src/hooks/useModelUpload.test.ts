@@ -31,10 +31,8 @@ import {
   saveAsset,
   getAsset,
   getRecentAssets,
-  updateAssetMetadata,
   hasLegacyAssets,
   migrateLegacyAssets,
-  blobToArrayBuffer,
 } from '../utils/modelAssetStore';
 import { loadAndPreprocessModelFromArrayBuffer } from '../utils/modelLoaders';
 import { cachePreprocessedModel } from '../utils/modelCache';
@@ -753,11 +751,3 @@ describe('useModelUpload', () => {
     });
   });
 });
-
-// Type declaration for THREE
-declare global {
-  namespace THREE {
-    // eslint-disable-next-line @typescript-eslint/no-empty-interface
-    interface Object3D {}
-  }
-}

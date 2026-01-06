@@ -20,8 +20,9 @@ import * as THREE from 'three';
 // ============================================================================
 
 interface BoundingBoxProps {
-  /** The 3D object to create bounding box for */
-  model: THREE.Object3D<THREE.Object3DEventMap>;
+  /** The 3D object to create bounding box for (Group, Mesh, or any Object3D) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model: any;
   /** Bounding box color (default: #3b82f6 - blue) */
   color?: string;
   /** Whether the bounding box is visible */
@@ -120,33 +121,25 @@ function createEdgeGeometry(box: THREE.Box3): THREE.BufferGeometry {
 }
 
 /**
- * Check if a model has any non-identity transforms
- */
-function hasTransforms(model: THREE.Object3D<THREE.Object3DEventMap>): boolean {
-  return (
-    model.position.lengthSq() > 0 ||
-    model.rotation.x !== 0 ||
-    model.rotation.y !== 0 ||
-    model.rotation.z !== 0 ||
-    model.scale.x !== 1 ||
-    model.scale.y !== 1 ||
-    model.scale.z !== 1
-  );
-}
-
-/**
  * Calculate the bounding box data for a 3D model.
- * Accounts for nested meshes and transforms.
+ * Properly handles all nested transforms, including when the model
+ * itself is a Mesh (for child selection).
+ *
+ * The bounding box includes the model's own transform (position/rotation/scale),
+ * so the rendered wireframe will be at the correct position in the parent space.
  */
 function calculateBoundingBoxData(
-  model: THREE.Object3D<THREE.Object3DEventMap>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model: any
 ): BoundingBoxData | null {
   if (!model) return null;
 
   const box = new THREE.Box3();
+  const isModelMesh = model instanceof THREE.Mesh;
 
   // Traverse all meshes and calculate combined bounding box
-  model.traverse((child: THREE.Object3D<THREE.Object3DEventMap>) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model.traverse((child: any) => {
     if (child instanceof THREE.Mesh && child.geometry) {
       const geometry = child.geometry;
 
@@ -158,41 +151,67 @@ function calculateBoundingBoxData(
       if (geometry.boundingBox) {
         const corners = getBoxCorners(geometry.boundingBox);
 
-        // Update child's matrix for local transform
-        if (child.matrixAutoUpdate) {
-          child.updateMatrix();
+        // Build the transform matrix from geometry space to model's parent space
+        // We accumulate transforms from the mesh all the way up to and INCLUDING the model
+        const transformMatrix = new THREE.Matrix4();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = child;
+        const matrices: THREE.Matrix4[] = [];
+
+        // Collect matrices from child up to model (inclusive)
+        while (current) {
+          if (current.matrixAutoUpdate) {
+            current.updateMatrix();
+          }
+          matrices.push(current.matrix.clone());
+
+          // Stop after we've included the model's matrix
+          if (current === model) break;
+          current = current.parent;
         }
 
-        // Transform corners from geometry space to model's local space
+        // Apply matrices in reverse order (outermost to innermost)
+        for (let i = matrices.length - 1; i >= 0; i--) {
+          transformMatrix.multiply(matrices[i]);
+        }
+
+        // Transform corners and expand box
         for (const corner of corners) {
-          corner.applyMatrix4(child.matrix);
+          corner.applyMatrix4(transformMatrix);
           box.expandByPoint(corner);
         }
       }
     }
   });
 
-  // Apply model's own transform if it has one
-  if (hasTransforms(model)) {
-    model.updateMatrix();
-    const corners = getBoxCorners(box);
-    const transformedBox = new THREE.Box3();
+  // For models that are Groups (not Meshes), traverse doesn't include the model itself
+  // So we still need to apply the model's transform if it has one and isn't a mesh
+  if (!isModelMesh && !box.isEmpty()) {
+    const hasTransforms =
+      model.position.lengthSq() > 0 ||
+      model.rotation.x !== 0 ||
+      model.rotation.y !== 0 ||
+      model.rotation.z !== 0 ||
+      model.scale.x !== 1 ||
+      model.scale.y !== 1 ||
+      model.scale.z !== 1;
 
-    for (const corner of corners) {
-      corner.applyMatrix4(model.matrix);
-      transformedBox.expandByPoint(corner);
+    if (hasTransforms) {
+      model.updateMatrix();
+      const corners = getBoxCorners(box);
+      const transformedBox = new THREE.Box3();
+
+      for (const corner of corners) {
+        corner.applyMatrix4(model.matrix);
+        transformedBox.expandByPoint(corner);
+      }
+      box.copy(transformedBox);
     }
-    box.copy(transformedBox);
   }
 
-  // Fallback for empty box: use setFromObject with reset transforms
+  // Fallback for empty box
   if (box.isEmpty()) {
-    const modelClone = model.clone();
-    modelClone.position.set(0, 0, 0);
-    modelClone.rotation.set(0, 0, 0);
-    modelClone.scale.set(1, 1, 1);
-    modelClone.updateMatrixWorld(true);
-    box.setFromObject(modelClone);
+    box.setFromObject(model);
   }
 
   const size = new THREE.Vector3();

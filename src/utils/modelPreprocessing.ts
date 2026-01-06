@@ -7,12 +7,7 @@
  */
 
 import * as THREE from 'three';
-import {
-  MODEL_TARGET_SIZE,
-  MODEL_MIN_SIZE,
-  MODEL_MAX_SIZE,
-  MODEL_COMPLEXITY_WARNING_THRESHOLD,
-} from '../constants';
+import { MODEL_TARGET_SIZE, MODEL_MIN_SIZE, MODEL_MAX_SIZE } from '../constants';
 
 export interface ModelMetrics {
   boundingBox: THREE.Box3;
@@ -33,7 +28,7 @@ export interface PreprocessedModel {
 /**
  * Calculate bounding box for a model
  */
-function getModelBoundingBox(model: THREE.Group | THREE.Object3D): THREE.Box3 {
+function getModelBoundingBox(model: THREE.Group): THREE.Box3 {
   const box = new THREE.Box3();
   box.setFromObject(model);
   return box;
@@ -42,9 +37,9 @@ function getModelBoundingBox(model: THREE.Group | THREE.Object3D): THREE.Box3 {
 /**
  * Count triangles in a model (for complexity checking)
  */
-function countTriangles(model: THREE.Group | THREE.Object3D): number {
+function countTriangles(model: THREE.Group): number {
   let count = 0;
-  model.traverse((child) => {
+  model.traverse((child: THREE.Object3D) => {
     if (child instanceof THREE.Mesh && child.geometry) {
       const geometry = child.geometry;
       if (geometry.index) {
@@ -96,7 +91,7 @@ export function centerModelPivot(model: THREE.Group): THREE.Vector3 {
 
   // Translate all geometry so center is at origin
   // We need to update geometry vertices, not just position
-  model.traverse((child) => {
+  model.traverse((child: THREE.Object3D) => {
     if (child instanceof THREE.Mesh && child.geometry) {
       const geometry = child.geometry;
       const positionAttribute = geometry.attributes.position;
@@ -181,7 +176,8 @@ export function normalizeModelOrientation(model: THREE.Group): void {
 
   // Determine primary orientation
   const maxDim = Math.max(size.x, size.y, size.z);
-  const isFlat = maxDim / Math.min(size.x, size.y, size.z) > 5; // Very flat model
+  // Note: isFlat detection for very flat models (ratio > 5) is reserved for future orientation logic
+  void (maxDim / Math.min(size.x, size.y, size.z) > 5); // eslint-disable-line @typescript-eslint/no-unused-expressions
 
   // If model is wider than tall, it might be lying down
   // Check if X or Z is the "up" dimension
@@ -206,7 +202,7 @@ export function normalizeModelOrientation(model: THREE.Group): void {
  * Disable animations in model (if present)
  */
 export function disableModelAnimations(model: THREE.Group): void {
-  model.traverse((child) => {
+  model.traverse((child: THREE.Object3D) => {
     if (child instanceof THREE.SkinnedMesh) {
       // Disable skeleton animations
       if (child.skeleton) {
@@ -223,13 +219,13 @@ export function disableModelAnimations(model: THREE.Group): void {
 /**
  * Validate model before preprocessing
  */
-export function validateModel(model: THREE.Group | THREE.Object3D): {
+export function validateModel(model: THREE.Group): {
   valid: boolean;
   error?: string;
 } {
   // Check if model has geometry
   let hasGeometry = false;
-  model.traverse((child) => {
+  model.traverse((child: THREE.Object3D) => {
     if (child instanceof THREE.Mesh && child.geometry) {
       hasGeometry = true;
     }
