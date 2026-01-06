@@ -148,6 +148,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     };
   }, [modelAssetId]);
 
+  // Set userData.objectId on outer group for scene traversal (used by TransformGizmo)
+  useEffect(() => {
+    if (outerGroupRef.current && outerGroupRef.current.userData) {
+      outerGroupRef.current.userData.objectId = obj.id;
+    }
+  }, [obj.id]);
+
   // Outer group position: visual center for rotation pivot
   // pivotY = groundLevel + modelHeight/2
   const position = useMemo<[number, number, number]>(() => {

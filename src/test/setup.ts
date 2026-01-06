@@ -1,6 +1,36 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Polyfill PointerEvent for JSDOM
+class PointerEventPolyfill extends MouseEvent {
+  readonly pointerId: number;
+  readonly pressure: number;
+  readonly tiltX: number;
+  readonly tiltY: number;
+  readonly twist: number;
+  readonly pointerType: string;
+  readonly isPrimary: boolean;
+  readonly width: number;
+  readonly height: number;
+  readonly tangentialPressure: number;
+
+  constructor(type: string, params: PointerEventInit = {}) {
+    super(type, params);
+    this.pointerId = params.pointerId ?? 0;
+    this.pressure = params.pressure ?? 0;
+    this.tiltX = params.tiltX ?? 0;
+    this.tiltY = params.tiltY ?? 0;
+    this.twist = params.twist ?? 0;
+    this.pointerType = params.pointerType ?? 'mouse';
+    this.isPrimary = params.isPrimary ?? true;
+    this.width = params.width ?? 1;
+    this.height = params.height ?? 1;
+    this.tangentialPressure = params.tangentialPressure ?? 0;
+  }
+}
+
+global.PointerEvent = PointerEventPolyfill as unknown as typeof PointerEvent;
+
 // Mock ResizeObserver
 class ResizeObserverMock {
   observe = vi.fn();

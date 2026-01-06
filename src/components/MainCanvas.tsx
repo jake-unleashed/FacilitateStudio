@@ -27,6 +27,7 @@ import {
   SelectionOutlineEffect,
 } from './scene/SelectionOutline';
 import { Selection } from '@react-three/postprocessing';
+import { TransformGizmo } from './scene/TransformGizmo';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -197,6 +198,13 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   const emissiveColor = isHovered && !isDragging ? '#ffffff' : '#000000';
   const emissiveIntensity = isHovered && !isDragging ? 0.18 : 0;
 
+  // Set userData.objectId on group for scene traversal (used by TransformGizmo)
+  useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.userData.objectId = obj.id;
+    }
+  }, [obj.id]);
+
   return (
     <group
       ref={groupRef}
@@ -335,6 +343,7 @@ const DragHandler: React.FC<{
         onMarkAsDrag();
       }
 
+      // Ground plane movement (XZ-axis)
       // Convert mouse position to normalized device coordinates
       const rect = gl.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1110,6 +1119,18 @@ const SceneContent: React.FC<SceneContentProps> = ({
         {/* Child outline effect (green) - MUST be outside Selection context */}
         <ChildOutlineEffect />
       </ChildSelectionProvider>
+
+      {/* Transform handles for selected object (height) */}
+      {selectedObject && !previewMode && !recordingPositionForStepId && (
+        <TransformGizmo
+          object={selectedObject}
+          selectedChildPath={selectedChildPath}
+          onUpdateObject={onUpdateObject}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          isDragging={dragState?.hasMoved ?? false}
+        />
+      )}
 
       <ContactShadows
         position={[0, -0.01, 0]}
