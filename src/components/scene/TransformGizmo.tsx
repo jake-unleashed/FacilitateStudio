@@ -18,7 +18,7 @@
 import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { Html } from '@react-three/drei';
 import { useThree, useFrame } from '@react-three/fiber';
-import { ArrowUpDown, Move } from 'lucide-react';
+import { ArrowUpDown, Move, ArrowLeftRight } from 'lucide-react';
 import * as THREE from 'three';
 
 import { SceneObject, ChildMesh, pathToString } from '../../types';
@@ -40,7 +40,7 @@ export interface TransformGizmoProps {
   onDragStart?: () => void;
   /** Called when drag operation ends (for undo batching) */
   onDragEnd?: () => void;
-  /** Whether the object is currently being dragged directly (hides gizmo) */
+  /** Whether the object is currently being dragged directly (disables smoothing for 1:1 movement) */
   isDragging?: boolean;
 }
 
@@ -108,18 +108,52 @@ interface XZDragState {
   hasMoved: boolean;
 }
 
+/** Internal drag state for Left/Right handle (side view mode) */
+interface LeftRightDragState {
+  /** Starting mouse X position in screen space */
+  startMouseX: number;
+  /** The camera right vector at drag start (locked for consistent movement) */
+  moveDirection: THREE.Vector3;
+  /** Pixels per world unit (for screen-to-world conversion) */
+  pixelsPerWorldUnit: number;
+  /** Initial object X position in internal units */
+  initialObjectX: number;
+  /** Initial object Z position in internal units */
+  initialObjectZ: number;
+  /** Child world scale factors */
+  childWorldScaleX?: number;
+  childWorldScaleZ?: number;
+  /** Whether movement threshold exceeded */
+  hasMoved: boolean;
+}
+
+/** Props specific to LeftRightHandle */
+interface LeftRightHandleProps extends BaseHandleProps {
+  /** The parent scene object */
+  object: SceneObject;
+  /** Selected child data (null if parent is selected) */
+  selectedChild: ChildMesh | null;
+  /** Path string for selected child */
+  selectedChildPath: string | null;
+  /** Callback when object is updated */
+  onUpdateObject: (obj: SceneObject) => void;
+  /** World position of the object center for raycasting */
+  objectWorldPosition: THREE.Vector3;
+  /** Three.js mesh for child - used to extract effective world scale */
+  childMesh: THREE.Object3D | null;
+  /** Current camera right vector for movement direction */
+  cameraRight: THREE.Vector3;
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
 
 /** Gap between object bounding box and gizmo (in world units) */
-const GIZMO_GAP = 0.45;
+const GIZMO_GAP = 0.25;
 
-/** Minimum vertical spacing between handles to avoid overlap (in world units) */
-const MIN_HANDLE_SPACING = 0.4;
-
-/** Default vertical offset for XZ handle below height handle (in world units) */
-const XZ_HANDLE_OFFSET = 0.35;
+/** Vertical offset for XZ/LeftRight handle below height handle (in world units) */
+const XZ_HANDLE_OFFSET = 0.5;
 
 /** Minimum camera distance to show gizmo */
 const MIN_CAMERA_DISTANCE = 1;
@@ -142,13 +176,85 @@ const DRAG_THRESHOLD_PX = 3;
 /** Minimum XZ world movement to register as drag */
 const XZ_DRAG_THRESHOLD = 0.001;
 
+/**
+ * Lerp factor for smooth handle positioning (0-1).
+ * Lower = smoother/slower, Higher = snappier/faster.
+ * 0.08 provides a premium, smooth feel without feeling laggy.
+ */
+const POSITION_LERP_FACTOR = 0.08;
+
+/**
+ * Lerp factor for smoothing source data (object center, offset distance).
+ * This eliminates jitter from bounding box fluctuations on complex models.
+ * Higher than position lerp to stay responsive while smoothing input noise.
+ */
+const SOURCE_SMOOTHING_FACTOR = 0.15;
+
 /** Height value constraints */
 const HEIGHT_MIN = 0;
 const HEIGHT_MAX = 500;
 
+/**
+ * Pitch angle thresholds for view mode detection (in degrees).
+ * - Side view: pitch < SIDE_VIEW_THRESHOLD (looking horizontally)
+ * - Top-down view: pitch > TOPDOWN_VIEW_THRESHOLD (looking straight down/up)
+ * - Isometric: everything in between
+ */
+const SIDE_VIEW_THRESHOLD = 20;
+const TOPDOWN_VIEW_THRESHOLD = 55;
+
+/**
+ * Hysteresis values to prevent mode flickering at boundaries.
+ * Enter a mode at the threshold, but don't exit until past threshold + hysteresis.
+ */
+const VIEW_MODE_HYSTERESIS = 4;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** View modes for context-aware handle display */
+type ViewMode = 'isometric' | 'side' | 'topdown';
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
+
+/**
+ * Determines the current view mode based on camera pitch angle.
+ * Uses hysteresis to prevent flickering at mode boundaries.
+ *
+ * @param camera - The Three.js camera
+ * @param currentMode - The current view mode (for hysteresis)
+ * @param cameraDirection - Reusable vector for camera direction (avoids allocation)
+ * @returns The appropriate view mode for the camera angle
+ */
+function getViewMode(
+  camera: THREE.Camera,
+  currentMode: ViewMode,
+  cameraDirection: THREE.Vector3
+): ViewMode {
+  camera.getWorldDirection(cameraDirection);
+
+  // Calculate pitch angle (0° = horizontal, 90° = straight down/up)
+  const pitchAngle = Math.asin(Math.abs(cameraDirection.y)) * (180 / Math.PI);
+
+  // Apply hysteresis based on current mode
+  const sideThreshold =
+    currentMode === 'side' ? SIDE_VIEW_THRESHOLD + VIEW_MODE_HYSTERESIS : SIDE_VIEW_THRESHOLD;
+  const topdownThreshold =
+    currentMode === 'topdown'
+      ? TOPDOWN_VIEW_THRESHOLD - VIEW_MODE_HYSTERESIS
+      : TOPDOWN_VIEW_THRESHOLD;
+
+  if (pitchAngle < sideThreshold) {
+    return 'side';
+  }
+  if (pitchAngle > topdownThreshold) {
+    return 'topdown';
+  }
+  return 'isometric';
+}
 
 /**
  * Finds a child mesh data object by its path string
@@ -726,6 +832,219 @@ const XZHandle = memo<XZHandleProps>(function XZHandle({
 });
 
 // ============================================================================
+// Left/Right Handle Component - For side view mode, moves along camera right axis
+// ============================================================================
+
+const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHandle({
+  object,
+  selectedChild,
+  selectedChildPath,
+  onUpdateObject,
+  onDragStart,
+  onDragEnd,
+  camera,
+  gl,
+  objectWorldPosition,
+  childMesh,
+  cameraRight,
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStateRef = useRef<LeftRightDragState | null>(null);
+
+  const tooltip = useTooltip('Drag left/right to move', isDragging);
+
+  // Pre-allocated vectors for screen projection
+  const tempVec1 = useRef(new THREE.Vector3());
+  const tempVec2 = useRef(new THREE.Vector3());
+
+  /**
+   * Calculates pixels per world unit along the camera right direction.
+   * This allows us to convert screen-space X movement to world-space movement.
+   */
+  const calculatePixelsPerWorldUnit = useCallback((): number => {
+    const rect = gl.domElement.getBoundingClientRect();
+    const viewportWidth = rect.width;
+
+    // Project object center to screen
+    tempVec1.current.copy(objectWorldPosition);
+    tempVec1.current.project(camera);
+
+    // Project a point 1 world unit to the right (along camera right)
+    tempVec2.current.copy(objectWorldPosition).add(cameraRight);
+    tempVec2.current.project(camera);
+
+    // Calculate pixel difference (NDC ranges from -1 to 1, so multiply by half viewport)
+    const ndcDiff = Math.abs(tempVec2.current.x - tempVec1.current.x);
+    const pixelDiff = ndcDiff * (viewportWidth / 2);
+
+    // Ensure we don't divide by zero
+    return Math.max(pixelDiff, 0.001);
+  }, [camera, gl, objectWorldPosition, cameraRight]);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+
+      // Capture starting mouse X position
+      const startMouseX = e.clientX;
+
+      // Lock camera right direction at drag start
+      const moveDirection = cameraRight.clone();
+
+      // Calculate how many pixels = 1 world unit
+      const pixelsPerWorldUnit = calculatePixelsPerWorldUnit();
+
+      // Get initial object position
+      let initialObjectX: number;
+      let initialObjectZ: number;
+      let childWorldScaleX: number | undefined;
+      let childWorldScaleZ: number | undefined;
+
+      if (selectedChild && selectedChildPath) {
+        const childData = findChildDataByPath(object.children, selectedChildPath);
+        initialObjectX = childData?.localTransform?.x ?? 0;
+        initialObjectZ = childData?.localTransform?.z ?? 0;
+
+        if (childMesh) {
+          const worldScale = new THREE.Vector3();
+          childMesh.getWorldScale(worldScale);
+          childWorldScaleX = worldScale.x;
+          childWorldScaleZ = worldScale.z;
+        }
+      } else {
+        initialObjectX = object.transform.x;
+        initialObjectZ = object.transform.z;
+      }
+
+      dragStateRef.current = {
+        startMouseX,
+        moveDirection,
+        pixelsPerWorldUnit,
+        initialObjectX,
+        initialObjectZ,
+        childWorldScaleX,
+        childWorldScaleZ,
+        hasMoved: false,
+      };
+
+      setIsDragging(true);
+      onDragStart();
+    },
+    [
+      object,
+      selectedChild,
+      selectedChildPath,
+      onDragStart,
+      childMesh,
+      cameraRight,
+      calculatePixelsPerWorldUnit,
+    ]
+  );
+
+  // Handle pointer move and up events
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const state = dragStateRef.current;
+      if (!state) return;
+
+      // Calculate screen-space X delta (positive = moved right)
+      const screenDeltaX = e.clientX - state.startMouseX;
+
+      // Check if movement exceeds threshold
+      if (Math.abs(screenDeltaX) > DRAG_THRESHOLD_PX) {
+        state.hasMoved = true;
+      }
+
+      if (!state.hasMoved) return;
+
+      // Convert screen pixels to world units
+      const worldDelta = screenDeltaX / state.pixelsPerWorldUnit;
+
+      // Calculate world-space movement along the camera right vector
+      const worldDeltaX = state.moveDirection.x * worldDelta;
+      const worldDeltaZ = state.moveDirection.z * worldDelta;
+
+      if (selectedChild && selectedChildPath) {
+        // Child movement: account for effective world scale
+        const effectiveScaleX = state.childWorldScaleX || 1;
+        const effectiveScaleZ = state.childWorldScaleZ || 1;
+
+        const newX = state.initialObjectX + (worldDeltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
+        const newZ = state.initialObjectZ - (worldDeltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+
+        const updatedChildren = object.children?.map((child) => {
+          if (pathToString(child.path) === selectedChildPath) {
+            return {
+              ...child,
+              localTransform: { ...child.localTransform, x: newX, z: newZ },
+            };
+          }
+          return child;
+        });
+
+        onUpdateObject({ ...object, children: updatedChildren });
+      } else {
+        // Parent movement
+        const newX = state.initialObjectX + worldDeltaX * INTERNAL_TO_WORLD;
+        const newZ = state.initialObjectZ - worldDeltaZ * INTERNAL_TO_WORLD;
+
+        onUpdateObject({
+          ...object,
+          transform: { ...object.transform, x: newX, z: newZ },
+        });
+      }
+    };
+
+    const handlePointerUp = () => {
+      const hasMoved = dragStateRef.current?.hasMoved ?? false;
+
+      if (hasMoved) {
+        onDragEnd();
+      } else {
+        tooltip.showClickTooltip('Hold and drag to move');
+      }
+
+      dragStateRef.current = null;
+      setIsDragging(false);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isDragging, object, selectedChild, selectedChildPath, onUpdateObject, onDragEnd, tooltip]);
+
+  return (
+    <div className="relative">
+      <div
+        className={getHandleClasses(isDragging, isHovered)}
+        onPointerDown={handlePointerDown}
+        onPointerEnter={() => {
+          setIsHovered(true);
+          tooltip.handlePointerEnter();
+        }}
+        onPointerLeave={() => {
+          setIsHovered(false);
+          tooltip.handlePointerLeave();
+        }}
+        aria-label="Move left/right"
+        data-testid="handle-leftright"
+      >
+        <ArrowLeftRight size={20} strokeWidth={2.5} />
+      </div>
+      <Tooltip text={tooltip.tooltipText} visible={tooltip.showTooltip} />
+    </div>
+  );
+});
+
+// ============================================================================
 // Main TransformGizmo Component
 // ============================================================================
 
@@ -754,6 +1073,16 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   const [scaleFactor, setScaleFactor] = useState(1);
   const [childMesh, setChildMesh] = useState<THREE.Object3D | null>(null);
 
+  // Track when any handle is being dragged (disables smoothing for responsive feel)
+  const [isAnyHandleDragging, setIsAnyHandleDragging] = useState(false);
+
+  // Context-aware view mode (determines which handles to show)
+  const [viewMode, setViewMode] = useState<ViewMode>('isometric');
+  const viewModeRef = useRef<ViewMode>('isometric');
+
+  // Camera right vector (exposed as state for LeftRightHandle)
+  const [cameraRightState, setCameraRightState] = useState(new THREE.Vector3(1, 0, 0));
+
   // Refs for position tracking (avoid re-renders in frame loop)
   const heightPositionRef = useRef(new THREE.Vector3());
   const xzPositionRef = useRef(new THREE.Vector3());
@@ -764,6 +1093,20 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   // Reusable Three.js objects (avoid allocations in frame loop)
   const boxRef = useRef(new THREE.Box3());
   const centerRef = useRef(new THREE.Vector3());
+  const cameraRightRef = useRef(new THREE.Vector3());
+  const cameraDirectionRef = useRef(new THREE.Vector3());
+  const boxSizeRef = useRef(new THREE.Vector3());
+
+  // Target positions for smooth lerping (where handles SHOULD be)
+  const heightTargetRef = useRef(new THREE.Vector3());
+  const xzTargetRef = useRef(new THREE.Vector3());
+
+  // Smoothed source data (eliminates bounding box jitter on complex models)
+  const smoothedCenterRef = useRef(new THREE.Vector3());
+  const smoothedOffsetDistanceRef = useRef(0);
+
+  // Whether positions have been initialized (skip lerp on first frame)
+  const positionsInitializedRef = useRef(false);
 
   // Find the selected child data if a child path is provided
   const selectedChild = selectedChildPath
@@ -773,29 +1116,74 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   /**
    * Updates handle positions each frame based on object bounding box
    */
-  useFrame(() => {
+  useFrame((_, delta) => {
+    // Calculate frame-rate independent smoothing factors
+    // When dragging (handle or object directly), use instant snap (factor = 1) for 1:1 movement
+    const isBeingDragged = isAnyHandleDragging || isDragging;
+    const effectiveSourceFactor = isBeingDragged
+      ? 1.0
+      : 1 - Math.pow(1 - SOURCE_SMOOTHING_FACTOR, delta * 60);
+    const effectivePositionFactor = isBeingDragged
+      ? 1.0
+      : 1 - Math.pow(1 - POSITION_LERP_FACTOR, delta * 60);
+
     const objectGroup = findObjectGroupInScene(scene, object.id);
 
     // Fallback positioning when object group not found
     if (!objectGroup) {
-      const x = object.transform.x / INTERNAL_TO_WORLD;
-      let heightY = object.transform.y / INTERNAL_TO_WORLD + 0.5;
-      const z = -object.transform.z / INTERNAL_TO_WORLD;
+      const centerX = object.transform.x / INTERNAL_TO_WORLD;
+      const targetHeightY = object.transform.y / INTERNAL_TO_WORLD + 0.5;
+      const centerZ = -object.transform.z / INTERNAL_TO_WORLD;
 
-      let xzY = heightY - XZ_HANDLE_OFFSET;
+      // Calculate camera right vector for fallback positioning
+      camera.getWorldDirection(cameraDirectionRef.current);
+      cameraRightRef.current.crossVectors(cameraDirectionRef.current, new THREE.Vector3(0, 1, 0));
+      cameraRightRef.current.normalize();
 
-      // Apply overlap avoidance
-      const verticalDistance = Math.abs(heightY - xzY);
-      if (verticalDistance < MIN_HANDLE_SPACING) {
-        const halfSeparation = (MIN_HANDLE_SPACING - verticalDistance) / 2;
-        heightY += halfSeparation;
-        xzY -= halfSeparation;
+      // Update view mode based on camera angle (with hysteresis)
+      const newViewMode = getViewMode(camera, viewModeRef.current, cameraDirectionRef.current);
+      if (newViewMode !== viewModeRef.current) {
+        viewModeRef.current = newViewMode;
+        setViewMode(newViewMode);
       }
 
-      heightPositionRef.current.set(x, heightY, z);
-      xzPositionRef.current.set(x, xzY, z);
-      setHeightHandlePosition([x, heightY, z]);
-      setXZHandlePosition([x, xzY, z]);
+      // Update camera right state for LeftRightHandle
+      if (cameraRightRef.current.distanceToSquared(cameraRightState) > 0.0001) {
+        setCameraRightState(cameraRightRef.current.clone());
+      }
+
+      // Use a default offset for fallback
+      const fallbackOffset = 0.5 + GIZMO_GAP;
+      const targetX = centerX + cameraRightRef.current.x * fallbackOffset;
+      const targetZ = centerZ + cameraRightRef.current.z * fallbackOffset;
+
+      // XZ handle below height handle
+      const targetXzY = targetHeightY - XZ_HANDLE_OFFSET;
+
+      // Set targets
+      heightTargetRef.current.set(targetX, targetHeightY, targetZ);
+      xzTargetRef.current.set(targetX, targetXzY, targetZ);
+
+      // First frame: snap to position; otherwise use frame-rate independent lerp
+      if (!positionsInitializedRef.current) {
+        heightPositionRef.current.copy(heightTargetRef.current);
+        xzPositionRef.current.copy(xzTargetRef.current);
+        positionsInitializedRef.current = true;
+      } else {
+        heightPositionRef.current.lerp(heightTargetRef.current, effectivePositionFactor);
+        xzPositionRef.current.lerp(xzTargetRef.current, effectivePositionFactor);
+      }
+
+      setHeightHandlePosition([
+        heightPositionRef.current.x,
+        heightPositionRef.current.y,
+        heightPositionRef.current.z,
+      ]);
+      setXZHandlePosition([
+        xzPositionRef.current.x,
+        xzPositionRef.current.y,
+        xzPositionRef.current.z,
+      ]);
       setCurrentHeight(object.transform.y);
       setScaleFactor(1);
       setChildMesh(null);
@@ -832,50 +1220,110 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
     box.setFromObject(targetObject);
 
     if (!box.isEmpty()) {
-      const center = centerRef.current;
-      box.getCenter(center);
+      const rawCenter = centerRef.current;
+      box.getCenter(rawCenter);
+
+      // Calculate raw offset distance (half bounding box extent in the XZ plane + gap)
+      box.getSize(boxSizeRef.current);
+      const rawOffsetDistance =
+        Math.max(boxSizeRef.current.x, boxSizeRef.current.z) / 2 + GIZMO_GAP;
+
+      // Smooth the source data to eliminate bounding box jitter on complex models
+      // Uses frame-rate independent factor; snaps instantly when dragging
+      if (!positionsInitializedRef.current) {
+        // First frame: initialize smoothed values directly
+        smoothedCenterRef.current.copy(rawCenter);
+        smoothedOffsetDistanceRef.current = rawOffsetDistance;
+      } else {
+        // Subsequent frames: lerp smoothed values towards raw values
+        smoothedCenterRef.current.lerp(rawCenter, effectiveSourceFactor);
+        smoothedOffsetDistanceRef.current +=
+          (rawOffsetDistance - smoothedOffsetDistanceRef.current) * effectiveSourceFactor;
+      }
+
+      // Use smoothed values for all calculations
+      const center = smoothedCenterRef.current;
+      const offsetDistance = smoothedOffsetDistanceRef.current;
 
       // Store world position for XZ handle raycasting
       objectWorldPositionRef.current.copy(center);
 
-      // Calculate handle positions
-      const heightX = box.max.x + GIZMO_GAP;
-      let heightY = center.y;
-      const heightZ = center.z;
+      // Calculate camera right vector (projected to XZ plane for consistency)
+      // Get camera's forward direction
+      camera.getWorldDirection(cameraDirectionRef.current);
+      // Cross forward with up to get right direction (forward × up = right in right-handed system)
+      cameraRightRef.current.crossVectors(cameraDirectionRef.current, new THREE.Vector3(0, 1, 0));
+      cameraRightRef.current.normalize();
 
-      const xzX = heightX;
-      let xzY = heightY - XZ_HANDLE_OFFSET;
-      const xzZ = heightZ;
-
-      // Apply overlap avoidance
-      const verticalDistance = Math.abs(heightY - xzY);
-      if (verticalDistance < MIN_HANDLE_SPACING) {
-        const halfSeparation = (MIN_HANDLE_SPACING - verticalDistance) / 2;
-        heightY += halfSeparation;
-        xzY -= halfSeparation;
+      // Update view mode based on camera angle (with hysteresis)
+      const newViewMode = getViewMode(camera, viewModeRef.current, cameraDirectionRef.current);
+      if (newViewMode !== viewModeRef.current) {
+        viewModeRef.current = newViewMode;
+        setViewMode(newViewMode);
       }
 
-      // Update height handle position (with change detection)
-      const heightPos: [number, number, number] = [heightX, heightY, heightZ];
+      // Update camera right state for LeftRightHandle (only when changed significantly)
+      if (cameraRightRef.current.distanceToSquared(cameraRightState) > 0.0001) {
+        setCameraRightState(cameraRightRef.current.clone());
+      }
+
+      // Calculate TARGET positions along camera right vector from object center
+      // Height handle at object center Y, XZ/LeftRight handle below
+      const targetHeightY = center.y;
+      const targetXzY = center.y - XZ_HANDLE_OFFSET;
+
+      // Set target positions
+      heightTargetRef.current.set(
+        center.x + cameraRightRef.current.x * offsetDistance,
+        targetHeightY,
+        center.z + cameraRightRef.current.z * offsetDistance
+      );
+      xzTargetRef.current.set(
+        center.x + cameraRightRef.current.x * offsetDistance,
+        targetXzY,
+        center.z + cameraRightRef.current.z * offsetDistance
+      );
+
+      // On first frame, snap directly to target (no lerp)
+      if (!positionsInitializedRef.current) {
+        heightPositionRef.current.copy(heightTargetRef.current);
+        xzPositionRef.current.copy(xzTargetRef.current);
+        positionsInitializedRef.current = true;
+      } else {
+        // Smoothly lerp current positions towards targets (frame-rate independent)
+        // When dragging, effectivePositionFactor = 1.0 for instant response
+        heightPositionRef.current.lerp(heightTargetRef.current, effectivePositionFactor);
+        xzPositionRef.current.lerp(xzTargetRef.current, effectivePositionFactor);
+      }
+
+      // Update state for React rendering (always update for smooth animation)
+      const heightPos: [number, number, number] = [
+        heightPositionRef.current.x,
+        heightPositionRef.current.y,
+        heightPositionRef.current.z,
+      ];
+      const xzPos: [number, number, number] = [
+        xzPositionRef.current.x,
+        xzPositionRef.current.y,
+        xzPositionRef.current.z,
+      ];
+
+      // Only trigger re-render if position changed meaningfully
       if (
-        Math.abs(heightX - lastHeightPosRef.current[0]) > 0.001 ||
-        Math.abs(heightY - lastHeightPosRef.current[1]) > 0.001 ||
-        Math.abs(heightZ - lastHeightPosRef.current[2]) > 0.001
+        Math.abs(heightPos[0] - lastHeightPosRef.current[0]) > 0.0001 ||
+        Math.abs(heightPos[1] - lastHeightPosRef.current[1]) > 0.0001 ||
+        Math.abs(heightPos[2] - lastHeightPosRef.current[2]) > 0.0001
       ) {
         lastHeightPosRef.current = heightPos;
-        heightPositionRef.current.set(heightX, heightY, heightZ);
         setHeightHandlePosition(heightPos);
       }
 
-      // Update XZ handle position (with change detection)
-      const xzPos: [number, number, number] = [xzX, xzY, xzZ];
       if (
-        Math.abs(xzX - lastXZPosRef.current[0]) > 0.001 ||
-        Math.abs(xzY - lastXZPosRef.current[1]) > 0.001 ||
-        Math.abs(xzZ - lastXZPosRef.current[2]) > 0.001
+        Math.abs(xzPos[0] - lastXZPosRef.current[0]) > 0.0001 ||
+        Math.abs(xzPos[1] - lastXZPosRef.current[1]) > 0.0001 ||
+        Math.abs(xzPos[2] - lastXZPosRef.current[2]) > 0.0001
       ) {
         lastXZPosRef.current = xzPos;
-        xzPositionRef.current.set(xzX, xzY, xzZ);
         setXZHandlePosition(xzPos);
       }
     }
@@ -923,30 +1371,54 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   );
 
   const handleDragStart = useCallback(() => {
+    setIsAnyHandleDragging(true);
     onDragStart?.();
   }, [onDragStart]);
 
   const handleDragEnd = useCallback(() => {
+    setIsAnyHandleDragging(false);
     onDragEnd?.();
   }, [onDragEnd]);
 
-  // Hide gizmo when object is being dragged directly or camera is out of range
-  if (!isVisible || isDragging) {
+  // Hide gizmo when camera is out of range
+  if (!isVisible) {
     return null;
   }
 
+  // Determine which handles to show based on view mode
+  const showHeightHandle = viewMode !== 'topdown';
+  const showXZHandle = viewMode === 'isometric' || viewMode === 'topdown';
+  const showLeftRightHandle = viewMode === 'side';
+
+  // CSS for smooth fade transitions
+  const fadeTransition = 'opacity 150ms ease-out, transform 150ms ease-out';
+  const visibleStyle = { opacity: 1, transform: 'scale(1)', transition: fadeTransition };
+  const hiddenStyle = {
+    opacity: 0,
+    transform: 'scale(0.8)',
+    transition: fadeTransition,
+    pointerEvents: 'none' as const,
+  };
+
   return (
     <>
-      {/* Height Handle */}
+      {/* Height Handle - hidden in top-down view */}
       <group position={heightHandlePosition}>
         <Html
           center
           sprite
           transform={false}
           occlude={false}
-          style={{ pointerEvents: 'auto', userSelect: 'none' }}
+          style={{
+            pointerEvents: showHeightHandle ? 'auto' : 'none',
+            userSelect: 'none',
+          }}
         >
-          <div data-testid="transform-gizmo-height" onPointerDown={(e) => e.stopPropagation()}>
+          <div
+            data-testid="transform-gizmo-height"
+            onPointerDown={(e) => e.stopPropagation()}
+            style={showHeightHandle ? visibleStyle : hiddenStyle}
+          >
             <HeightHandle
               value={currentHeight}
               onChange={handleHeightChange}
@@ -962,7 +1434,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
         </Html>
       </group>
 
-      {/* XZ Handle */}
+      {/* XZ and Left/Right Handles - share exact same position, only one visible at a time */}
       <group position={xzHandlePosition}>
         <Html
           center
@@ -971,19 +1443,57 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
           occlude={false}
           style={{ pointerEvents: 'auto', userSelect: 'none' }}
         >
-          <div data-testid="transform-gizmo-xz" onPointerDown={(e) => e.stopPropagation()}>
-            <XZHandle
-              object={object}
-              selectedChild={selectedChild}
-              selectedChildPath={selectedChildPath}
-              onUpdateObject={onUpdateObject}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              camera={camera}
-              gl={gl}
-              objectWorldPosition={objectWorldPositionRef.current}
-              childMesh={childMesh}
-            />
+          {/* Container for overlapping handles - uses relative positioning */}
+          <div style={{ position: 'relative', width: 40, height: 40 }}>
+            {/* XZ Handle - shown in isometric and top-down modes */}
+            <div
+              data-testid="transform-gizmo-xz"
+              onPointerDown={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                ...(showXZHandle ? visibleStyle : hiddenStyle),
+              }}
+            >
+              <XZHandle
+                object={object}
+                selectedChild={selectedChild}
+                selectedChildPath={selectedChildPath}
+                onUpdateObject={onUpdateObject}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                camera={camera}
+                gl={gl}
+                objectWorldPosition={objectWorldPositionRef.current}
+                childMesh={childMesh}
+              />
+            </div>
+            {/* Left/Right Handle - shown only in side view mode */}
+            <div
+              data-testid="transform-gizmo-leftright"
+              onPointerDown={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                ...(showLeftRightHandle ? visibleStyle : hiddenStyle),
+              }}
+            >
+              <LeftRightHandle
+                object={object}
+                selectedChild={selectedChild}
+                selectedChildPath={selectedChildPath}
+                onUpdateObject={onUpdateObject}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                camera={camera}
+                gl={gl}
+                objectWorldPosition={objectWorldPositionRef.current}
+                childMesh={childMesh}
+                cameraRight={cameraRightState}
+              />
+            </div>
           </div>
         </Html>
       </group>

@@ -31,3 +31,6 @@ export interface ProjectMetadata {
   updatedAt: string;
   thumbnail?: string;
 }
+
+
+
