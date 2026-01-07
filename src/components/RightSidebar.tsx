@@ -1,14 +1,10 @@
-import React, { useState, memo, useCallback, useMemo, useRef } from 'react';
+import React, { useState, memo, useCallback, useRef } from 'react';
 import { SceneObject, ChildMesh, pathToString } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
-import { Box, Trash2, Copy, Rotate3d, Scaling, X, ArrowUpDown, Layers } from 'lucide-react';
+import { Box, Trash2, Rotate3d, Scaling, X, Layers, ChevronDown } from 'lucide-react';
 import { OBJECT_ICONS } from '../constants';
-import {
-  calculateLowestPointOffset,
-  heightToYPosition,
-  yPositionToHeight,
-} from '../utils/groundHeight';
+import { calculateScaleAdjustedY, DEFAULT_MODEL_HEIGHT } from '../utils/groundHeight';
 
 // ============================================================================
 // Types
@@ -134,109 +130,6 @@ const NameSection = memo<NameSectionProps>(({ name, onNameChange }) => {
 });
 NameSection.displayName = 'NameSection';
 
-interface HeightSectionProps {
-  /** Height above ground in internal units (where 100 = 1 meter) */
-  groundRelativeHeight: number;
-  /** Called when user changes the height slider (for real-time visual updates) */
-  onHeightChange: (newHeight: number) => void;
-  /** Called when user commits the height change (mouseup - for undo/redo) */
-  onHeightCommit: (newHeight: number) => void;
-  /** Called when slider interaction starts (for undo/redo batching) */
-  onBatchStart?: () => void;
-  /** Called when slider interaction ends (for undo/redo batching) */
-  onBatchEnd?: () => void;
-}
-
-const HeightSection = memo<HeightSectionProps>(
-  ({ groundRelativeHeight, onHeightChange, onHeightCommit, onBatchStart, onBatchEnd }) => {
-    const [isDragging, setIsDragging] = useState(false);
-    const startValueRef = useRef<number>(groundRelativeHeight);
-
-    const handleChange = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newValue = parseFloat(e.target.value);
-        // Update visual state in real-time during drag
-        onHeightChange(newValue);
-      },
-      [onHeightChange]
-    );
-
-    const handleMouseDown = useCallback(() => {
-      setIsDragging(true);
-      startValueRef.current = groundRelativeHeight;
-      // Start batching for undo/redo
-      if (onBatchStart) {
-        onBatchStart();
-      }
-    }, [groundRelativeHeight, onBatchStart]);
-
-    const handleMouseUp = useCallback(() => {
-      if (isDragging) {
-        setIsDragging(false);
-        // Commit the final value to undo/redo
-        const finalValue = groundRelativeHeight;
-        onHeightCommit(finalValue);
-        // End batching
-        if (onBatchEnd) {
-          onBatchEnd();
-        }
-      }
-    }, [isDragging, groundRelativeHeight, onHeightCommit, onBatchEnd]);
-
-    // Handle mouse leave (user might release mouse outside the slider)
-    const handleMouseLeave = useCallback(() => {
-      if (isDragging) {
-        handleMouseUp();
-      }
-    }, [isDragging, handleMouseUp]);
-
-    // Convert internal units to display units (divide by 100 for meters)
-    const displayHeight = groundRelativeHeight / 100;
-
-    return (
-      <div
-        className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
-        data-testid="height-section"
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <ArrowUpDown size={12} className="text-slate-500" />
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
-              Height
-            </label>
-          </div>
-          <span
-            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
-            data-testid="height-value"
-          >
-            {displayHeight.toFixed(2)}m
-          </span>
-        </div>
-
-        <input
-          type="range"
-          min="0"
-          max="500"
-          step="5"
-          value={groundRelativeHeight}
-          onChange={handleChange}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-          className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
-          aria-label="Height slider"
-          data-testid="height-slider"
-        />
-        <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
-          <span>0m</span>
-          <span>5m</span>
-        </div>
-      </div>
-    );
-  }
-);
-HeightSection.displayName = 'HeightSection';
-
 interface ScaleSectionProps {
   currentScale: number;
   /** Called when user changes the scale slider (for real-time visual updates) */
@@ -334,74 +227,202 @@ const ScaleSection = memo<ScaleSectionProps>(
 ScaleSection.displayName = 'ScaleSection';
 
 interface RotationSectionProps {
-  activeAxis: RotationAxis;
-  displayRotation: number;
-  onAxisChange: (axis: RotationAxis) => void;
-  /** Called when user changes the rotation slider (for real-time visual updates) */
-  onRotationChange: (rotation: number) => void;
+  /** Rotation values for all axes */
+  rotationX: number;
+  rotationY: number;
+  rotationZ: number;
+  /** Called when user changes a rotation value (for real-time visual updates) */
+  onRotationChange: (axis: RotationAxis, rotation: number) => void;
   /** Called when user commits the rotation change (mouseup - for undo/redo) */
-  onRotationCommit: (rotation: number) => void;
+  onRotationCommit: (axis: RotationAxis, rotation: number) => void;
   /** Called when slider interaction starts (for undo/redo batching) */
   onBatchStart?: () => void;
   /** Called when slider interaction ends (for undo/redo batching) */
   onBatchEnd?: () => void;
 }
 
-const ROTATION_AXES: readonly RotationAxis[] = ['x', 'y', 'z'] as const;
+/**
+ * Snap points for rotation sliders.
+ * Each snap point has a value and a threshold (how close you need to be to snap).
+ * 0° has a stronger snap since it's the most common target.
+ */
+const ROTATION_SNAP_POINTS = [
+  { value: 0, threshold: 6 }, // Neutral - strongest snap
+  { value: 90, threshold: 4 }, // Perpendicular
+  { value: -90, threshold: 4 }, // Perpendicular
+  { value: 180, threshold: 4 }, // Flipped
+  { value: -180, threshold: 4 }, // Flipped
+  { value: 45, threshold: 3 }, // Common increment
+  { value: -45, threshold: 3 }, // Common increment
+  { value: 135, threshold: 3 }, // Diagonal
+  { value: -135, threshold: 3 }, // Diagonal
+];
+
+/**
+ * Applies snapping to a rotation value.
+ * Returns the snapped value if within threshold of a snap point,
+ * otherwise returns the original value.
+ */
+const snapRotation = (value: number): number => {
+  for (const snap of ROTATION_SNAP_POINTS) {
+    if (Math.abs(value - snap.value) <= snap.threshold) {
+      return snap.value;
+    }
+  }
+  return value;
+};
+
+/** Tick marks to show on the rotation slider */
+const ROTATION_TICK_MARKS = [-90, 0, 90];
+
+/** Single axis slider component for rotation with snapping */
+const AxisSlider = memo<{
+  axis: RotationAxis;
+  label?: string;
+  value: number;
+  onChange: (value: number) => void;
+  onMouseDown: () => void;
+  onMouseUp: () => void;
+  onMouseLeave: () => void;
+  showLabel?: boolean;
+}>(({ axis, label, value, onChange, onMouseDown, onMouseUp, onMouseLeave, showLabel = true }) => {
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const rawValue = parseFloat(e.target.value);
+      const snappedValue = snapRotation(rawValue);
+      onChange(snappedValue);
+    },
+    [onChange]
+  );
+
+  const displayRotation = normalizeAngle(value);
+
+  return (
+    <div className="space-y-1">
+      {showLabel && (
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+            {label || axis.toUpperCase()}
+          </span>
+          <span className="font-mono text-[9px] font-medium text-slate-400">
+            {Math.round(displayRotation)}°
+          </span>
+        </div>
+      )}
+      <div className="relative">
+        {/* Tick marks for snap points */}
+        {ROTATION_TICK_MARKS.map((tick) => {
+          // Convert tick value to percentage position (0-100%)
+          const position = ((tick + 180) / 360) * 100;
+          const isCenter = tick === 0;
+          return (
+            <div
+              key={tick}
+              className={`absolute top-0 z-0 w-px ${
+                isCenter ? 'h-full bg-slate-300/60' : 'h-full bg-slate-300/30'
+              }`}
+              style={{ left: `${position}%` }}
+              aria-hidden="true"
+            />
+          );
+        })}
+        <input
+          type="range"
+          min="-180"
+          max="180"
+          step="1"
+          value={displayRotation}
+          onChange={handleChange}
+          onMouseDown={onMouseDown}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseLeave}
+          className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+          aria-label={`Rotation ${axis.toUpperCase()} axis slider`}
+          data-testid={`rotation-${axis}-slider`}
+        />
+      </div>
+    </div>
+  );
+});
+AxisSlider.displayName = 'AxisSlider';
 
 const RotationSection = memo<RotationSectionProps>(
   ({
-    activeAxis,
-    displayRotation,
-    onAxisChange,
+    rotationX,
+    rotationY,
+    rotationZ,
     onRotationChange,
     onRotationCommit,
     onBatchStart,
     onBatchEnd,
   }) => {
     const [isDragging, setIsDragging] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const activeAxisRef = useRef<RotationAxis>('y');
 
-    const handleSliderChange = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newValue = parseFloat(e.target.value);
-        // Update visual state in real-time during drag
-        onRotationChange(newValue);
+    const handleMouseDown = useCallback(
+      (axis: RotationAxis) => {
+        setIsDragging(true);
+        activeAxisRef.current = axis;
+        if (onBatchStart) {
+          onBatchStart();
+        }
       },
-      [onRotationChange]
+      [onBatchStart]
     );
-
-    const handleMouseDown = useCallback(() => {
-      setIsDragging(true);
-      // Start batching for undo/redo
-      if (onBatchStart) {
-        onBatchStart();
-      }
-    }, [onBatchStart]);
 
     const handleMouseUp = useCallback(() => {
       if (isDragging) {
         setIsDragging(false);
-        // Commit the final value to undo/redo
-        onRotationCommit(displayRotation);
-        // End batching
+        const axis = activeAxisRef.current;
+        const value = axis === 'x' ? rotationX : axis === 'y' ? rotationY : rotationZ;
+        onRotationCommit(axis, value);
         if (onBatchEnd) {
           onBatchEnd();
         }
       }
-    }, [isDragging, displayRotation, onRotationCommit, onBatchEnd]);
+    }, [isDragging, rotationX, rotationY, rotationZ, onRotationCommit, onBatchEnd]);
 
-    // Handle mouse leave (user might release mouse outside the slider)
     const handleMouseLeave = useCallback(() => {
       if (isDragging) {
         handleMouseUp();
       }
     }, [isDragging, handleMouseUp]);
 
+    const handleYChange = useCallback(
+      (value: number) => {
+        const snappedValue = snapRotation(value);
+        onRotationChange('y', snappedValue);
+      },
+      [onRotationChange]
+    );
+    const handleXChange = useCallback(
+      (value: number) => {
+        const snappedValue = snapRotation(value);
+        onRotationChange('x', snappedValue);
+      },
+      [onRotationChange]
+    );
+    const handleZChange = useCallback(
+      (value: number) => {
+        const snappedValue = snapRotation(value);
+        onRotationChange('z', snappedValue);
+      },
+      [onRotationChange]
+    );
+
+    const handleYMouseDown = useCallback(() => handleMouseDown('y'), [handleMouseDown]);
+    const handleXMouseDown = useCallback(() => handleMouseDown('x'), [handleMouseDown]);
+    const handleZMouseDown = useCallback(() => handleMouseDown('z'), [handleMouseDown]);
+
+    const displayRotationY = normalizeAngle(rotationY);
+
     return (
       <div
         className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm"
         data-testid="rotation-section"
       >
+        {/* Main Rotation Header + Y-axis Slider */}
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Rotate3d size={12} className="text-slate-500" />
@@ -413,66 +434,89 @@ const RotationSection = memo<RotationSectionProps>(
             className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
             data-testid="rotation-value"
           >
-            {Math.round(displayRotation)}°
+            {Math.round(displayRotationY)}°
           </span>
         </div>
 
-        {/* Axis toggles + Slider in compact layout */}
-        <div className="flex items-center gap-2">
-          {/* Axis Toggles - Compact */}
-          <div
-            className="flex shrink-0 rounded-[10px] border border-white/20 bg-slate-100/50 p-0.5"
-            role="group"
-            aria-label="Rotation axis selection"
-          >
-            {ROTATION_AXES.map((axis) => {
-              const isActive = activeAxis === axis;
-              const buttonClasses = isActive
-                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                : 'text-slate-400 hover:bg-white/50 hover:text-slate-600';
-
-              return (
-                <button
-                  key={axis}
-                  onClick={() => onAxisChange(axis)}
-                  className={`rounded-[8px] px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-all duration-200 ${buttonClasses}`}
-                  aria-pressed={isActive}
-                  data-testid={`axis-${axis}-button`}
-                >
-                  {axis}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Slider with Center-Zero (-180 to 180) */}
-          <div className="relative flex-1">
-            {/* Center Marker */}
-            <div
-              className="absolute bottom-0 left-1/2 top-0 z-0 w-px bg-slate-300/40"
-              aria-hidden="true"
-            />
-
-            <input
-              type="range"
-              min="-180"
-              max="180"
-              step="1"
-              value={displayRotation}
-              onChange={handleSliderChange}
-              onMouseDown={handleMouseDown}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseLeave}
-              className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
-              aria-label={`Rotation ${activeAxis.toUpperCase()} axis slider`}
-              data-testid="rotation-slider"
-            />
-          </div>
+        {/* Primary Y-axis Slider */}
+        <div className="relative">
+          {/* Tick marks for snap points */}
+          {ROTATION_TICK_MARKS.map((tick) => {
+            // Convert tick value to percentage position (0-100%)
+            const position = ((tick + 180) / 360) * 100;
+            const isCenter = tick === 0;
+            return (
+              <div
+                key={tick}
+                className={`absolute top-0 z-0 w-px ${
+                  isCenter ? 'h-full bg-slate-300/60' : 'h-full bg-slate-300/30'
+                }`}
+                style={{ left: `${position}%` }}
+                aria-hidden="true"
+              />
+            );
+          })}
+          <input
+            type="range"
+            min="-180"
+            max="180"
+            step="1"
+            value={displayRotationY}
+            onChange={(e) => handleYChange(parseFloat(e.target.value))}
+            onMouseDown={handleYMouseDown}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+            className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 transition-all hover:accent-blue-500"
+            aria-label="Rotation slider"
+            data-testid="rotation-slider"
+          />
         </div>
-        <div className="mt-1 flex justify-between pl-[72px] text-[9px] font-medium text-slate-400">
+        <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
           <span>-180°</span>
           <span className="text-slate-300">0°</span>
           <span>180°</span>
+        </div>
+
+        {/* Expandable Advanced Options */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1 rounded-[10px] py-1.5 text-[10px] font-medium text-slate-400 transition-all hover:bg-white/50 hover:text-slate-600"
+          aria-expanded={isExpanded}
+          data-testid="rotation-expand-button"
+        >
+          <span>{isExpanded ? 'Less options' : 'More options'}</span>
+          <ChevronDown
+            size={12}
+            className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {/* Advanced X and Z Sliders */}
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-out ${
+            isExpanded ? 'mt-3 max-h-40 opacity-100' : 'max-h-0 opacity-0'
+          }`}
+        >
+          <div className="space-y-3 border-t border-white/30 pt-3">
+            <AxisSlider
+              axis="x"
+              label="Tilt"
+              value={rotationX}
+              onChange={handleXChange}
+              onMouseDown={handleXMouseDown}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseLeave}
+            />
+            <AxisSlider
+              axis="z"
+              label="Roll"
+              value={rotationZ}
+              onChange={handleZChange}
+              onMouseDown={handleZMouseDown}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseLeave}
+            />
+          </div>
         </div>
       </div>
     );
@@ -480,24 +524,13 @@ const RotationSection = memo<RotationSectionProps>(
 );
 RotationSection.displayName = 'RotationSection';
 
-interface ActionsSectionProps {
-  onDuplicate: () => void;
+interface DeleteSectionProps {
   onDelete: () => void;
 }
 
-const ActionsSection = memo<ActionsSectionProps>(({ onDuplicate, onDelete }) => {
+const DeleteSection = memo<DeleteSectionProps>(({ onDelete }) => {
   return (
-    <div className="mt-auto grid grid-cols-2 gap-3 pt-2" data-testid="actions-section">
-      <Button
-        variant="secondary"
-        size="md"
-        className="h-10 w-full justify-center rounded-[20px] border-transparent bg-white/60 text-xs font-semibold text-slate-600 hover:bg-white"
-        onClick={onDuplicate}
-        data-testid="duplicate-button"
-      >
-        <Copy size={14} className="mr-2" />
-        Duplicate
-      </Button>
+    <div className="mt-auto pt-2" data-testid="delete-section">
       <Button
         variant="secondary"
         size="md"
@@ -511,7 +544,7 @@ const ActionsSection = memo<ActionsSectionProps>(({ onDuplicate, onDelete }) => 
     </div>
   );
 });
-ActionsSection.displayName = 'ActionsSection';
+DeleteSection.displayName = 'DeleteSection';
 
 // ============================================================================
 // Main Component
@@ -526,37 +559,14 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
   onBatchStart,
   onBatchEnd,
 }) => {
-  const [activeRotAxis, setActiveRotAxis] = useState<RotationAxis>('y');
-
   // Store initial object state when slider interaction starts
   const initialObjectRef = useRef<SceneObject | null>(null);
 
   // Determine if we're in child editing mode
   const isChildMode = !!selectedChild;
 
-  // ---- Memoized Calculations ----
-  // Note: All hooks must be called unconditionally (before any early returns)
-
-  // Calculate the lowest point offset based on current rotation and scale
-  const lowestPointOffset = useMemo(() => {
-    if (!object) return 0;
-    return calculateLowestPointOffset(
-      object.transform.rotationX,
-      object.transform.rotationY,
-      object.transform.rotationZ,
-      object.transform.scaleX,
-      object.transform.scaleY,
-      object.transform.scaleZ
-    );
-  }, [object]);
-
-  // Calculate ground-relative height from Y position
-  const groundRelativeHeight = useMemo(() => {
-    if (!object) return 0;
-    return yPositionToHeight(object.transform.y, lowestPointOffset);
-  }, [object, lowestPointOffset]);
-
   // ---- Memoized Event Handlers ----
+  // Note: All hooks must be called unconditionally (before any early returns)
 
   const handleNameChange = useCallback(
     (name: string) => {
@@ -566,58 +576,21 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     [object, onUpdate]
   );
 
-  // Height change handler - updates visual state only (for real-time feedback during drag)
-  const handleHeightChange = useCallback(
-    (newHeight: number) => {
-      if (!object) return;
-      const newY = heightToYPosition(newHeight, lowestPointOffset);
-      onUpdate({
-        ...object,
-        transform: {
-          ...object.transform,
-          y: newY,
-        },
-      });
-    },
-    [object, onUpdate, lowestPointOffset]
-  );
-
-  // Height commit handler - no-op since commands are created during drag and batched
-  const handleHeightCommit = useCallback((_finalHeight: number) => {
-    // The final state is already applied via handleHeightChange
-    // Commands are batched, so this is just a signal that drag ended
-  }, []);
-
-  const handleHeightBatchStart = useCallback(() => {
-    if (!object) return;
-    initialObjectRef.current = { ...object };
-    if (onBatchStart) {
-      onBatchStart();
-    }
-  }, [object, onBatchStart]);
-
-  const handleHeightBatchEnd = useCallback(() => {
-    if (!object || !initialObjectRef.current) return;
-    if (onBatchEnd) {
-      onBatchEnd();
-    }
-    initialObjectRef.current = null;
-  }, [object, onBatchEnd]);
-
   // Scale change handler - updates visual state only (for real-time feedback during drag)
   const handleScaleChange = useCallback(
     (scale: number) => {
       if (!object) return;
-      const newLowestPointOffset = calculateLowestPointOffset(
-        object.transform.rotationX,
-        object.transform.rotationY,
-        object.transform.rotationZ,
+
+      // Get the model height from properties (stored during model creation)
+      const modelHeight = (object.properties.modelHeight as number) || DEFAULT_MODEL_HEIGHT;
+
+      // Calculate new Y position to maintain ground-relative position when scaling
+      const newY = calculateScaleAdjustedY(
+        object.transform.y,
+        object.transform.scaleY,
         scale,
-        scale,
-        scale
+        modelHeight
       );
-      const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
-      const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
 
       onUpdate({
         ...object,
@@ -630,7 +603,7 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
         },
       });
     },
-    [object, onUpdate, lowestPointOffset]
+    [object, onUpdate]
   );
 
   // Scale commit handler
@@ -660,39 +633,29 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
 
   // Rotation change handler - updates visual state only (for real-time feedback during drag)
   const handleRotationChange = useCallback(
-    (rotation: number) => {
+    (axis: RotationAxis, rotation: number) => {
       if (!object) return;
-      const rotationKey = getRotationKey(activeRotAxis);
-      const newRotationX = rotationKey === 'rotationX' ? rotation : object.transform.rotationX;
-      const newRotationY = rotationKey === 'rotationY' ? rotation : object.transform.rotationY;
-      const newRotationZ = rotationKey === 'rotationZ' ? rotation : object.transform.rotationZ;
+      const rotationKey = getRotationKey(axis);
 
-      const newLowestPointOffset = calculateLowestPointOffset(
-        newRotationX,
-        newRotationY,
-        newRotationZ,
-        object.transform.scaleX,
-        object.transform.scaleY,
-        object.transform.scaleZ
-      );
-      const currentHeightAboveGround = yPositionToHeight(object.transform.y, lowestPointOffset);
-      const newY = heightToYPosition(currentHeightAboveGround, newLowestPointOffset);
-
+      // For rotation, we don't adjust Y position.
+      // In ImportedModel, the model rotates around its visual center (the pivot point).
+      // The relationship between transform.y and the pivot remains consistent.
+      // If rotation causes part of the model to go below ground, the user can use
+      // the height handle to lift it - this is more intuitive than auto-adjusting.
       onUpdate({
         ...object,
         transform: {
           ...object.transform,
           [rotationKey]: rotation,
-          y: newY,
         },
       });
     },
-    [object, onUpdate, activeRotAxis, lowestPointOffset]
+    [object, onUpdate]
   );
 
   // Rotation commit handler
   const handleRotationCommit = useCallback(
-    (_finalRotation: number) => {
+    (_axis: RotationAxis, _finalRotation: number) => {
       if (!object || !initialObjectRef.current) return;
       // The final state is already applied via handleRotationChange
     },
@@ -714,10 +677,6 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     }
     initialObjectRef.current = null;
   }, [object, onBatchEnd]);
-
-  const handleDuplicate = useCallback(() => {
-    // Duplicate functionality - currently a no-op, will be implemented later
-  }, []);
 
   const handleDelete = useCallback(() => {
     if (!object) return;
@@ -756,34 +715,6 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     [object, selectedChild, onUpdate]
   );
 
-  // Child height change handler
-  const handleChildHeightChange = useCallback(
-    (newHeight: number) => {
-      // Height is stored in Y position (in internal units where 100 = 1 meter)
-      updateChildTransform({ y: newHeight });
-    },
-    [updateChildTransform]
-  );
-
-  const handleChildHeightCommit = useCallback(
-    (newHeight: number) => {
-      handleChildHeightChange(newHeight);
-    },
-    [handleChildHeightChange]
-  );
-
-  const handleChildHeightBatchStart = useCallback(() => {
-    if (onBatchStart) {
-      onBatchStart();
-    }
-  }, [onBatchStart]);
-
-  const handleChildHeightBatchEnd = useCallback(() => {
-    if (onBatchEnd) {
-      onBatchEnd();
-    }
-  }, [onBatchEnd]);
-
   // Child scale change handler
   const handleChildScaleChange = useCallback(
     (scale: number) => {
@@ -817,21 +748,18 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
 
   // Child rotation change handler
   const handleChildRotationChange = useCallback(
-    (rotation: number) => {
-      const rotationKey = getRotationKey(activeRotAxis);
+    (axis: RotationAxis, rotation: number) => {
+      const rotationKey = getRotationKey(axis);
       updateChildTransform({
         [rotationKey]: rotation,
       });
     },
-    [activeRotAxis, updateChildTransform]
+    [updateChildTransform]
   );
 
-  const handleChildRotationCommit = useCallback(
-    (rotation: number) => {
-      handleChildRotationChange(rotation);
-    },
-    [handleChildRotationChange]
-  );
+  const handleChildRotationCommit = useCallback((_axis: RotationAxis, _rotation: number) => {
+    // Already applied via handleChildRotationChange
+  }, []);
 
   const handleChildRotationBatchStart = useCallback(() => {
     if (onBatchStart) {
@@ -874,17 +802,10 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
   if (!object) return null;
 
   // ---- Computed Values ----
-  const rotationKey = getRotationKey(activeRotAxis);
-  const currentRotation = object.transform[rotationKey];
-  const displayRotation = normalizeAngle(currentRotation);
   const currentScale = object.transform.scaleX;
 
   // Child-specific computed values
-  const childRotationKey = getRotationKey(activeRotAxis);
-  const childCurrentRotation = selectedChild?.localTransform[childRotationKey] ?? 0;
-  const childDisplayRotation = normalizeAngle(childCurrentRotation);
   const childCurrentScale = selectedChild?.localTransform.scaleX ?? 1;
-  const childGroundRelativeHeight = selectedChild ? selectedChild.localTransform.y : 0;
 
   // ---- Render ----
 
@@ -905,12 +826,14 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
             <>
               <NameSection name={selectedChild.name} onNameChange={handleChildNameChange} />
 
-              <HeightSection
-                groundRelativeHeight={childGroundRelativeHeight}
-                onHeightChange={handleChildHeightChange}
-                onHeightCommit={handleChildHeightCommit}
-                onBatchStart={handleChildHeightBatchStart}
-                onBatchEnd={handleChildHeightBatchEnd}
+              <RotationSection
+                rotationX={selectedChild.localTransform.rotationX}
+                rotationY={selectedChild.localTransform.rotationY}
+                rotationZ={selectedChild.localTransform.rotationZ}
+                onRotationChange={handleChildRotationChange}
+                onRotationCommit={handleChildRotationCommit}
+                onBatchStart={handleChildRotationBatchStart}
+                onBatchEnd={handleChildRotationBatchEnd}
               />
 
               <ScaleSection
@@ -921,29 +844,21 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
                 onBatchEnd={handleChildScaleBatchEnd}
               />
 
-              <RotationSection
-                activeAxis={activeRotAxis}
-                displayRotation={childDisplayRotation}
-                onAxisChange={setActiveRotAxis}
-                onRotationChange={handleChildRotationChange}
-                onRotationCommit={handleChildRotationCommit}
-                onBatchStart={handleChildRotationBatchStart}
-                onBatchEnd={handleChildRotationBatchEnd}
-              />
-
-              <ActionsSection onDuplicate={handleDuplicate} onDelete={handleDelete} />
+              <DeleteSection onDelete={handleDelete} />
             </>
           ) : (
             // Parent mode: same controls
             <>
               <NameSection name={object.name} onNameChange={handleNameChange} />
 
-              <HeightSection
-                groundRelativeHeight={groundRelativeHeight}
-                onHeightChange={handleHeightChange}
-                onHeightCommit={handleHeightCommit}
-                onBatchStart={handleHeightBatchStart}
-                onBatchEnd={handleHeightBatchEnd}
+              <RotationSection
+                rotationX={object.transform.rotationX}
+                rotationY={object.transform.rotationY}
+                rotationZ={object.transform.rotationZ}
+                onRotationChange={handleRotationChange}
+                onRotationCommit={handleRotationCommit}
+                onBatchStart={handleRotationBatchStart}
+                onBatchEnd={handleRotationBatchEnd}
               />
 
               <ScaleSection
@@ -954,17 +869,7 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
                 onBatchEnd={handleScaleBatchEnd}
               />
 
-              <RotationSection
-                activeAxis={activeRotAxis}
-                displayRotation={displayRotation}
-                onAxisChange={setActiveRotAxis}
-                onRotationChange={handleRotationChange}
-                onRotationCommit={handleRotationCommit}
-                onBatchStart={handleRotationBatchStart}
-                onBatchEnd={handleRotationBatchEnd}
-              />
-
-              <ActionsSection onDuplicate={handleDuplicate} onDelete={handleDelete} />
+              <DeleteSection onDelete={handleDelete} />
             </>
           )}
         </div>

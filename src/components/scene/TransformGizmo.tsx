@@ -23,6 +23,7 @@ import * as THREE from 'three';
 
 import { SceneObject, ChildMesh, pathToString } from '../../types';
 import { findChildByPath } from '../../utils/modelLoaders';
+import { calculateLowestPointOffset } from '../../utils/groundHeight';
 
 // ============================================================================
 // Types & Interfaces
@@ -54,9 +55,11 @@ interface BaseHandleProps {
 
 /** Props specific to HeightHandle */
 interface HeightHandleProps extends BaseHandleProps {
-  /** Current height value in internal units */
+  /** Current Y position in internal units */
   value: number;
-  /** Callback when height changes */
+  /** Current lowest point of mesh in world Y coordinates (from bounding box) */
+  minWorldY: number;
+  /** Callback when Y position changes */
   onChange: (value: number) => void;
   /** World position for screen-space calculations */
   worldPosition: THREE.Vector3;
@@ -91,7 +94,12 @@ interface TooltipProps {
 /** Internal drag state for height handle */
 interface HeightDragState {
   startMouseY: number;
+  /** Initial Y value (internal units) when drag started */
   initialValue: number;
+  /** Initial minWorldY when drag started (for ground constraint) */
+  initialMinWorldY: number;
+  /** World units per internal unit (for converting drag delta to world space) */
+  worldUnitsPerInternalUnit: number;
   pixelsPerInternalUnit: number;
   hasMoved: boolean;
 }
@@ -472,6 +480,7 @@ function getHandleClasses(isDragging: boolean, isHovered: boolean): string {
 
 const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
   value,
+  minWorldY,
   onChange,
   onDragStart,
   onDragEnd,
@@ -500,8 +509,12 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
 
   /**
    * Calculates how many pixels correspond to one internal unit of height change
+   * Also returns worldUnitsPerInternalUnit for ground constraint calculations
    */
-  const calculatePixelsPerInternalUnit = useCallback((): number => {
+  const calculateDragFactors = useCallback((): {
+    pixelsPerInternalUnit: number;
+    worldUnitsPerInternalUnit: number;
+  } => {
     const rect = gl.domElement.getBoundingClientRect();
     const effectiveScaleY = getEffectiveScaleY();
     const worldUnitsPerInternalUnit = (1 / INTERNAL_TO_WORLD) * effectiveScaleY;
@@ -516,7 +529,10 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
     const screenY1 = ((-pos1.y + 1) / 2) * rect.height;
     const screenY2 = ((-pos2.y + 1) / 2) * rect.height;
 
-    return Math.abs(screenY1 - screenY2) || 1;
+    return {
+      pixelsPerInternalUnit: Math.abs(screenY1 - screenY2) || 1,
+      worldUnitsPerInternalUnit,
+    };
   }, [camera, gl, worldPosition, getEffectiveScaleY]);
 
   const handlePointerDown = useCallback(
@@ -526,18 +542,20 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
 
       tooltip.hideTooltip();
 
-      const pixelsPerInternalUnit = calculatePixelsPerInternalUnit();
+      const { pixelsPerInternalUnit, worldUnitsPerInternalUnit } = calculateDragFactors();
 
       setIsDragging(true);
       dragStateRef.current = {
         startMouseY: e.clientY,
         initialValue: value,
+        initialMinWorldY: minWorldY,
+        worldUnitsPerInternalUnit,
         pixelsPerInternalUnit,
         hasMoved: false,
       };
       onDragStart();
     },
-    [value, calculatePixelsPerInternalUnit, onDragStart, tooltip]
+    [value, minWorldY, calculateDragFactors, onDragStart, tooltip]
   );
 
   // Handle drag movement and release
@@ -559,8 +577,27 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
 
       // Convert screen delta to internal units
       const internalDelta = screenDeltaY / state.pixelsPerInternalUnit;
-      const newHeight = clamp(state.initialValue + internalDelta, HEIGHT_MIN, HEIGHT_MAX);
-      onChange(newHeight);
+
+      // Calculate what the new minWorldY would be
+      // When we change the internal value by internalDelta:
+      // - World Y change = internalDelta * worldUnitsPerInternalUnit
+      // - New minWorldY = initialMinWorldY + worldYChange
+      const worldDelta = internalDelta * state.worldUnitsPerInternalUnit;
+      const newMinWorldY = state.initialMinWorldY + worldDelta;
+
+      // If newMinWorldY would be below ground (< 0), clamp the delta
+      let clampedInternalDelta = internalDelta;
+      if (newMinWorldY < 0) {
+        // Calculate the maximum downward delta that keeps minWorldY at 0
+        // 0 = initialMinWorldY + maxDownDelta * worldUnitsPerInternalUnit
+        // maxDownDelta = -initialMinWorldY / worldUnitsPerInternalUnit
+        const maxDownDelta = -state.initialMinWorldY / state.worldUnitsPerInternalUnit;
+        clampedInternalDelta = Math.max(internalDelta, maxDownDelta);
+      }
+
+      // Also clamp to HEIGHT_MAX for upward movement
+      const newValue = clamp(state.initialValue + clampedInternalDelta, HEIGHT_MIN, HEIGHT_MAX);
+      onChange(newValue);
     };
 
     const handlePointerUp = () => {
@@ -1073,6 +1110,10 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   const [scaleFactor, setScaleFactor] = useState(1);
   const [childMesh, setChildMesh] = useState<THREE.Object3D | null>(null);
 
+  // Ground height state - tracks the actual lowest point of the mesh in world space
+  // minWorldY is the Y coordinate of the lowest point of the bounding box
+  const [minWorldY, setMinWorldY] = useState(0);
+
   // Track when any handle is being dragged (disables smoothing for responsive feel)
   const [isAnyHandleDragging, setIsAnyHandleDragging] = useState(false);
 
@@ -1187,6 +1228,21 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
       setCurrentHeight(object.transform.y);
       setScaleFactor(1);
       setChildMesh(null);
+
+      // Fallback minWorldY calculation using the model height from properties
+      const modelHeight = (object.properties.modelHeight as number) || 2.0;
+      const fallbackLowestOffset = calculateLowestPointOffset(
+        object.transform.rotationX,
+        object.transform.rotationY,
+        object.transform.rotationZ,
+        object.transform.scaleX,
+        object.transform.scaleY,
+        object.transform.scaleZ,
+        modelHeight
+      );
+      // minWorldY = objectCenterY + lowestPointOffset (lowestPointOffset is negative)
+      const fallbackMinWorldY = object.transform.y / INTERNAL_TO_WORLD + fallbackLowestOffset;
+      setMinWorldY(fallbackMinWorldY);
       return;
     }
 
@@ -1333,6 +1389,13 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
     if (scaleFactor !== currentScaleFactor) setScaleFactor(currentScaleFactor);
     if (childMesh !== foundChildMesh) setChildMesh(foundChildMesh);
 
+    // Get the actual lowest point of the mesh from the bounding box
+    // This works for BOTH parent objects and children - it's the true world-space minimum Y
+    const actualMinWorldY = box.min.y;
+    if (minWorldY !== actualMinWorldY) {
+      setMinWorldY(actualMinWorldY);
+    }
+
     // Check visibility based on camera distance
     const distance = camera.position.distanceTo(objectWorldPositionRef.current);
     const shouldBeVisible = distance > MIN_CAMERA_DISTANCE && distance < MAX_CAMERA_DISTANCE;
@@ -1342,17 +1405,19 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   });
 
   /**
-   * Handles height value changes from the height handle
+   * Handles height value changes from the height handle.
+   * The ground constraint is already enforced in the HeightHandle component using minWorldY,
+   * so we just apply the new Y value directly.
    */
   const handleHeightChange = useCallback(
-    (newHeight: number) => {
+    (newY: number) => {
       if (selectedChild && selectedChildPath) {
         // Update child's local transform
         const updatedChildren = object.children?.map((child) => {
           if (pathToString(child.path) === selectedChildPath) {
             return {
               ...child,
-              localTransform: { ...child.localTransform, y: newHeight },
+              localTransform: { ...child.localTransform, y: newY },
             };
           }
           return child;
@@ -1363,7 +1428,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
         // Update parent's transform
         onUpdateObject({
           ...object,
-          transform: { ...object.transform, y: newHeight },
+          transform: { ...object.transform, y: newY },
         });
       }
     },
@@ -1421,6 +1486,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
           >
             <HeightHandle
               value={currentHeight}
+              minWorldY={minWorldY}
               onChange={handleHeightChange}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}

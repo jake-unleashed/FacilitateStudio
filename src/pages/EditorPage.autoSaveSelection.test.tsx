@@ -118,7 +118,7 @@ describe('EditorPage auto-save + selection stability', () => {
     vi.useRealTimers();
   });
 
-  it('does not clear selection during auto-save thumbnail capture (prevents RightSidebar flicker and preserves rotation axis state)', async () => {
+  it('does not clear selection during auto-save thumbnail capture (prevents RightSidebar flicker and preserves rotation expanded state)', async () => {
     render(
       <MemoryRouter initialEntries={['/editor/test-id']}>
         <Routes>
@@ -134,9 +134,9 @@ describe('EditorPage auto-save + selection stability', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select First' }));
     expect(await screen.findByTestId('right-sidebar')).toBeInTheDocument();
 
-    // Change axis to X (this state used to be lost due to unmount/remount every autosave)
-    fireEvent.click(screen.getByTestId('axis-x-button'));
-    expect(screen.getByTestId('axis-x-button')).toHaveAttribute('aria-pressed', 'true');
+    // Expand rotation options (this state used to be lost due to unmount/remount every autosave)
+    fireEvent.click(screen.getByTestId('rotation-expand-button'));
+    expect(screen.getByTestId('rotation-expand-button')).toHaveAttribute('aria-expanded', 'true');
 
     // Switch to fake timers only after all Testing Library async queries are done.
     // This avoids deadlocks where `findBy*`/`waitFor` rely on timers.
@@ -153,6 +153,6 @@ describe('EditorPage auto-save + selection stability', () => {
     // Core save + thumbnail save
     expect(saveProjectMock).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId('right-sidebar')).toBeInTheDocument();
-    expect(screen.getByTestId('axis-x-button')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('rotation-expand-button')).toHaveAttribute('aria-expanded', 'true');
   });
 });

@@ -145,6 +145,7 @@ function createSceneObject(
   assetId: string,
   name: string,
   position: { x: number; y: number; z: number },
+  metrics: ModelMetrics,
   children?: ChildMesh[]
 ): SceneObject {
   return {
@@ -165,6 +166,9 @@ function createSceneObject(
     properties: {
       visible: true,
       modelAssetId: assetId,
+      // Store model dimensions for accurate ground height calculations during scale/rotation
+      // This is the preprocessed model's height in world units (before any scale applied)
+      modelHeight: metrics.size.y,
     },
     children: children && children.length > 0 ? children : undefined,
   };
@@ -379,7 +383,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
       const position = calculateOptimalPosition(metrics, existingObjects);
       const uniqueName = generateUniqueName(assetName, existingObjects);
-      const sceneObject = createSceneObject(assetId, uniqueName, position, children);
+      const sceneObject = createSceneObject(assetId, uniqueName, position, metrics, children);
 
       // Complete
       setProgress('complete', 100, { fileName: assetName });

@@ -117,7 +117,7 @@ describe('RightSidebar', () => {
     });
   });
 
-  describe('Name and Visibility Section', () => {
+  describe('Name Section', () => {
     it('renders object name input with current value', () => {
       render(<RightSidebar {...defaultProps} />);
       expect(screen.getByDisplayValue('Test Object')).toBeInTheDocument();
@@ -132,8 +132,6 @@ describe('RightSidebar', () => {
         expect.objectContaining({ name: 'New Name' })
       );
     });
-
-    // Note: Visibility toggle was removed from the UI - tests removed
   });
 
   describe('Scale Section', () => {
@@ -189,40 +187,12 @@ describe('RightSidebar', () => {
       expect(screen.getByText('Rotation')).toBeInTheDocument();
     });
 
-    it('displays current rotation value', () => {
+    it('displays current Y rotation value by default', () => {
       render(<RightSidebar {...defaultProps} />);
       expect(screen.getByText('45°')).toBeInTheDocument();
     });
 
-    it('renders all three axis buttons', () => {
-      render(<RightSidebar {...defaultProps} />);
-      expect(screen.getByRole('button', { name: 'x' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'y' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'z' })).toBeInTheDocument();
-    });
-
-    it('has Y axis selected by default', () => {
-      render(<RightSidebar {...defaultProps} />);
-      const yButton = screen.getByRole('button', { name: 'y' });
-      expect(yButton).toHaveClass('bg-white');
-    });
-
-    it('switches rotation axis when axis buttons are clicked', () => {
-      render(<RightSidebar {...defaultProps} />);
-      const xButton = screen.getByRole('button', { name: 'x' });
-      fireEvent.click(xButton);
-      expect(xButton).toHaveClass('bg-white');
-    });
-
-    it('has aria-pressed attribute on axis buttons', () => {
-      render(<RightSidebar {...defaultProps} />);
-      const yButton = screen.getByRole('button', { name: 'y' });
-      const xButton = screen.getByRole('button', { name: 'x' });
-      expect(yButton).toHaveAttribute('aria-pressed', 'true');
-      expect(xButton).toHaveAttribute('aria-pressed', 'false');
-    });
-
-    it('updates rotation when slider is changed', () => {
+    it('updates Y rotation when main slider is changed', () => {
       render(<RightSidebar {...defaultProps} />);
       const slider = screen.getByTestId('rotation-slider');
       fireEvent.change(slider, { target: { value: '90' } });
@@ -234,38 +204,11 @@ describe('RightSidebar', () => {
       );
     });
 
-    it('updates correct rotation axis when X axis is selected', () => {
-      render(<RightSidebar {...defaultProps} />);
-      fireEvent.click(screen.getByRole('button', { name: 'x' }));
-
-      const slider = screen.getByTestId('rotation-slider');
-      fireEvent.change(slider, { target: { value: '45' } });
-
-      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          transform: expect.objectContaining({ rotationX: 45 }),
-        })
-      );
-    });
-
-    it('updates correct rotation axis when Z axis is selected', () => {
-      render(<RightSidebar {...defaultProps} />);
-      fireEvent.click(screen.getByRole('button', { name: 'z' }));
-
-      const slider = screen.getByTestId('rotation-slider');
-      fireEvent.change(slider, { target: { value: '30' } });
-
-      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          transform: expect.objectContaining({ rotationZ: 30 }),
-        })
-      );
-    });
-
     it('displays rotation range labels', () => {
       render(<RightSidebar {...defaultProps} />);
       expect(screen.getByText('-180°')).toBeInTheDocument();
-      expect(screen.getByText('0°')).toBeInTheDocument();
+      // Multiple 0° labels exist (main slider + hidden expanded sliders), so use getAllByText
+      expect(screen.getAllByText('0°').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('180°')).toBeInTheDocument();
     });
 
@@ -275,6 +218,139 @@ describe('RightSidebar', () => {
       expect(slider).toHaveAttribute('min', '-180');
       expect(slider).toHaveAttribute('max', '180');
       expect(slider).toHaveAttribute('step', '1');
+    });
+
+    it('has "More options" expand button', () => {
+      render(<RightSidebar {...defaultProps} />);
+      expect(screen.getByText('More options')).toBeInTheDocument();
+    });
+
+    it('expands to show X and Z sliders when "More options" is clicked', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const expandButton = screen.getByTestId('rotation-expand-button');
+      fireEvent.click(expandButton);
+
+      expect(screen.getByText('Less options')).toBeInTheDocument();
+      expect(screen.getByText('Tilt')).toBeInTheDocument();
+      expect(screen.getByText('Roll')).toBeInTheDocument();
+    });
+
+    it('shows X rotation slider in expanded mode', () => {
+      render(<RightSidebar {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('rotation-expand-button'));
+
+      const xSlider = screen.getByTestId('rotation-x-slider');
+      expect(xSlider).toBeInTheDocument();
+    });
+
+    it('shows Z rotation slider in expanded mode', () => {
+      render(<RightSidebar {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('rotation-expand-button'));
+
+      const zSlider = screen.getByTestId('rotation-z-slider');
+      expect(zSlider).toBeInTheDocument();
+    });
+
+    it('updates X rotation when X slider is changed in expanded mode', () => {
+      render(<RightSidebar {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('rotation-expand-button'));
+
+      const xSlider = screen.getByTestId('rotation-x-slider');
+      fireEvent.change(xSlider, { target: { value: '30' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationX: 30 }),
+        })
+      );
+    });
+
+    it('updates Z rotation when Z slider is changed in expanded mode', () => {
+      render(<RightSidebar {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('rotation-expand-button'));
+
+      const zSlider = screen.getByTestId('rotation-z-slider');
+      fireEvent.change(zSlider, { target: { value: '15' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationZ: 15 }),
+        })
+      );
+    });
+
+    it('collapses back when "Less options" is clicked', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const expandButton = screen.getByTestId('rotation-expand-button');
+      fireEvent.click(expandButton);
+      fireEvent.click(expandButton);
+
+      expect(screen.getByText('More options')).toBeInTheDocument();
+    });
+
+    it('snaps to 0° when value is close to zero', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const slider = screen.getByTestId('rotation-slider');
+      // Setting to 4° should snap to 0° (within 6° threshold)
+      fireEvent.change(slider, { target: { value: '4' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationY: 0 }),
+        })
+      );
+    });
+
+    it('snaps to 90° when value is close to 90', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const slider = screen.getByTestId('rotation-slider');
+      // Setting to 88° should snap to 90° (within 4° threshold)
+      fireEvent.change(slider, { target: { value: '88' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationY: 90 }),
+        })
+      );
+    });
+
+    it('snaps to -90° when value is close to -90', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const slider = screen.getByTestId('rotation-slider');
+      // Setting to -92° should snap to -90° (within 4° threshold)
+      fireEvent.change(slider, { target: { value: '-92' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationY: -90 }),
+        })
+      );
+    });
+
+    it('does not snap when value is outside snap thresholds', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const slider = screen.getByTestId('rotation-slider');
+      // Setting to 20° should not snap (not within threshold of any snap point)
+      fireEvent.change(slider, { target: { value: '20' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationY: 20 }),
+        })
+      );
+    });
+
+    it('snaps to 45° when value is close to 45', () => {
+      render(<RightSidebar {...defaultProps} />);
+      const slider = screen.getByTestId('rotation-slider');
+      // Setting to 43° should snap to 45° (within 3° threshold)
+      fireEvent.change(slider, { target: { value: '43' } });
+
+      expect(defaultProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transform: expect.objectContaining({ rotationY: 45 }),
+        })
+      );
     });
   });
 
@@ -379,12 +455,7 @@ describe('RightSidebar', () => {
     });
   });
 
-  describe('Actions Section', () => {
-    it('renders Duplicate button', () => {
-      render(<RightSidebar {...defaultProps} />);
-      expect(screen.getByText('Duplicate')).toBeInTheDocument();
-    });
-
+  describe('Delete Section', () => {
     it('renders Delete button', () => {
       render(<RightSidebar {...defaultProps} />);
       expect(screen.getByText('Delete')).toBeInTheDocument();
@@ -396,24 +467,20 @@ describe('RightSidebar', () => {
       expect(defaultProps.onDelete).toHaveBeenCalledWith('test-obj');
     });
 
-    it('does not throw when Duplicate is clicked (no-op)', () => {
+    it('has correct test ID for delete button', () => {
       render(<RightSidebar {...defaultProps} />);
-      expect(() => {
-        fireEvent.click(screen.getByText('Duplicate'));
-      }).not.toThrow();
-    });
-
-    it('has correct test IDs for action buttons', () => {
-      render(<RightSidebar {...defaultProps} />);
-      expect(screen.getByTestId('duplicate-button')).toBeInTheDocument();
       expect(screen.getByTestId('delete-button')).toBeInTheDocument();
     });
 
     it('delete button has visible red text styling', () => {
       render(<RightSidebar {...defaultProps} />);
       const deleteButton = screen.getByTestId('delete-button');
-      // Uses secondary variant (not glass) so text-red-500 is visible
       expect(deleteButton).toHaveClass('text-red-500');
+    });
+
+    it('renders delete section container', () => {
+      render(<RightSidebar {...defaultProps} />);
+      expect(screen.getByTestId('delete-section')).toBeInTheDocument();
     });
   });
 
@@ -484,9 +551,12 @@ describe('RightSidebar', () => {
 
       const updateCall = defaultProps.onUpdate.mock.calls[0][0];
       expect(updateCall.transform.x).toBe(0);
-      // Y is adjusted by ground-aware height system to keep lowest point at ground level
-      // For a scale of 2.0, the lowest point offset is -1.0 (in world units), so Y = 100
-      expect(updateCall.transform.y).toBe(100);
+      // Y is adjusted to maintain ground-relative position when scaling.
+      // Formula: newY = currentY + modelHeight * 50 * (newScale - currentScale)
+      // With default modelHeight=2.0, scaling from 1.5 (mock default) to 2.0:
+      //   yAdjustment = 2.0 * 50 * (2.0 - 1.5) = 50
+      //   newY = 0 + 50 = 50
+      expect(updateCall.transform.y).toBe(50);
       expect(updateCall.transform.z).toBe(0);
       expect(updateCall.transform.rotationX).toBe(0);
       expect(updateCall.transform.rotationY).toBe(45);
@@ -520,20 +590,41 @@ describe('RightSidebar', () => {
 
     it('has accessible rotation slider', () => {
       render(<RightSidebar {...defaultProps} />);
-      const slider = screen.getByLabelText(/Rotation .* axis slider/);
+      const slider = screen.getByLabelText('Rotation slider');
       expect(slider).toBeInTheDocument();
     });
 
-    it('has role group for axis selection', () => {
+    it('expand button has aria-expanded attribute', () => {
       render(<RightSidebar {...defaultProps} />);
-      const group = screen.getByRole('group', { name: 'Rotation axis selection' });
-      expect(group).toBeInTheDocument();
+      const expandButton = screen.getByTestId('rotation-expand-button');
+      expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(expandButton);
+      expect(expandButton).toHaveAttribute('aria-expanded', 'true');
     });
 
     it('has aria-hidden on decorative center marker', () => {
       const { container } = render(<RightSidebar {...defaultProps} />);
       const marker = container.querySelector('[aria-hidden="true"]');
       expect(marker).toBeInTheDocument();
+    });
+  });
+
+  describe('Panel Order', () => {
+    it('renders sections in correct order: Name, Rotation, Scale, Delete', () => {
+      const { container } = render(<RightSidebar {...defaultProps} />);
+      const content = container.querySelector('.space-y-3');
+      expect(content).toBeInTheDocument();
+
+      const sections = content!.children;
+      // Name input (within Input component wrapper)
+      expect(sections[0].querySelector('[data-testid="object-name-input"]')).toBeInTheDocument();
+      // Rotation section
+      expect(sections[1]).toHaveAttribute('data-testid', 'rotation-section');
+      // Scale section
+      expect(sections[2]).toHaveAttribute('data-testid', 'scale-section');
+      // Delete section
+      expect(sections[3]).toHaveAttribute('data-testid', 'delete-section');
     });
   });
 });
