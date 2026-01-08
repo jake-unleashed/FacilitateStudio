@@ -96,7 +96,7 @@ interface SceneContentProps {
   selectedObjectId: string | null;
   onSelectObject: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
-  onFocusObject?: (obj: SceneObject) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -459,8 +459,9 @@ const NAVIGATION_KEYS = new Set([
 const KeyboardNavigator: React.FC<{
   controlsRef: React.RefObject<CameraControlsImpl>;
   selectedObject: SceneObject | null;
-  onFocusObject?: (obj: SceneObject) => void;
-}> = ({ controlsRef, selectedObject, onFocusObject }) => {
+  selectedChildPath: string | null;
+  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+}> = ({ controlsRef, selectedObject, selectedChildPath, onFocusObject }) => {
   const keysPressed = useRef<Set<string>>(new Set());
   const { gl, invalidate } = useThree();
 
@@ -480,8 +481,9 @@ const KeyboardNavigator: React.FC<{
       keysPressed.current.add(key);
 
       // Focus on selected object (F key) - delegates to onFocusObject for unified focus behavior
+      // Passes childPath if a child is selected, enabling focus on child mesh bounds
       if (key === 'f' && selectedObject && onFocusObject) {
-        onFocusObject(selectedObject);
+        onFocusObject(selectedObject, selectedChildPath ?? undefined);
         e.preventDefault();
       }
 
@@ -508,7 +510,7 @@ const KeyboardNavigator: React.FC<{
       window.removeEventListener('keyup', handleKeyUp);
       keysPressedRef.clear(); // Clean up on unmount
     };
-  }, [gl, selectedObject, controlsRef, invalidate, onFocusObject]);
+  }, [gl, selectedObject, selectedChildPath, controlsRef, invalidate, onFocusObject]);
 
   // Continuous movement in useFrame for smooth WASD/arrow key navigation
   useFrame(() => {
@@ -930,6 +932,21 @@ const SceneContent: React.FC<SceneContentProps> = ({
     // Set ref SYNCHRONOUSLY
     hasMovedRef.current = true;
 
+    // Dragging an object = working with that object = select it
+    // This ensures consistent UX: any direct manipulation selects the target
+    // Handles both: dragging unselected objects, and dragging parent while child is selected
+    if (dragState) {
+      const targetSelectionId = dragState.childPath
+        ? createChildSelectionId(dragState.objectId, dragState.childPath)
+        : dragState.objectId;
+
+      // Only update selection if it's different from current
+      if (targetSelectionId !== selectedObjectId) {
+        console.log('[DRAG] Selecting dragged object:', targetSelectionId);
+        onSelectObject(targetSelectionId);
+      }
+    }
+
     // Call onDragStart SYNCHRONOUSLY *before* any state updates
     // This prevents race conditions where updateObject commands are sent before batching begins
     console.log('[DRAG] Calling onDragStart (beginBatch) SYNCHRONOUSLY');
@@ -944,17 +961,14 @@ const SceneContent: React.FC<SceneContentProps> = ({
       }
       return prev;
     });
-  }, [onDragStart, dragState]);
+  }, [onDragStart, dragState, selectedObjectId, onSelectObject]);
 
-  // Handle double-click to focus on object
-  const handleDoubleClick = useCallback(
-    (obj: SceneObject) => {
-      if (onFocusObject) {
-        onFocusObject(obj);
-      }
-    },
-    [onFocusObject]
-  );
+  // Double-click handler - intentionally a no-op
+  // Double-click focus was removed because it conflicts with multi-click child selection
+  // Use F key or click in Scene Objects panel to focus instead
+  const handleDoubleClick = useCallback((_obj: SceneObject) => {
+    // No-op: double-click to focus is disabled
+  }, []);
 
   // Update drag state when object is updated (keep reference fresh)
   // BUT: Only update if we're NOT currently dragging (hasMoved is false means we haven't started dragging yet)
@@ -1172,8 +1186,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
         polarRotateSpeed={0.35}
         // Slower panning
         truckSpeed={1.2}
-        // Zoom settings
-        minDistance={3}
+        // Zoom settings - minDistance reduced to allow close zoom on small child objects
+        minDistance={0.5}
         maxDistance={60}
         dollySpeed={0.3}
         dollyToCursor={true}
@@ -1218,6 +1232,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <KeyboardNavigator
         controlsRef={controlsRef}
         selectedObject={selectedObject}
+        selectedChildPath={selectedChildPath}
         onFocusObject={onFocusObject}
       />
     </>
@@ -1238,7 +1253,7 @@ interface MainCanvasProps {
   selectedObjectId: string | null;
   onSelectObject: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
-  onFocusObject?: (obj: SceneObject) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
   /** Callback when the WebGL canvas is ready (for thumbnail capture) */
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;

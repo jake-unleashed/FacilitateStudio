@@ -101,6 +101,3 @@ describe('formatRelativeDate', () => {
     });
   });
 });
-
-
-

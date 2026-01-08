@@ -169,6 +169,3 @@ describe('model types', () => {
     });
   });
 });
-
-
-

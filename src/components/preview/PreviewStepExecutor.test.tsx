@@ -193,6 +193,3 @@ describe('PreviewStepExecutor', () => {
     expect(onObjectClick).toHaveBeenCalledTimes(1);
   });
 });
-
-
-

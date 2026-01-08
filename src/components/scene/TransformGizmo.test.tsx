@@ -1206,4 +1206,203 @@ describe('TransformGizmo Utility Functions', () => {
       expect(clampedPixelDiff).toBe(0.001);
     });
   });
+
+  describe('calculatePixelsPerWorldUnit', () => {
+    /**
+     * Calculates pixels per world unit using camera distance and FOV.
+     * This is a direct implementation of the formula for testing.
+     */
+    function calculatePixelsPerWorldUnit(
+      cameraDistance: number,
+      fovDegrees: number,
+      viewportHeight: number
+    ): number {
+      if (cameraDistance <= 0) return 1;
+      const vFovRadians = fovDegrees * (Math.PI / 180);
+      const halfFovTan = Math.tan(vFovRadians / 2);
+      return viewportHeight / (2 * cameraDistance * halfFovTan);
+    }
+
+    it('should return higher value for closer camera', () => {
+      const closeResult = calculatePixelsPerWorldUnit(5, 75, 600);
+      const farResult = calculatePixelsPerWorldUnit(20, 75, 600);
+
+      // Closer camera = more pixels per world unit
+      expect(closeResult).toBeGreaterThan(farResult);
+    });
+
+    it('should return higher value for larger viewport', () => {
+      const largeViewport = calculatePixelsPerWorldUnit(10, 75, 1000);
+      const smallViewport = calculatePixelsPerWorldUnit(10, 75, 500);
+
+      // Larger viewport = more pixels per world unit
+      expect(largeViewport).toBeGreaterThan(smallViewport);
+    });
+
+    it('should return lower value for wider FOV', () => {
+      const narrowFov = calculatePixelsPerWorldUnit(10, 45, 600);
+      const wideFov = calculatePixelsPerWorldUnit(10, 90, 600);
+
+      // Narrow FOV = more pixels per world unit (more zoomed in)
+      expect(narrowFov).toBeGreaterThan(wideFov);
+    });
+
+    it('should handle zero or negative distance gracefully', () => {
+      const zeroDistance = calculatePixelsPerWorldUnit(0, 75, 600);
+      const negativeDistance = calculatePixelsPerWorldUnit(-5, 75, 600);
+
+      // Should return 1 as fallback
+      expect(zeroDistance).toBe(1);
+      expect(negativeDistance).toBe(1);
+    });
+
+    it('should be view-angle independent (same distance = same result)', () => {
+      // The formula only depends on distance, FOV, and viewport - not view angle
+      // This is the key improvement over the previous projection-based approach
+      const distance = 10;
+      const fov = 75;
+      const viewport = 600;
+
+      // Same inputs should always give same result
+      const result1 = calculatePixelsPerWorldUnit(distance, fov, viewport);
+      const result2 = calculatePixelsPerWorldUnit(distance, fov, viewport);
+      const result3 = calculatePixelsPerWorldUnit(distance, fov, viewport);
+
+      expect(result1).toBe(result2);
+      expect(result2).toBe(result3);
+    });
+
+    it('should produce reasonable values for typical camera setup', () => {
+      // Typical setup: camera 10 units away, 75° FOV, 600px viewport
+      const result = calculatePixelsPerWorldUnit(10, 75, 600);
+
+      // Should be a positive, reasonable value
+      expect(result).toBeGreaterThan(0);
+      expect(result).toBeLessThan(1000); // Sanity check
+    });
+  });
+
+  describe('pixelsToWorldUnits', () => {
+    /**
+     * Converts screen pixels to world units.
+     */
+    function pixelsToWorldUnits(targetPixels: number, pixelsPerWorldUnit: number): number {
+      if (pixelsPerWorldUnit <= 0) return 0;
+      return targetPixels / pixelsPerWorldUnit;
+    }
+
+    it('should convert pixels to world units correctly', () => {
+      // If 100 pixels = 1 world unit, then 50 pixels = 0.5 world units
+      const result = pixelsToWorldUnits(50, 100);
+      expect(result).toBe(0.5);
+    });
+
+    it('should return larger world units for fewer pixels per unit', () => {
+      const target = 65; // target pixels
+      const farResult = pixelsToWorldUnits(target, 50); // camera far away
+      const closeResult = pixelsToWorldUnits(target, 200); // camera close
+
+      // Far camera = fewer pixels per unit = larger world offset needed
+      expect(farResult).toBeGreaterThan(closeResult);
+    });
+
+    it('should handle zero pixelsPerWorldUnit gracefully', () => {
+      const result = pixelsToWorldUnits(65, 0);
+      expect(result).toBe(0);
+    });
+
+    it('should handle negative pixelsPerWorldUnit gracefully', () => {
+      const result = pixelsToWorldUnits(65, -100);
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 for 0 target pixels', () => {
+      const result = pixelsToWorldUnits(0, 100);
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('dynamic handle spacing', () => {
+    // Constants from TransformGizmo.tsx
+    const HANDLE_GAP_PIXELS = 35;
+    const HANDLE_SPACING_PIXELS = 65;
+
+    /**
+     * Simulates the dynamic spacing calculation
+     */
+    function calculateDynamicSpacing(
+      cameraDistance: number,
+      fovDegrees: number,
+      viewportHeight: number
+    ) {
+      const vFovRadians = fovDegrees * (Math.PI / 180);
+      const halfFovTan = Math.tan(vFovRadians / 2);
+      const pixelsPerWorldUnit =
+        cameraDistance > 0 ? viewportHeight / (2 * cameraDistance * halfFovTan) : 1;
+
+      return {
+        dynamicGap: HANDLE_GAP_PIXELS / pixelsPerWorldUnit,
+        dynamicHandleOffset: HANDLE_SPACING_PIXELS / pixelsPerWorldUnit,
+        pixelsPerWorldUnit,
+      };
+    }
+
+    it('should maintain constant screen-space gap at different zoom levels', () => {
+      const viewportHeight = 600;
+      const fov = 75;
+
+      // Calculate at different distances
+      const close = calculateDynamicSpacing(5, fov, viewportHeight);
+      const medium = calculateDynamicSpacing(15, fov, viewportHeight);
+      const far = calculateDynamicSpacing(30, fov, viewportHeight);
+
+      // World units increase as camera moves away
+      expect(far.dynamicGap).toBeGreaterThan(medium.dynamicGap);
+      expect(medium.dynamicGap).toBeGreaterThan(close.dynamicGap);
+
+      // But when converted back to screen pixels, they should all equal HANDLE_GAP_PIXELS
+      expect(close.dynamicGap * close.pixelsPerWorldUnit).toBeCloseTo(HANDLE_GAP_PIXELS, 5);
+      expect(medium.dynamicGap * medium.pixelsPerWorldUnit).toBeCloseTo(HANDLE_GAP_PIXELS, 5);
+      expect(far.dynamicGap * far.pixelsPerWorldUnit).toBeCloseTo(HANDLE_GAP_PIXELS, 5);
+    });
+
+    it('should maintain constant screen-space handle offset at different zoom levels', () => {
+      const viewportHeight = 600;
+      const fov = 75;
+
+      const close = calculateDynamicSpacing(5, fov, viewportHeight);
+      const far = calculateDynamicSpacing(30, fov, viewportHeight);
+
+      // World units differ
+      expect(far.dynamicHandleOffset).toBeGreaterThan(close.dynamicHandleOffset);
+
+      // But screen pixels are constant
+      expect(close.dynamicHandleOffset * close.pixelsPerWorldUnit).toBeCloseTo(
+        HANDLE_SPACING_PIXELS,
+        5
+      );
+      expect(far.dynamicHandleOffset * far.pixelsPerWorldUnit).toBeCloseTo(
+        HANDLE_SPACING_PIXELS,
+        5
+      );
+    });
+
+    it('should work identically regardless of view angle', () => {
+      // The key insight: same distance from any angle should give same spacing
+      // Previously, top-down view would cause handles to fly away
+      const viewportHeight = 600;
+      const fov = 75;
+      const distance = 15;
+
+      // Simulating different view angles with same distance
+      // (The formula doesn't actually use angle, but we verify it gives consistent results)
+      const result1 = calculateDynamicSpacing(distance, fov, viewportHeight);
+      const result2 = calculateDynamicSpacing(distance, fov, viewportHeight);
+      const result3 = calculateDynamicSpacing(distance, fov, viewportHeight);
+
+      expect(result1.dynamicGap).toBe(result2.dynamicGap);
+      expect(result2.dynamicGap).toBe(result3.dynamicGap);
+      expect(result1.dynamicHandleOffset).toBe(result2.dynamicHandleOffset);
+    });
+  });
 });

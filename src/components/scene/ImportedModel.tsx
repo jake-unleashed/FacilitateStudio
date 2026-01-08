@@ -440,12 +440,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
               onChildPointerDown(e, obj, selectedChildPath);
             }
           }
-        } else if (childPath && onChildPointerDown) {
+        } else if (childPath) {
           // Clicked on a different child (outside the selected subtree)
-          // Find a sibling at the same depth level as the current selection
-          // This allows horizontal navigation between children at the same level
+          // Require intentional selection: click selects, drag moves parent (not the new child)
+          // This prevents accidental dragging of unselected children
           const siblingPath = findSiblingAtSameLevel(e.object, selectedChildPath);
-          onChildPointerDown(e, obj, siblingPath || childPath);
+          // Pass as pendingChildPath - click will select, drag will move parent
+          onPointerDown(e, obj, siblingPath || childPath);
         } else {
           // Clicked on non-child area - keep parent selected, allow drag of root
           onPointerDown(e, obj);

@@ -296,6 +296,3 @@ describe('materialOptimization', () => {
     });
   });
 });
-
-
-

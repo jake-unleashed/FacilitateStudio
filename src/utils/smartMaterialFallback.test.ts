@@ -320,6 +320,3 @@ describe('smartMaterialFallback', () => {
     });
   });
 });
-
-
-

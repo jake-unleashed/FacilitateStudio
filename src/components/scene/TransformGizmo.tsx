@@ -157,11 +157,19 @@ interface LeftRightHandleProps extends BaseHandleProps {
 // Constants
 // ============================================================================
 
-/** Gap between object bounding box and gizmo (in world units) */
-const GIZMO_GAP = 0.25;
+/**
+ * Target screen-space pixel gap between object bounding box edge and handles.
+ * This ensures consistent visual spacing regardless of camera zoom level.
+ * ~30-40px provides comfortable separation from the object.
+ */
+const HANDLE_GAP_PIXELS = 35;
 
-/** Vertical offset for XZ/LeftRight handle below height handle (in world units) */
-const XZ_HANDLE_OFFSET = 0.5;
+/**
+ * Target screen-space pixel distance between height and XZ handles.
+ * This ensures consistent visual spacing regardless of camera zoom level.
+ * ~60-70px provides comfortable separation at typical viewing distances.
+ */
+const HANDLE_SPACING_PIXELS = 65;
 
 /** Minimum camera distance to show gizmo */
 const MIN_CAMERA_DISTANCE = 1;
@@ -343,6 +351,51 @@ function extractScaleFromMatrix(matrix: THREE.Matrix4, axis: 'x' | 'y' | 'z'): n
  */
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Calculates how many screen pixels correspond to one world unit at a given distance.
+ * Uses perspective projection geometry for a view-angle-independent result.
+ *
+ * This ensures consistent screen-space sizing regardless of whether the camera
+ * is looking from the side, top, bottom, or any angle.
+ *
+ * @param camera - The perspective camera
+ * @param targetPosition - The world position to measure at
+ * @param viewportHeight - The viewport height in pixels
+ * @returns Pixels per world unit at the target position's depth
+ */
+function calculatePixelsPerWorldUnit(
+  camera: THREE.Camera,
+  targetPosition: THREE.Vector3,
+  viewportHeight: number
+): number {
+  const cameraDistance = camera.position.distanceTo(targetPosition);
+
+  // Guard against zero/negative distance
+  if (cameraDistance <= 0) return 1;
+
+  const perspCamera = camera as THREE.PerspectiveCamera;
+  const vFovRadians = perspCamera.fov * (Math.PI / 180);
+  const halfFovTan = Math.tan(vFovRadians / 2);
+
+  // Perspective projection: at distance d, visible height = 2 * d * tan(fov/2)
+  // pixels per world unit = viewport height / visible height
+  return viewportHeight / (2 * cameraDistance * halfFovTan);
+}
+
+/**
+ * Converts a target screen-space pixel distance to world units.
+ * Used for maintaining consistent visual spacing regardless of zoom level.
+ *
+ * @param targetPixels - Desired distance in screen pixels
+ * @param pixelsPerWorldUnit - Current pixels per world unit ratio
+ * @returns Equivalent distance in world units
+ */
+function pixelsToWorldUnits(targetPixels: number, pixelsPerWorldUnit: number): number {
+  // Guard against division by zero
+  if (pixelsPerWorldUnit <= 0) return 0;
+  return targetPixels / pixelsPerWorldUnit;
 }
 
 // ============================================================================
@@ -1146,6 +1199,9 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   const smoothedCenterRef = useRef(new THREE.Vector3());
   const smoothedOffsetDistanceRef = useRef(0);
 
+  // Reusable vector for position calculations (avoid allocations in frame loop)
+  const tempPositionRef = useRef(new THREE.Vector3());
+
   // Whether positions have been initialized (skip lerp on first frame)
   const positionsInitializedRef = useRef(false);
 
@@ -1193,13 +1249,23 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
         setCameraRightState(cameraRightRef.current.clone());
       }
 
-      // Use a default offset for fallback
-      const fallbackOffset = 0.5 + GIZMO_GAP;
+      // Calculate dynamic offsets in world units based on screen pixel targets
+      // Use camera distance and FOV for view-angle-independent calculation
+      // This prevents handles from flying away when looking from top-down or bottom-up
+      // Calculate dynamic spacing using view-angle-independent formula
+      const rect = gl.domElement.getBoundingClientRect();
+      const fallbackPos = tempPositionRef.current.set(centerX, targetHeightY, centerZ);
+      const pixelsPerWorldUnit = calculatePixelsPerWorldUnit(camera, fallbackPos, rect.height);
+      const dynamicHandleOffset = pixelsToWorldUnits(HANDLE_SPACING_PIXELS, pixelsPerWorldUnit);
+      const dynamicGap = pixelsToWorldUnits(HANDLE_GAP_PIXELS, pixelsPerWorldUnit);
+
+      // Use fallback bounding box size (0.5) plus dynamic gap for consistent screen spacing
+      const fallbackOffset = 0.5 + dynamicGap;
       const targetX = centerX + cameraRightRef.current.x * fallbackOffset;
       const targetZ = centerZ + cameraRightRef.current.z * fallbackOffset;
 
-      // XZ handle below height handle
-      const targetXzY = targetHeightY - XZ_HANDLE_OFFSET;
+      // XZ handle below height handle (using dynamic offset for consistent screen spacing)
+      const targetXzY = targetHeightY - dynamicHandleOffset;
 
       // Set targets
       heightTargetRef.current.set(targetX, targetHeightY, targetZ);
@@ -1279,27 +1345,26 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
       const rawCenter = centerRef.current;
       box.getCenter(rawCenter);
 
-      // Calculate raw offset distance (half bounding box extent in the XZ plane + gap)
+      // Calculate raw bounding box half-extent in XZ plane (without gap - gap is calculated dynamically)
       box.getSize(boxSizeRef.current);
-      const rawOffsetDistance =
-        Math.max(boxSizeRef.current.x, boxSizeRef.current.z) / 2 + GIZMO_GAP;
+      const rawHalfExtent = Math.max(boxSizeRef.current.x, boxSizeRef.current.z) / 2;
 
       // Smooth the source data to eliminate bounding box jitter on complex models
       // Uses frame-rate independent factor; snaps instantly when dragging
       if (!positionsInitializedRef.current) {
         // First frame: initialize smoothed values directly
         smoothedCenterRef.current.copy(rawCenter);
-        smoothedOffsetDistanceRef.current = rawOffsetDistance;
+        smoothedOffsetDistanceRef.current = rawHalfExtent;
       } else {
         // Subsequent frames: lerp smoothed values towards raw values
         smoothedCenterRef.current.lerp(rawCenter, effectiveSourceFactor);
         smoothedOffsetDistanceRef.current +=
-          (rawOffsetDistance - smoothedOffsetDistanceRef.current) * effectiveSourceFactor;
+          (rawHalfExtent - smoothedOffsetDistanceRef.current) * effectiveSourceFactor;
       }
 
       // Use smoothed values for all calculations
       const center = smoothedCenterRef.current;
-      const offsetDistance = smoothedOffsetDistanceRef.current;
+      const smoothedHalfExtent = smoothedOffsetDistanceRef.current;
 
       // Store world position for XZ handle raycasting
       objectWorldPositionRef.current.copy(center);
@@ -1323,10 +1388,20 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
         setCameraRightState(cameraRightRef.current.clone());
       }
 
+      // Calculate dynamic spacing using view-angle-independent formula
+      // This prevents handles from flying away when looking from top-down or bottom-up
+      const rect = gl.domElement.getBoundingClientRect();
+      const pixelsPerWorldUnit = calculatePixelsPerWorldUnit(camera, center, rect.height);
+      const dynamicHandleOffset = pixelsToWorldUnits(HANDLE_SPACING_PIXELS, pixelsPerWorldUnit);
+      const dynamicGap = pixelsToWorldUnits(HANDLE_GAP_PIXELS, pixelsPerWorldUnit);
+
+      // Final offset distance: smoothed bounding box half-extent + dynamic gap
+      const offsetDistance = smoothedHalfExtent + dynamicGap;
+
       // Calculate TARGET positions along camera right vector from object center
-      // Height handle at object center Y, XZ/LeftRight handle below
+      // Height handle at object center Y, XZ/LeftRight handle below (using dynamic offset)
       const targetHeightY = center.y;
-      const targetXzY = center.y - XZ_HANDLE_OFFSET;
+      const targetXzY = center.y - dynamicHandleOffset;
 
       // Set target positions
       heightTargetRef.current.set(

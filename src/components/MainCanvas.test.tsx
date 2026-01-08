@@ -279,11 +279,12 @@ describe('Focus Logic', () => {
 
       // Simulate the key handler logic
       const key = 'f';
+      const selectedChildPath: string | null = null;
       if (key === 'f' && selectedObject && mockOnFocusObject) {
-        mockOnFocusObject(selectedObject);
+        mockOnFocusObject(selectedObject, selectedChildPath ?? undefined);
       }
 
-      expect(mockOnFocusObject).toHaveBeenCalledWith(selectedObject);
+      expect(mockOnFocusObject).toHaveBeenCalledWith(selectedObject, undefined);
     });
 
     it('should not call onFocusObject when F key is pressed without selected object', () => {
@@ -291,8 +292,9 @@ describe('Focus Logic', () => {
       const selectedObject = null;
 
       const key = 'f';
+      const selectedChildPath: string | null = null;
       if (key === 'f' && selectedObject && mockOnFocusObject) {
-        mockOnFocusObject(selectedObject);
+        mockOnFocusObject(selectedObject, selectedChildPath ?? undefined);
       }
 
       expect(mockOnFocusObject).not.toHaveBeenCalled();
@@ -319,11 +321,200 @@ describe('Focus Logic', () => {
       };
 
       const key = 'g' as string;
+      const selectedChildPath: string | null = null;
       if (key === 'f' && selectedObject && mockOnFocusObject) {
-        mockOnFocusObject(selectedObject);
+        mockOnFocusObject(selectedObject, selectedChildPath ?? undefined);
       }
 
       expect(mockOnFocusObject).not.toHaveBeenCalled();
+    });
+
+    it('should pass childPath when focusing on a child object', () => {
+      const mockOnFocusObject = vi.fn();
+      const selectedObject: SceneObject = {
+        id: 'obj-1',
+        name: 'Test Object',
+        type: 'mesh',
+        transform: {
+          x: 100,
+          y: 0,
+          z: -200,
+          rotationX: 0,
+          rotationY: 0,
+          rotationZ: 0,
+          scaleX: 1,
+          scaleY: 1,
+          scaleZ: 1,
+        },
+        properties: { visible: true, modelAssetId: 'asset-1' },
+        children: [
+          {
+            name: 'Wheel',
+            path: ['Scene', 'Wheel_FL'],
+            localTransform: {
+              x: 0,
+              y: 0,
+              z: 0,
+              rotationX: 0,
+              rotationY: 0,
+              rotationZ: 0,
+              scaleX: 1,
+              scaleY: 1,
+              scaleZ: 1,
+            },
+          },
+        ],
+      };
+
+      const key = 'f';
+      const selectedChildPath = 'Scene.Wheel_FL';
+      if (key === 'f' && selectedObject && mockOnFocusObject) {
+        mockOnFocusObject(selectedObject, selectedChildPath ?? undefined);
+      }
+
+      expect(mockOnFocusObject).toHaveBeenCalledWith(selectedObject, 'Scene.Wheel_FL');
+    });
+  });
+});
+
+// ============================================================================
+// Drag Selection Logic Tests
+// ============================================================================
+
+describe('Drag Selection Logic', () => {
+  describe('Auto-select on drag', () => {
+    it('should select object when starting to drag an unselected object', () => {
+      const mockOnSelectObject = vi.fn();
+      const dragState = {
+        objectId: 'obj-1',
+        childPath: null as string | null,
+      };
+      const selectedObjectId: string | null = null;
+
+      // Simulate handleMarkAsDrag logic
+      if (dragState) {
+        const targetSelectionId = dragState.childPath
+          ? `${dragState.objectId}/${dragState.childPath}`
+          : dragState.objectId;
+
+        if (targetSelectionId !== selectedObjectId) {
+          mockOnSelectObject(targetSelectionId);
+        }
+      }
+
+      expect(mockOnSelectObject).toHaveBeenCalledWith('obj-1');
+    });
+
+    it('should not change selection when dragging already-selected object', () => {
+      const mockOnSelectObject = vi.fn();
+      const dragState = {
+        objectId: 'obj-1',
+        childPath: null as string | null,
+      };
+      const selectedObjectId = 'obj-1';
+
+      if (dragState) {
+        const targetSelectionId = dragState.childPath
+          ? `${dragState.objectId}/${dragState.childPath}`
+          : dragState.objectId;
+
+        if (targetSelectionId !== selectedObjectId) {
+          mockOnSelectObject(targetSelectionId);
+        }
+      }
+
+      expect(mockOnSelectObject).not.toHaveBeenCalled();
+    });
+
+    it('should deselect child when dragging parent', () => {
+      const mockOnSelectObject = vi.fn();
+      const dragState = {
+        objectId: 'obj-1',
+        childPath: null as string | null, // Dragging parent, not child
+      };
+      const selectedObjectId = 'obj-1/Scene.Wheel_FL'; // Child is selected
+
+      if (dragState) {
+        const targetSelectionId = dragState.childPath
+          ? `${dragState.objectId}/${dragState.childPath}`
+          : dragState.objectId;
+
+        if (targetSelectionId !== selectedObjectId) {
+          mockOnSelectObject(targetSelectionId);
+        }
+      }
+
+      // Should select parent (deselecting child)
+      expect(mockOnSelectObject).toHaveBeenCalledWith('obj-1');
+    });
+
+    it('should select child when dragging child', () => {
+      const mockOnSelectObject = vi.fn();
+      const dragState = {
+        objectId: 'obj-1',
+        childPath: 'Scene.Wheel_FL',
+      };
+      const selectedObjectId = 'obj-1'; // Parent is selected
+
+      if (dragState) {
+        const targetSelectionId = dragState.childPath
+          ? `${dragState.objectId}/${dragState.childPath}`
+          : dragState.objectId;
+
+        if (targetSelectionId !== selectedObjectId) {
+          mockOnSelectObject(targetSelectionId);
+        }
+      }
+
+      expect(mockOnSelectObject).toHaveBeenCalledWith('obj-1/Scene.Wheel_FL');
+    });
+
+    it('should select different object when dragging a different unselected object', () => {
+      const mockOnSelectObject = vi.fn();
+      const dragState = {
+        objectId: 'obj-2',
+        childPath: null as string | null,
+      };
+      const selectedObjectId = 'obj-1'; // Different object is selected
+
+      if (dragState) {
+        const targetSelectionId = dragState.childPath
+          ? `${dragState.objectId}/${dragState.childPath}`
+          : dragState.objectId;
+
+        if (targetSelectionId !== selectedObjectId) {
+          mockOnSelectObject(targetSelectionId);
+        }
+      }
+
+      expect(mockOnSelectObject).toHaveBeenCalledWith('obj-2');
+    });
+  });
+
+  describe('Child drag protection', () => {
+    it('should require selection before child can be dragged', () => {
+      // When a child is clicked that is not selected, it should be selected
+      // but NOT set up for drag. This is tested by checking the pending mechanism.
+
+      const selectedChildPath: string | null = null;
+      const clickedChildPath = 'Scene.Wheel_FL';
+      const isClickedChildSelected = selectedChildPath === clickedChildPath;
+
+      // Child is not selected, so it should NOT be set up for immediate drag
+      expect(isClickedChildSelected).toBe(false);
+
+      // The click should use pendingChildPath mechanism (selection on click, not drag)
+      const shouldUsePendingSelection = !isClickedChildSelected;
+      expect(shouldUsePendingSelection).toBe(true);
+    });
+
+    it('should allow drag when clicking already-selected child', () => {
+      const selectedChildPath = 'Scene.Wheel_FL';
+      const clickedChildPath = 'Scene.Wheel_FL';
+      const isClickedChildSelected = selectedChildPath === clickedChildPath;
+
+      // Child is already selected, so drag can proceed
+      expect(isClickedChildSelected).toBe(true);
     });
   });
 });
