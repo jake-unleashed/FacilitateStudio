@@ -148,21 +148,26 @@ function createSceneObject(
   metrics: ModelMetrics,
   children?: ChildMesh[]
 ): SceneObject {
+  // Create the initial transform
+  const transform = {
+    x: Math.round(position.x * 100),
+    y: Math.round(position.y * 100),
+    z: Math.round(position.z * 100),
+    rotationX: 0,
+    rotationY: 0,
+    rotationZ: 0,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1,
+  };
+
   return {
     id: crypto.randomUUID(),
     name,
     type: 'mesh',
-    transform: {
-      x: Math.round(position.x * 100),
-      y: Math.round(position.y * 100),
-      z: Math.round(position.z * 100),
-      rotationX: 0,
-      rotationY: 0,
-      rotationZ: 0,
-      scaleX: 1,
-      scaleY: 1,
-      scaleZ: 1,
-    },
+    transform,
+    // Store original transform for restore functionality
+    originalTransform: { ...transform },
     properties: {
       visible: true,
       modelAssetId: assetId,

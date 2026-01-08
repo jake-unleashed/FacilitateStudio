@@ -1086,6 +1086,7 @@ export function EditorPage() {
           onClose={handleCloseRightSidebar}
           onBatchStart={beginBatch}
           onBatchEnd={endBatch}
+          onFocusObject={handleFocusObject}
         />
       )}
 

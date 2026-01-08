@@ -57,6 +57,8 @@ export interface SceneObject {
   };
   /** Child meshes within this object (for imported 3D models with hierarchy) */
   children?: ChildMesh[];
+  /** Original transform when object was first added (for restore functionality) */
+  originalTransform?: Transform;
 }
 
 export interface SimStep {

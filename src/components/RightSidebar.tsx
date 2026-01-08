@@ -1,8 +1,19 @@
-import React, { useState, memo, useCallback, useRef } from 'react';
-import { SceneObject, ChildMesh, pathToString } from '../types';
+import React, { useState, memo, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { SceneObject, ChildMesh, pathToString, DEFAULT_TRANSFORM } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
-import { Box, Trash2, Rotate3d, Scaling, X, Layers, ChevronDown } from 'lucide-react';
+import {
+  Box,
+  Trash2,
+  Rotate3d,
+  Scaling,
+  X,
+  Layers,
+  ChevronDown,
+  RotateCcw,
+  HelpCircle,
+} from 'lucide-react';
 import { OBJECT_ICONS } from '../constants';
 import { calculateScaleAdjustedY, DEFAULT_MODEL_HEIGHT } from '../utils/groundHeight';
 
@@ -23,6 +34,8 @@ interface RightSidebarProps {
   onBatchStart?: () => void;
   /** Callback when a batch operation ends (for undo/redo batching) */
   onBatchEnd?: () => void;
+  /** Called to focus camera on an object after reset */
+  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
 }
 
 // ============================================================================
@@ -51,6 +64,58 @@ const getRotationKey = (axis: RotationAxis): 'rotationX' | 'rotationY' | 'rotati
     z: 'rotationZ',
   };
   return keyMap[axis];
+};
+
+// ============================================================================
+// Reset Utility Functions
+// ============================================================================
+
+/**
+ * Checks if a child path represents a descendant of another path.
+ * Uses '.' as the path separator (matching pathToString format).
+ *
+ * @example
+ * isDescendantPath('Scene.Parent.Child', 'Scene.Parent') // true
+ * isDescendantPath('Scene.Parent', 'Scene.Parent') // false (same path, not descendant)
+ * isDescendantPath('Scene.Other', 'Scene.Parent') // false
+ */
+const isDescendantPath = (childPath: string, parentPath: string): boolean => {
+  return childPath.startsWith(parentPath + '.');
+};
+
+/**
+ * Resets all children in the array to DEFAULT_TRANSFORM.
+ * Returns a new array with all children reset.
+ */
+const resetAllChildren = (children: ChildMesh[] | undefined): ChildMesh[] | undefined => {
+  if (!children) return undefined;
+  return children.map((child) => ({
+    ...child,
+    localTransform: { ...DEFAULT_TRANSFORM },
+  }));
+};
+
+/**
+ * Resets a specific child and all its descendants to DEFAULT_TRANSFORM.
+ * Returns a new array with the target children reset.
+ *
+ * @param children - The array of all children
+ * @param targetPathStr - The path string of the child to reset (from pathToString)
+ */
+const resetChildAndDescendants = (children: ChildMesh[], targetPathStr: string): ChildMesh[] => {
+  return children.map((child) => {
+    const childPathStr = pathToString(child.path);
+    const isTarget = childPathStr === targetPathStr;
+    const isDescendant = isDescendantPath(childPathStr, targetPathStr);
+
+    if (isTarget || isDescendant) {
+      return {
+        ...child,
+        localTransform: { ...DEFAULT_TRANSFORM },
+      };
+    }
+    return child;
+  });
 };
 
 // ============================================================================
@@ -524,27 +589,96 @@ const RotationSection = memo<RotationSectionProps>(
 );
 RotationSection.displayName = 'RotationSection';
 
-interface DeleteSectionProps {
+interface ActionButtonsSectionProps {
+  /** Called when the user clicks the Reset button */
+  onReset: () => void;
+  /** Called when the user clicks the Delete button */
   onDelete: () => void;
+  /** Whether the reset button should be disabled */
+  resetDisabled?: boolean;
 }
 
-const DeleteSection = memo<DeleteSectionProps>(({ onDelete }) => {
-  return (
-    <div className="mt-auto pt-2" data-testid="delete-section">
-      <Button
-        variant="secondary"
-        size="md"
-        className="h-10 w-full justify-center rounded-[20px] border-red-100/50 bg-red-50/50 text-xs font-semibold text-red-500 shadow-none hover:border-red-200 hover:bg-red-100 hover:text-red-600"
-        onClick={onDelete}
-        data-testid="delete-button"
+/** Tooltip component that renders via portal to avoid clipping */
+const HelpTooltip = memo<{ targetRef: React.RefObject<HTMLDivElement | null>; show: boolean }>(
+  ({ targetRef, show }) => {
+    const [position, setPosition] = useState({ top: 0, left: 0 });
+
+    useEffect(() => {
+      if (show && targetRef.current) {
+        const rect = targetRef.current.getBoundingClientRect();
+        setPosition({
+          top: rect.top - 8, // Position above the element
+          left: rect.left + rect.width / 2,
+        });
+      }
+    }, [show, targetRef]);
+
+    if (!show) return null;
+
+    return createPortal(
+      <div
+        className="pointer-events-none fixed z-[100] w-52 -translate-x-1/2 -translate-y-full rounded-lg border border-white/40 bg-slate-800/95 px-3 py-2 text-center text-[11px] leading-relaxed text-white shadow-lg backdrop-blur-sm"
+        style={{ top: position.top, left: position.left }}
       >
-        <Trash2 size={14} className="mr-2" />
-        Delete
-      </Button>
-    </div>
-  );
-});
-DeleteSection.displayName = 'DeleteSection';
+        <div className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-white/40 bg-slate-800/95" />
+        Returns this object (and all parts) to their original position
+      </div>,
+      document.body
+    );
+  }
+);
+HelpTooltip.displayName = 'HelpTooltip';
+
+const ActionButtonsSection = memo<ActionButtonsSectionProps>(
+  ({ onReset, onDelete, resetDisabled = false }) => {
+    const [showTooltip, setShowTooltip] = useState(false);
+    const helpIconRef = useRef<HTMLDivElement>(null);
+
+    return (
+      <div className="mt-auto flex gap-2 pt-2" data-testid="action-buttons-section">
+        {/* Reset Button */}
+        <div className="flex-1">
+          <Button
+            variant="secondary"
+            size="md"
+            className="h-10 w-full justify-center rounded-[20px] border-blue-100/50 bg-blue-50/50 text-xs font-semibold text-blue-600 shadow-none hover:border-blue-200 hover:bg-blue-100 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onReset}
+            disabled={resetDisabled}
+            data-testid="reset-button"
+          >
+            <RotateCcw size={14} className="mr-1.5" />
+            Reset
+            <div
+              ref={helpIconRef}
+              className="ml-1 cursor-help"
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <HelpCircle size={12} className="text-blue-400" />
+            </div>
+          </Button>
+          <HelpTooltip targetRef={helpIconRef} show={showTooltip} />
+        </div>
+
+        {/* Delete Button */}
+        <div className="flex-1">
+          <Button
+            variant="secondary"
+            size="md"
+            className="h-10 w-full justify-center rounded-[20px] border-red-100/50 bg-red-50/50 text-xs font-semibold text-red-500 shadow-none hover:border-red-200 hover:bg-red-100 hover:text-red-600"
+            onClick={onDelete}
+            data-testid="delete-button"
+          >
+            <Trash2 size={14} className="mr-1.5" />
+            Delete
+          </Button>
+        </div>
+      </div>
+    );
+  }
+);
+ActionButtonsSection.displayName = 'ActionButtonsSection';
 
 // ============================================================================
 // Main Component
@@ -558,6 +692,7 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
   onClose,
   onBatchStart,
   onBatchEnd,
+  onFocusObject,
 }) => {
   // Store initial object state when slider interaction starts
   const initialObjectRef = useRef<SceneObject | null>(null);
@@ -683,6 +818,30 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     onDelete(object.id);
   }, [object, onDelete]);
 
+  /**
+   * Unified reset handler for root objects.
+   * Resets the object's transform to its original state AND resets all children to DEFAULT_TRANSFORM.
+   * After reset, focuses the camera on the object.
+   */
+  const handleReset = useCallback(() => {
+    if (!object) return;
+
+    onBatchStart?.();
+
+    // Use originalTransform if available, otherwise keep current transform
+    const resetTransform = object.originalTransform ?? object.transform;
+
+    const updatedObject: SceneObject = {
+      ...object,
+      transform: { ...resetTransform },
+      children: resetAllChildren(object.children),
+    };
+
+    onUpdate(updatedObject);
+    onBatchEnd?.();
+    onFocusObject?.(updatedObject);
+  }, [object, onUpdate, onBatchStart, onBatchEnd, onFocusObject]);
+
   // ============================================================================
   // Child Transform Handlers (when a child is selected)
   // ============================================================================
@@ -798,6 +957,29 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
     [object, selectedChild, onUpdate]
   );
 
+  /**
+   * Reset handler for child objects.
+   * Resets the selected child AND any of its nested descendants to DEFAULT_TRANSFORM.
+   * After reset, focuses the camera on the child.
+   */
+  const handleChildReset = useCallback(() => {
+    if (!object || !selectedChild || !object.children) return;
+
+    onBatchStart?.();
+
+    const selectedPathStr = pathToString(selectedChild.path);
+    const updatedChildren = resetChildAndDescendants(object.children, selectedPathStr);
+
+    const updatedObject: SceneObject = {
+      ...object,
+      children: updatedChildren,
+    };
+
+    onUpdate(updatedObject);
+    onBatchEnd?.();
+    onFocusObject?.(updatedObject, selectedPathStr);
+  }, [object, selectedChild, onUpdate, onBatchStart, onBatchEnd, onFocusObject]);
+
   // ---- Early return after all hooks ----
   if (!object) return null;
 
@@ -844,7 +1026,7 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
                 onBatchEnd={handleChildScaleBatchEnd}
               />
 
-              <DeleteSection onDelete={handleDelete} />
+              <ActionButtonsSection onReset={handleChildReset} onDelete={handleDelete} />
             </>
           ) : (
             // Parent mode: same controls
@@ -869,7 +1051,11 @@ const RightSidebarInner: React.FC<RightSidebarProps> = ({
                 onBatchEnd={handleScaleBatchEnd}
               />
 
-              <DeleteSection onDelete={handleDelete} />
+              <ActionButtonsSection
+                onReset={handleReset}
+                onDelete={handleDelete}
+                resetDisabled={!object.originalTransform}
+              />
             </>
           )}
         </div>
