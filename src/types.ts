@@ -1,5 +1,13 @@
 export type ToolType = 'select' | 'move' | 'rotate' | 'scale';
 
+/**
+ * Focus mode for camera behavior when selecting objects.
+ * - 'full': Move camera to ideal framing position (used for F key, sidebar clicks)
+ * - 'soft': Adaptive focus - moves camera proportionally toward ideal based on how far off
+ *           Always updates orbit center. Zooms in if too far, zooms out if too close.
+ */
+export type FocusMode = 'full' | 'soft';
+
 export interface Transform {
   x: number;
   y: number;

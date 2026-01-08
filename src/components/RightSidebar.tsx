@@ -1,6 +1,6 @@
 import React, { useState, memo, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { SceneObject, ChildMesh, pathToString, DEFAULT_TRANSFORM } from '../types';
+import { SceneObject, ChildMesh, FocusMode, pathToString, DEFAULT_TRANSFORM } from '../types';
 import { Input } from './Input';
 import { Button } from './Button';
 import {
@@ -35,7 +35,7 @@ interface RightSidebarProps {
   /** Callback when a batch operation ends (for undo/redo batching) */
   onBatchEnd?: () => void;
   /** Called to focus camera on an object after reset */
-  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
 }
 
 // ============================================================================

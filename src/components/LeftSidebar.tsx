@@ -18,6 +18,7 @@ import {
   SceneObject,
   ChildMesh,
   StepType,
+  FocusMode,
   createChildSelectionId,
   parseSelectionId,
   pathToString,
@@ -63,7 +64,7 @@ interface LeftSidebarProps {
   onSelectObject: (id: string | null) => void;
   selectedObjectId: string | null;
   /** Focus camera on object (with optional child path for child-level focus) */
-  onFocusObject?: (object: SceneObject, childPath?: string) => void;
+  onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onAddStep?: (step: Omit<SimStep, 'id'>) => void;
   onUpdateStep?: (step: SimStep) => void;
   onStartRecordingPosition?: (stepId: string) => void;
@@ -88,7 +89,7 @@ interface HierarchyItemProps {
   selectedObjectId: string | null;
   onSelectObject: (id: string | null) => void;
   /** Focus camera on object (with optional child path for child-level focus) */
-  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
 }
 
 interface ChildItemProps {
@@ -96,7 +97,7 @@ interface ChildItemProps {
   parentObj: SceneObject;
   selectedObjectId: string | null;
   onSelectObject: (id: string | null) => void;
-  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   depth: number;
 }
 

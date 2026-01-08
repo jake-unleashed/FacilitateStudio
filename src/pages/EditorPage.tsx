@@ -9,12 +9,19 @@ import { DebugMenu } from '../components/DebugMenu';
 import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
-import { INITIAL_OBJECTS, INITIAL_STEPS, MODEL_CAMERA_DISTANCE_MULTIPLIER } from '../constants';
+import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
+import {
+  calculateIdealCameraPosition,
+  calculateSoftFocus,
+  sceneToWorldCoordinates,
+  FocusTarget,
+} from '../utils/focusUtils';
 import {
   SceneObject,
   SidebarSection,
   SimStep,
   ChildMesh,
+  FocusMode,
   parseSelectionId,
   stringToPath,
 } from '../types';
@@ -393,118 +400,183 @@ export function EditorPage() {
     [activeTab]
   );
 
-  const handleFocusObject = useCallback(async (object: SceneObject, childPath?: string) => {
-    const controls = cameraControlsRef.current;
-    if (!controls) return;
+  /**
+   * Focus camera on a scene object or its child.
+   *
+   * Two focus modes are supported:
+   * - 'full': Move camera directly to ideal framing position (F key, sidebar clicks)
+   * - 'soft': Adaptive focus - zooms proportionally based on distance from ideal.
+   *           Always updates orbit center. Zooms out if too close, in if too far.
+   *
+   * @param object - The scene object to focus on
+   * @param childPath - Optional path to a child mesh within the object
+   * @param focusMode - 'full' for immediate framing, 'soft' for adaptive zoom
+   */
+  const handleFocusObject = useCallback(
+    async (object: SceneObject, childPath?: string, focusMode: FocusMode = 'full') => {
+      const controls = cameraControlsRef.current;
+      if (!controls) return;
 
-    // =========================================================================
-    // UNIFIED FOCUS LOGIC
-    // Both root objects and child objects use the same pattern:
-    // 1. Compute bounding box (whole model or child mesh)
-    // 2. Calculate center and size from bounds
-    // 3. Determine camera distance from bounds size
-    // 4. Focus camera on center
-    // =========================================================================
+      // Convert scene coordinates to Three.js world coordinates
+      const parentWorld = sceneToWorldCoordinates(
+        object.transform.x,
+        object.transform.y,
+        object.transform.z
+      );
 
-    // Parent transform in Three.js coordinates
-    const parentX = object.transform.x / 100;
-    const parentY = object.transform.y / 100;
-    const parentZ = -object.transform.z / 100;
+      // Calculate focus target (orbit center and bounds size)
+      const focusTarget = await calculateFocusTarget(object, parentWorld, childPath);
 
-    // Default values for non-model objects (primitives)
-    let targetX = parentX;
-    let targetY = parentY + 0.5; // Default cube center
-    let targetZ = parentZ;
-    let boundsSize = 1; // Default size
+      // Calculate ideal camera position for this target
+      const idealCamera = calculateIdealCameraPosition(focusTarget);
 
-    if (object.properties.modelAssetId) {
-      try {
-        // Load model from cache (fast - already loaded)
-        const { model, metrics } = await getOrLoadModel(object.properties.modelAssetId);
-        const modelHeight = metrics.size.y;
+      if (focusMode === 'full') {
+        // Full focus: move camera directly to ideal framing position
+        controls.setLookAt(
+          idealCamera.x,
+          idealCamera.y,
+          idealCamera.z,
+          focusTarget.targetX,
+          focusTarget.targetY,
+          focusTarget.targetZ,
+          true
+        );
+      } else {
+        // Soft focus: adaptive zoom based on current distance
+        const currentPos = new THREE.Vector3();
+        controls.getPosition(currentPos);
 
-        if (childPath) {
-          // ===== CHILD FOCUS =====
-          // Find the child mesh and compute its bounds
-          const pathArray = stringToPath(childPath);
-          const childMesh = findChildByPath(model, pathArray);
+        const softFocusResult = calculateSoftFocus(currentPos, focusTarget, idealCamera);
 
-          if (childMesh) {
-            // Get child's local transform if it has been modified
-            const childData = object.children?.find((c) => c.path.join('.') === childPath);
-            const localTransform = childData?.localTransform;
-
-            // Apply child's local transform to the mesh for accurate bounds
-            if (localTransform) {
-              childMesh.position.set(
-                localTransform.x / 100,
-                localTransform.y / 100,
-                -localTransform.z / 100
-              );
-            }
-
-            // Compute bounding box of the child mesh (in model space)
-            const childBox = new THREE.Box3().setFromObject(childMesh);
-            const childCenter = childBox.getCenter(new THREE.Vector3());
-            const childSize = childBox.getSize(new THREE.Vector3());
-
-            // Transform child center to world space
-            // Model is positioned at visual center with inner offset for ground alignment
-            // Outer group: (parentX, parentY + modelHeight/2, parentZ)
-            // Inner group offset: (0, -modelHeight/2, 0)
-            // So child world position = parent position + child local position
-            targetX = parentX + childCenter.x * object.transform.scaleX;
-            targetY = parentY + childCenter.y * object.transform.scaleY;
-            targetZ = parentZ + childCenter.z * object.transform.scaleZ;
-
-            // Use the child's bounding box diagonal as the size metric
-            boundsSize =
-              childSize.length() *
-              Math.max(object.transform.scaleX, object.transform.scaleY, object.transform.scaleZ);
-          } else {
-            // Child not found - fall back to parent focus
-            console.warn('[handleFocusObject] Child not found:', childPath);
-            targetY = parentY + modelHeight / 2;
-            boundsSize = metrics.maxDimension;
-          }
+        if (softFocusResult.shouldMoveCamera && softFocusResult.newCameraPosition) {
+          // Move camera toward ideal position
+          controls.setLookAt(
+            softFocusResult.newCameraPosition.x,
+            softFocusResult.newCameraPosition.y,
+            softFocusResult.newCameraPosition.z,
+            focusTarget.targetX,
+            focusTarget.targetY,
+            focusTarget.targetZ,
+            true
+          );
         } else {
-          // ===== ROOT OBJECT FOCUS =====
-          // Use model metrics for the whole object
-          targetY = parentY + modelHeight / 2;
-          boundsSize =
-            metrics.maxDimension *
-            Math.max(object.transform.scaleX, object.transform.scaleY, object.transform.scaleZ);
+          // Within comfort zone - just update orbit center
+          controls.setTarget(focusTarget.targetX, focusTarget.targetY, focusTarget.targetZ, true);
         }
-      } catch (error) {
-        console.warn('[EditorPage] Failed to load model for camera focus:', error);
-        // Fall back to parent position
-        targetY = parentY + 0.5;
-        boundsSize = 1;
       }
+    },
+    // calculateFocusTarget is a stable function with no dependencies on component state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  /**
+   * Calculate focus target for an object (handles both models and primitives).
+   * Determines the orbit center point and bounds size for camera positioning.
+   */
+  async function calculateFocusTarget(
+    object: SceneObject,
+    parentWorld: { x: number; y: number; z: number },
+    childPath?: string
+  ): Promise<FocusTarget> {
+    // Default values for primitives
+    let focusTarget: FocusTarget = {
+      targetX: parentWorld.x,
+      targetY: parentWorld.y + 0.5, // Default cube center
+      targetZ: parentWorld.z,
+      boundsSize: 1,
+    };
+
+    if (!object.properties.modelAssetId) {
+      return focusTarget;
     }
 
-    // Calculate camera distance based on bounds size (same formula for both)
-    let cameraDistance = boundsSize * MODEL_CAMERA_DISTANCE_MULTIPLIER;
-    // Clamp to reasonable range - allow closer for small children
-    cameraDistance = Math.max(0.5, Math.min(cameraDistance, 20));
+    try {
+      // Load model from cache (fast - already loaded)
+      const { model, metrics } = await getOrLoadModel(object.properties.modelAssetId);
+      const modelHeight = metrics.size.y;
+      const maxScale = Math.max(
+        object.transform.scaleX,
+        object.transform.scaleY,
+        object.transform.scaleZ
+      );
 
-    // Calculate camera position (offset from target at 45-degree angle)
-    const angle = Math.PI / 4;
-    const cameraX = targetX + Math.cos(angle) * cameraDistance;
-    const cameraY = targetY + cameraDistance * 0.6; // Slightly above
-    const cameraZ = targetZ + Math.sin(angle) * cameraDistance;
+      if (childPath) {
+        // Child focus: find and compute bounds for specific child mesh
+        focusTarget = calculateChildFocusTarget(
+          object,
+          parentWorld,
+          model,
+          childPath,
+          modelHeight,
+          metrics.maxDimension
+        );
+      } else {
+        // Root object focus: use model metrics
+        focusTarget = {
+          targetX: parentWorld.x,
+          targetY: parentWorld.y + modelHeight / 2,
+          targetZ: parentWorld.z,
+          boundsSize: metrics.maxDimension * maxScale,
+        };
+      }
+    } catch (error) {
+      console.warn('[EditorPage] Failed to load model for camera focus:', error);
+      // Fall back to primitive defaults
+    }
 
-    // Smoothly focus camera on target center
-    controls.setLookAt(
-      cameraX,
-      cameraY,
-      cameraZ,
-      targetX,
-      targetY,
-      targetZ,
-      true // Enable smooth transition
+    return focusTarget;
+  }
+
+  /**
+   * Calculate focus target for a child mesh within a model.
+   */
+  function calculateChildFocusTarget(
+    object: SceneObject,
+    parentWorld: { x: number; y: number; z: number },
+    model: THREE.Object3D,
+    childPath: string,
+    modelHeight: number,
+    modelMaxDimension: number
+  ): FocusTarget {
+    const pathArray = stringToPath(childPath);
+    const childMesh = findChildByPath(model, pathArray);
+
+    if (!childMesh) {
+      console.warn('[handleFocusObject] Child not found:', childPath);
+      return {
+        targetX: parentWorld.x,
+        targetY: parentWorld.y + modelHeight / 2,
+        targetZ: parentWorld.z,
+        boundsSize: modelMaxDimension,
+      };
+    }
+
+    // Apply child's local transform if modified
+    const childData = object.children?.find((c) => c.path.join('.') === childPath);
+    if (childData?.localTransform) {
+      const lt = childData.localTransform;
+      childMesh.position.set(lt.x / 100, lt.y / 100, -lt.z / 100);
+    }
+
+    // Compute bounding box of the child mesh
+    const childBox = new THREE.Box3().setFromObject(childMesh);
+    const childCenter = childBox.getCenter(new THREE.Vector3());
+    const childSize = childBox.getSize(new THREE.Vector3());
+
+    const maxScale = Math.max(
+      object.transform.scaleX,
+      object.transform.scaleY,
+      object.transform.scaleZ
     );
-  }, []);
+
+    return {
+      targetX: parentWorld.x + childCenter.x * object.transform.scaleX,
+      targetY: parentWorld.y + childCenter.y * object.transform.scaleY,
+      targetZ: parentWorld.z + childCenter.z * object.transform.scaleZ,
+      boundsSize: childSize.length() * maxScale,
+    };
+  }
 
   const handleUpdateObject = useCallback(
     (updated: SceneObject) => {

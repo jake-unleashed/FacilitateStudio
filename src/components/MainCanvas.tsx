@@ -2,6 +2,7 @@ import React, { Suspense, useRef, useEffect, useState, useCallback, useMemo, mem
 import {
   SceneObject,
   SimStep,
+  FocusMode,
   parseSelectionId,
   createChildSelectionId,
   pathToString,
@@ -42,6 +43,10 @@ const DRAG_THRESHOLD_PIXELS = 5;
 
 /** Conversion factor from scene units to Three.js world units */
 const SCENE_TO_WORLD_SCALE = 100;
+
+// Note: Focus mode determination is now handled entirely in EditorPage.tsx
+// The 'soft' focus mode adaptively handles all cases (too close, too far, comfort zone)
+// MainCanvas just always triggers 'soft' focus on selection
 
 // ============================================================================
 // Types
@@ -96,7 +101,7 @@ interface SceneContentProps {
   selectedObjectId: string | null;
   onSelectObject: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
-  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -460,7 +465,7 @@ const KeyboardNavigator: React.FC<{
   controlsRef: React.RefObject<CameraControlsImpl>;
   selectedObject: SceneObject | null;
   selectedChildPath: string | null;
-  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
 }> = ({ controlsRef, selectedObject, selectedChildPath, onFocusObject }) => {
   const keysPressed = useRef<Set<string>>(new Set());
   const { gl, invalidate } = useThree();
@@ -861,11 +866,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
       // Select the child
       const childSelectionId = createChildSelectionId(obj.id, childPath);
       onSelectObject(childSelectionId);
+
+      // Adaptive soft focus: handles too close, too far, and comfort zone automatically
+      onFocusObject?.(obj, childPath, 'soft');
     },
-    [onSelectObject]
+    [onSelectObject, onFocusObject]
   );
 
   // Handle drag end - select object if it was just a click
+  // Also triggers smart auto-focus when selecting an object (only if camera is far from ideal)
   const handleDragEnd = useCallback(
     (wasDrag: boolean) => {
       console.log('[DRAG] End - wasDrag:', wasDrag, 'hasMovedRef:', hasMovedRef.current);
@@ -880,6 +889,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
             dragState.pendingChildPath
           );
           onSelectObject(childSelectionId);
+
+          // Adaptive soft focus: handles too close, too far, and comfort zone automatically
+          onFocusObject?.(dragState.object, dragState.pendingChildPath, 'soft');
         } else if (dragState.childPath) {
           // Already selecting a child directly (sibling navigation or child re-click)
           // The child was already selected in handleChildPointerDown, so just keep it
@@ -887,6 +899,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
         } else {
           // No pending child and no current child, select the parent object
           onSelectObject(dragState.objectId);
+
+          // Adaptive soft focus: handles too close, too far, and comfort zone automatically
+          // For re-selection of same object, soft focus will naturally do minimal adjustment
+          onFocusObject?.(dragState.object, undefined, 'soft');
         }
       }
 
@@ -909,7 +925,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         }, 50); // 50ms is enough to skip the pointer up frame
       }
     },
-    [dragState, onSelectObject, onDragEnd]
+    [dragState, onSelectObject, onDragEnd, onFocusObject, selectedObjectId, controlsRef]
   );
 
   // Mark the current interaction as a drag (mouse moved beyond threshold)
@@ -1253,7 +1269,7 @@ interface MainCanvasProps {
   selectedObjectId: string | null;
   onSelectObject: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
-  onFocusObject?: (obj: SceneObject, childPath?: string) => void;
+  onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
   /** Callback when the WebGL canvas is ready (for thumbnail capture) */
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
