@@ -201,11 +201,13 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(createMockFile('model.obj'), []);
       });
 
-      expect(result.current.uploadProgress.stage).toBe('error');
+      // With new behavior, stage resets to 'idle' and error goes to lastError
+      expect(result.current.uploadProgress.stage).toBe('idle');
+      expect(result.current.lastError).toBe('Test error');
 
-      // Reset
+      // Clear error
       act(() => {
-        result.current.resetProgress();
+        result.current.clearError();
       });
 
       expect(result.current.uploadProgress).toEqual({
@@ -215,6 +217,7 @@ describe('useModelUpload', () => {
         error: null,
         warning: null,
       });
+      expect(result.current.lastError).toBeNull();
     });
   });
 
@@ -232,8 +235,9 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(file, []);
       });
 
-      expect(result.current.uploadProgress.stage).toBe('error');
-      expect(result.current.uploadProgress.error).toContain('Unsupported file type');
+      // With new behavior, stage resets to 'idle' and error goes to lastError
+      expect(result.current.uploadProgress.stage).toBe('idle');
+      expect(result.current.lastError).toContain('Unsupported file type');
     });
 
     it('accepts valid file types', async () => {
@@ -293,8 +297,9 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(createMockFile('model.obj'), []);
       });
 
-      expect(result.current.uploadProgress.stage).toBe('error');
-      expect(result.current.uploadProgress.error).toContain('Storage quota exceeded');
+      // With new behavior, stage resets to 'idle' and error goes to lastError
+      expect(result.current.uploadProgress.stage).toBe('idle');
+      expect(result.current.lastError).toContain('Storage quota exceeded');
     });
   });
 
@@ -668,7 +673,7 @@ describe('useModelUpload', () => {
       expect(result.current.uploadProgress.stage).toBe('idle');
     });
 
-    it('does not reset when stage is error', async () => {
+    it('keeps lastError visible after error (stage is idle, error in toast)', async () => {
       vi.mocked(saveAsset).mockRejectedValue(new Error('Test error'));
 
       const { result } = renderHook(() => useModelUpload());
@@ -677,15 +682,18 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(createMockFile('model.obj'), []);
       });
 
-      expect(result.current.uploadProgress.stage).toBe('error');
+      // With new behavior, stage resets to 'idle' but lastError is set
+      expect(result.current.uploadProgress.stage).toBe('idle');
+      expect(result.current.lastError).toBe('Test error');
 
-      // Advance time - should not reset
+      // Advance time - error should still be visible (not auto-cleared)
       await act(async () => {
         vi.advanceTimersByTime(2500);
       });
 
-      // Should still be error
-      expect(result.current.uploadProgress.stage).toBe('error');
+      // Error should still be in lastError (until user dismisses it)
+      expect(result.current.lastError).toBe('Test error');
+      expect(result.current.uploadProgress.stage).toBe('idle');
     });
 
     it('does not reset when stage is idle', async () => {

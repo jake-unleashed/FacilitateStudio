@@ -34,9 +34,9 @@ describe('model types', () => {
       expect(parseFileType('MODEL.GLB')).toBe('glb');
     });
 
-    it('parses valid GLTF extension', () => {
-      expect(parseFileType('model.gltf')).toBe('gltf');
-      expect(parseFileType('MODEL.GLTF')).toBe('gltf');
+    it('throws for GLTF files (not supported, use GLB instead)', () => {
+      expect(() => parseFileType('model.gltf')).toThrow('Unsupported file type');
+      expect(() => parseFileType('MODEL.GLTF')).toThrow('Unsupported file type');
     });
 
     it('throws for unsupported file types', () => {
@@ -57,7 +57,6 @@ describe('model types', () => {
         expect((error as Error).message).toContain('OBJ');
         expect((error as Error).message).toContain('FBX');
         expect((error as Error).message).toContain('GLB');
-        expect((error as Error).message).toContain('GLTF');
       }
     });
   });
@@ -110,7 +109,12 @@ describe('model types', () => {
       expect(validateModelFile(createMockFile('a.obj', 100)).valid).toBe(true);
       expect(validateModelFile(createMockFile('a.fbx', 100)).valid).toBe(true);
       expect(validateModelFile(createMockFile('a.glb', 100)).valid).toBe(true);
-      expect(validateModelFile(createMockFile('a.gltf', 100)).valid).toBe(true);
+    });
+
+    it('rejects GLTF files (not supported, use GLB instead)', () => {
+      const result = validateModelFile(createMockFile('a.gltf', 100));
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Unsupported file type');
     });
 
     it('rejects unsupported file types', () => {
@@ -151,14 +155,14 @@ describe('model types', () => {
       expect(FILE_TYPE_EXTENSIONS).toHaveProperty('obj', 'obj');
       expect(FILE_TYPE_EXTENSIONS).toHaveProperty('fbx', 'fbx');
       expect(FILE_TYPE_EXTENSIONS).toHaveProperty('glb', 'glb');
-      expect(FILE_TYPE_EXTENSIONS).toHaveProperty('gltf', 'gltf');
+      // GLTF is not supported - only GLB for glTF family
+      expect(FILE_TYPE_EXTENSIONS).not.toHaveProperty('gltf');
     });
 
     it('FILE_TYPE_LABELS has human-readable labels', () => {
       expect(FILE_TYPE_LABELS.obj).toBe('OBJ');
       expect(FILE_TYPE_LABELS.fbx).toBe('FBX');
       expect(FILE_TYPE_LABELS.glb).toBe('GLB');
-      expect(FILE_TYPE_LABELS.gltf).toBe('GLTF');
     });
 
     it('STORAGE_CONFIG has reasonable values', () => {

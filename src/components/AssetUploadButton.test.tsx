@@ -3,10 +3,30 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, RenderOptions } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssetUploadButton } from './AssetUploadButton';
 import type { UploadProgress } from '../types/model';
+import { PopupProvider } from '../contexts/PopupContext';
+import { GlobalPopup } from './GlobalPopup';
+import { ReactElement } from 'react';
+
+// Wrapper that provides PopupProvider and GlobalPopup for all tests
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <PopupProvider>
+      {children}
+      <GlobalPopup />
+    </PopupProvider>
+  );
+}
+
+function renderWithPopupProvider(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+  return render(ui, {
+    wrapper: TestWrapper,
+    ...options,
+  });
+}
 
 describe('AssetUploadButton', () => {
   // ===========================================================================
@@ -30,27 +50,29 @@ describe('AssetUploadButton', () => {
 
   describe('rendering', () => {
     it('renders upload button', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       expect(screen.getByText('Upload Asset')).toBeInTheDocument();
     });
 
     it('shows supported formats hint', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      expect(screen.getByText(/supports.*obj.*fbx.*glb.*gltf.*models/i)).toBeInTheDocument();
+      expect(screen.getByText(/supports.*obj.*fbx.*glb.*models/i)).toBeInTheDocument();
     });
 
     it('renders with custom className', () => {
-      const { container } = render(
+      renderWithPopupProvider(
         <AssetUploadButton onUpload={mockOnUpload} className="custom-class" />
       );
 
-      expect(container.firstChild).toHaveClass('custom-class');
+      // Find the element with custom-class
+      const customClassElement = document.querySelector('.custom-class');
+      expect(customClassElement).toBeInTheDocument();
     });
 
     it('has hidden file input', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]');
       expect(input).toBeInTheDocument();
@@ -58,14 +80,14 @@ describe('AssetUploadButton', () => {
     });
 
     it('file input accepts correct file types', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]');
-      expect(input).toHaveAttribute('accept', '.obj,.fbx,.glb,.gltf');
+      expect(input).toHaveAttribute('accept', '.obj,.fbx,.glb');
     });
 
     it('has proper accessibility attributes', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]');
       expect(input).toHaveAttribute('aria-label', 'Upload 3D model file');
@@ -81,7 +103,7 @@ describe('AssetUploadButton', () => {
 
   describe('click to upload', () => {
     it('opens file dialog on click', async () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
@@ -93,7 +115,7 @@ describe('AssetUploadButton', () => {
     });
 
     it('does not open file dialog when disabled', async () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} disabled />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
@@ -113,7 +135,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
@@ -132,7 +156,7 @@ describe('AssetUploadButton', () => {
   describe('file selection', () => {
     it('calls onUpload when valid OBJ file is selected', async () => {
       mockOnUpload.mockResolvedValue(undefined);
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.obj');
@@ -146,7 +170,7 @@ describe('AssetUploadButton', () => {
 
     it('calls onUpload when valid FBX file is selected', async () => {
       mockOnUpload.mockResolvedValue(undefined);
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.fbx');
@@ -160,7 +184,7 @@ describe('AssetUploadButton', () => {
 
     it('calls onUpload when valid GLB file is selected', async () => {
       mockOnUpload.mockResolvedValue(undefined);
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.glb');
@@ -172,22 +196,31 @@ describe('AssetUploadButton', () => {
       });
     });
 
-    it('calls onUpload when valid GLTF file is selected', async () => {
-      mockOnUpload.mockResolvedValue(undefined);
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+    it('shows error for unsupported GLTF file (use GLB instead)', async () => {
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-      const file = createMockFile('model.gltf');
+      const file = createMockFile('model.gltf'); // GLTF is not supported, only GLB
 
-      await userEvent.upload(input, file);
-
-      await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledWith(file);
+      // Simulate file selection directly
+      Object.defineProperty(input, 'files', {
+        value: [file],
+        writable: false,
       });
+      fireEvent.change(input);
+
+      await waitFor(
+        () => {
+          expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
+
+      expect(mockOnUpload).not.toHaveBeenCalled();
     });
 
     it('shows error for invalid file type', async () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.stl');
@@ -212,7 +245,7 @@ describe('AssetUploadButton', () => {
 
     it('shows loading state during upload', async () => {
       mockOnUpload.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 100)));
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.obj');
@@ -226,7 +259,7 @@ describe('AssetUploadButton', () => {
 
     it('shows success state after upload', async () => {
       mockOnUpload.mockResolvedValue(undefined);
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.obj');
@@ -249,9 +282,9 @@ describe('AssetUploadButton', () => {
       );
     });
 
-    it('shows error state when upload fails', async () => {
+    it('shows error in toast when upload fails, button stays usable', async () => {
       mockOnUpload.mockRejectedValue(new Error('Custom error message'));
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.obj');
@@ -259,10 +292,11 @@ describe('AssetUploadButton', () => {
       await userEvent.upload(input, file);
 
       await waitFor(() => {
-        // Check that error label is displayed
-        expect(screen.getByText('Upload failed')).toBeInTheDocument();
-        // Check that the actual error message is displayed
+        // Error is shown in toast
+        expect(screen.getByText('Upload Failed')).toBeInTheDocument();
         expect(screen.getByText('Custom error message')).toBeInTheDocument();
+        // Button should still say "Upload Asset" (usable state)
+        expect(screen.getByText('Upload Asset')).toBeInTheDocument();
       });
     });
   });
@@ -273,7 +307,7 @@ describe('AssetUploadButton', () => {
 
   describe('drag and drop', () => {
     it('shows drop hint on drag enter', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor-pointer"]')!;
 
@@ -285,7 +319,7 @@ describe('AssetUploadButton', () => {
     });
 
     it('hides drop hint on drag leave', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor-pointer"]')!;
 
@@ -306,7 +340,7 @@ describe('AssetUploadButton', () => {
 
     it('handles file drop', async () => {
       mockOnUpload.mockResolvedValue(undefined);
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor-pointer"]')!;
       const file = createMockFile('model.obj');
@@ -324,7 +358,7 @@ describe('AssetUploadButton', () => {
     });
 
     it('shows error for dropped invalid file', async () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor-pointer"]')!;
       const file = createMockFile('model.stl');
@@ -344,7 +378,7 @@ describe('AssetUploadButton', () => {
     });
 
     it('ignores drop when disabled', async () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} disabled />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div')!;
       const file = createMockFile('model.obj');
@@ -368,7 +402,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       const uploadArea = screen.getByText('Processing model...').closest('div')!;
       const file = createMockFile('model2.obj');
@@ -384,7 +420,7 @@ describe('AssetUploadButton', () => {
     });
 
     it('handles drag counter correctly with nested elements', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor-pointer"]')!;
 
@@ -427,7 +463,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText('Validating...')).toBeInTheDocument();
     });
@@ -441,7 +479,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText('Storing...')).toBeInTheDocument();
     });
@@ -455,7 +495,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText('Processing model...')).toBeInTheDocument();
     });
@@ -469,7 +511,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText('Adding to scene...')).toBeInTheDocument();
     });
@@ -483,7 +527,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText('Added to scene!')).toBeInTheDocument();
     });
@@ -497,7 +543,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText('my-model.obj')).toBeInTheDocument();
     });
@@ -511,7 +559,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       const progressBar = document.querySelector('[role="progressbar"]');
       expect(progressBar).toBeInTheDocument();
@@ -529,59 +579,98 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.queryByText(/supports.*models/i)).not.toBeInTheDocument();
     });
   });
 
   // ===========================================================================
-  // Error Display
+  // Error Display (via Global Popup)
   // ===========================================================================
 
   describe('error display', () => {
-    it('shows error message from external progress', () => {
-      const progress: UploadProgress = {
-        stage: 'error',
-        fileName: null,
-        progress: 0,
-        error: 'Something went wrong',
-        warning: null,
-      };
+    it('shows error popup when invalid file is uploaded', async () => {
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const file = createMockFile('model.stl'); // Invalid extension
 
-      expect(screen.getByText('Upload failed')).toBeInTheDocument();
-      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      // Simulate file selection directly
+      Object.defineProperty(input, 'files', {
+        value: [file],
+        writable: false,
+      });
+      fireEvent.change(input);
+
+      // Error should be shown in the global popup
+      await waitFor(
+        () => {
+          // Check for dialog role (popup is showing)
+          expect(screen.getByRole('dialog')).toBeInTheDocument();
+          expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
+      // Button should still say "Upload Asset" (usable state)
+      expect(screen.getByText('Upload Asset')).toBeInTheDocument();
     });
 
-    it('shows error styling when error occurs', () => {
-      const progress: UploadProgress = {
-        stage: 'error',
-        fileName: null,
-        progress: 0,
-        error: 'Error message',
-        warning: null,
-      };
+    it('keeps button usable when error occurs', async () => {
+      mockOnUpload.mockRejectedValue(new Error('Network error'));
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const file = createMockFile('model.obj');
 
-      const uploadArea = screen.getByText('Upload failed').closest('div[class*="border-red-200"]');
-      expect(uploadArea).toBeInTheDocument();
+      await userEvent.upload(input, file);
+
+      await waitFor(
+        () => {
+          // Button should be in normal state (not error styled) - it should say "Upload Asset"
+          expect(screen.getByText('Upload Asset')).toBeInTheDocument();
+          // Error is shown in popup (check for dialog)
+          expect(screen.getByRole('dialog')).toBeInTheDocument();
+          expect(screen.getByText(/network error/i)).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
     });
 
-    it('hides format hint when error is shown', () => {
-      const progress: UploadProgress = {
-        stage: 'error',
-        fileName: null,
-        progress: 0,
-        error: 'Error message',
-        warning: null,
-      };
+    it('popup can be dismissed by clicking OK button', async () => {
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const file = createMockFile('model.stl'); // Invalid extension
 
-      expect(screen.queryByText(/supports.*models/i)).not.toBeInTheDocument();
+      // Simulate file selection directly
+      Object.defineProperty(input, 'files', {
+        value: [file],
+        writable: false,
+      });
+      fireEvent.change(input);
+
+      // Wait for popup to appear
+      await waitFor(
+        () => {
+          expect(screen.getByRole('dialog')).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
+
+      // Find and click the OK button
+      const okButton = screen.getByText('OK');
+      fireEvent.click(okButton);
+
+      // Wait for the popup to be dismissed
+      await waitFor(
+        () => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+        { timeout: 500 }
+      );
     });
   });
 
@@ -599,7 +688,9 @@ describe('AssetUploadButton', () => {
         warning: 'Large file may take longer to process',
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       expect(screen.getByText(/large file/i)).toBeInTheDocument();
     });
@@ -613,7 +704,9 @@ describe('AssetUploadButton', () => {
         warning: 'Warning message',
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       const warningIcon = document.querySelector('svg[aria-hidden="true"]');
       expect(warningIcon).toBeInTheDocument();
@@ -626,7 +719,7 @@ describe('AssetUploadButton', () => {
 
   describe('disabled state', () => {
     it('applies disabled styling', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} disabled />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor"]');
       expect(uploadArea).toHaveClass('cursor-not-allowed');
@@ -634,21 +727,21 @@ describe('AssetUploadButton', () => {
     });
 
     it('disables file input', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} disabled />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const input = document.querySelector('input[type="file"]');
       expect(input).toBeDisabled();
     });
 
     it('sets aria-disabled attribute', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} disabled />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const uploadArea = screen.getByRole('button');
       expect(uploadArea).toHaveAttribute('aria-disabled', 'true');
     });
 
     it('removes hover effect when disabled', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} disabled />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const iconContainer = document.querySelector('div[class*="flex h-12 w-12"]');
       expect(iconContainer).toBeInTheDocument();
@@ -663,7 +756,7 @@ describe('AssetUploadButton', () => {
 
   describe('icon display', () => {
     it('shows upload icon in idle state', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       // Icon should be present in the icon container
       const iconContainer = document.querySelector('div[class*="flex h-12 w-12"]');
@@ -681,7 +774,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       const icon = document.querySelector('svg.animate-spin');
       expect(icon).toBeInTheDocument();
@@ -696,29 +791,44 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       const iconContainer = document.querySelector('div[class*="text-green-500"]');
       expect(iconContainer).toBeInTheDocument();
     });
 
-    it('shows error icon on error', () => {
-      const progress: UploadProgress = {
-        stage: 'error',
-        fileName: null,
-        progress: 0,
-        error: 'Error message',
-        warning: null,
-      };
+    it('shows error icon in popup when error occurs', async () => {
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const file = createMockFile('model.stl'); // Invalid extension
 
-      const iconContainer = document.querySelector('div[class*="text-red-500"]');
-      expect(iconContainer).toBeInTheDocument();
+      // Simulate file selection directly
+      Object.defineProperty(input, 'files', {
+        value: [file],
+        writable: false,
+      });
+      fireEvent.change(input);
+
+      await waitFor(
+        () => {
+          // The error icon should be in the popup (which uses text-red-500)
+          const popupErrorIcon = document.querySelector(
+            '[role="dialog"] svg[class*="text-red-500"]'
+          );
+          expect(popupErrorIcon).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
+
+      // Button should show normal upload icon (not error icon)
+      expect(screen.getByText('Upload Asset')).toBeInTheDocument();
     });
 
     it('shows file box icon when dragging', () => {
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const uploadArea = screen.getByText('Upload Asset').closest('div[class*="cursor-pointer"]')!;
 
@@ -742,7 +852,7 @@ describe('AssetUploadButton', () => {
     it('uses internal state when no external progress provided', async () => {
       // Make upload take some time so we can see the processing state
       mockOnUpload.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 100)));
-      render(<AssetUploadButton onUpload={mockOnUpload} />);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.obj');
@@ -769,7 +879,9 @@ describe('AssetUploadButton', () => {
         warning: null,
       };
 
-      render(<AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />);
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
+      );
 
       // Should show external progress, not internal
       expect(screen.getByText('Storing...')).toBeInTheDocument();

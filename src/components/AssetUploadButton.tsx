@@ -9,8 +9,9 @@
  */
 
 import React, { useRef, useState, useCallback, useMemo, DragEvent } from 'react';
-import { Upload, Loader2, AlertCircle, CheckCircle2, AlertTriangle, FileBox } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, AlertTriangle, FileBox } from 'lucide-react';
 import { UploadProgress, UploadStage, validateModelFile, FILE_TYPE_LABELS } from '../types/model';
+import { usePopup } from '../contexts/PopupContext';
 
 // =============================================================================
 // Types
@@ -38,8 +39,8 @@ interface InternalState {
 // Constants
 // =============================================================================
 
-const ACCEPTED_FORMATS = '.obj,.fbx,.glb,.gltf';
-const ACCEPTED_EXTENSIONS = new Set<string>(['obj', 'fbx', 'glb', 'gltf']);
+const ACCEPTED_FORMATS = '.obj,.fbx,.glb';
+const ACCEPTED_EXTENSIONS = new Set<string>(['obj', 'fbx', 'glb']);
 
 /** Display configuration for each upload stage */
 const STAGE_CONFIG: Record<UploadStage, { label: string; progress: number }> = {
@@ -70,6 +71,9 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Global popup for showing errors
+  const { showPopup } = usePopup();
+
   // Internal state (used when uploadProgress is not provided externally)
   const [internalState, setInternalState] = useState<InternalState>({
     isUploading: false,
@@ -84,9 +88,20 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
 
   // Resolve to external progress if provided, otherwise use internal state
   const currentStage = uploadProgress?.stage ?? internalState.stage;
-  const error = uploadProgress?.error ?? internalState.error;
   const warning = uploadProgress?.warning ?? null;
   const fileName = uploadProgress?.fileName ?? internalState.fileName;
+
+  // Helper to show error popup
+  const showErrorPopup = useCallback(
+    (message: string) => {
+      showPopup({
+        type: 'error',
+        title: 'Upload Failed',
+        message,
+      });
+    },
+    [showPopup]
+  );
 
   const isUploading = useMemo(() => {
     if (uploadProgress) {
@@ -117,11 +132,13 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
       // Validate
       const validation = validateModelFile(file);
       if (!validation.valid) {
+        // Show error popup, reset button to idle so it stays usable
+        showErrorPopup(validation.error ?? 'Invalid file');
         setInternalState({
           isUploading: false,
-          error: validation.error ?? 'Invalid file',
+          error: null,
           fileName: null,
-          stage: 'error',
+          stage: 'idle',
         });
         return;
       }
@@ -146,13 +163,15 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
           });
         }, SUCCESS_DISPLAY_DURATION);
       } catch (err) {
+        // Show error popup, reset button to idle so it stays usable
         const errorMessage =
           err instanceof Error ? err.message : 'Upload failed. Please try again.';
+        showErrorPopup(errorMessage);
         setInternalState({
           isUploading: false,
-          error: errorMessage,
+          error: null,
           fileName: null,
-          stage: 'error',
+          stage: 'idle',
         });
       } finally {
         // Reset file input
@@ -161,7 +180,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
         }
       }
     },
-    [onUpload]
+    [onUpload, showErrorPopup]
   );
 
   const handleFileChange = useCallback(
@@ -223,18 +242,16 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
       // Basic extension check (validation will also check this, but we can fail fast)
       const ext = file.name.split('.').pop()?.toLowerCase();
       if (!ext || !ACCEPTED_EXTENSIONS.has(ext)) {
-        setInternalState({
-          isUploading: false,
-          error: `Unsupported file type: .${ext ?? 'unknown'}. Supported formats: ${SUPPORTED_FORMATS_TEXT}.`,
-          fileName: null,
-          stage: 'error',
-        });
+        // Show error popup, keep button usable
+        showErrorPopup(
+          `Unsupported file type: .${ext ?? 'unknown'}. Supported formats: ${SUPPORTED_FORMATS_TEXT}.`
+        );
         return;
       }
 
       await processFile(file);
     },
-    [disabled, isUploading, processFile]
+    [disabled, isUploading, processFile, showErrorPopup]
   );
 
   // ---------------------------------------------------------------------------
@@ -248,22 +265,18 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     if (currentStage === 'complete') {
       return <CheckCircle2 size={24} className="text-green-500" />;
     }
-    if (currentStage === 'error' || error) {
-      return <AlertCircle size={24} className="text-red-500" />;
-    }
     if (isDragging) {
       return <FileBox size={24} />;
     }
     return <Upload size={24} />;
-  }, [isUploading, currentStage, error, isDragging]);
+  }, [isUploading, currentStage, isDragging]);
 
   const getLabel = useCallback((): string => {
     if (isDragging) return 'Drop file here';
     if (isUploading) return STAGE_CONFIG[currentStage]?.label ?? 'Processing...';
     if (currentStage === 'complete') return 'Added to scene!';
-    if (error) return 'Upload failed';
     return 'Upload Asset';
-  }, [isDragging, isUploading, currentStage, error]);
+  }, [isDragging, isUploading, currentStage]);
 
   const progressWidth = useMemo(() => {
     return uploadProgress?.progress ?? STAGE_CONFIG[currentStage]?.progress ?? 0;
@@ -280,9 +293,6 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     if (isDragging) {
       return `${base} border-blue-400 bg-blue-50 shadow-lg shadow-blue-500/20`;
     }
-    if (error) {
-      return `${base} border-red-200 bg-gradient-to-br from-red-50 to-red-100/50`;
-    }
     if (currentStage === 'complete') {
       return `${base} border-green-200 bg-gradient-to-br from-green-50 to-green-100/50`;
     }
@@ -294,7 +304,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
         : 'hover:border-blue-300 hover:shadow-md';
 
     return `${base} ${defaultStyle} ${interactiveStyle}`;
-  }, [isDragging, error, currentStage, disabled, isUploading]);
+  }, [isDragging, currentStage, disabled, isUploading]);
 
   const getIconClasses = useCallback((): string => {
     const base =
@@ -303,9 +313,6 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     if (isDragging) {
       return `${base} scale-110 text-blue-600 shadow-blue-500/20`;
     }
-    if (error) {
-      return `${base} text-red-500 shadow-red-500/10`;
-    }
     if (currentStage === 'complete') {
       return `${base} text-green-500 shadow-green-500/10`;
     }
@@ -313,7 +320,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     const hoverEffect = !disabled && !isUploading && !isDragging ? 'group-hover:scale-110' : '';
 
     return `${base} text-blue-500 shadow-blue-500/10 ${hoverEffect}`;
-  }, [isDragging, error, currentStage, disabled, isUploading]);
+  }, [isDragging, currentStage, disabled, isUploading]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -363,11 +370,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
           <div className="space-y-1">
             <p
               className={`text-sm font-bold ${
-                error
-                  ? 'text-red-700'
-                  : currentStage === 'complete'
-                    ? 'text-green-700'
-                    : 'text-slate-800'
+                currentStage === 'complete' ? 'text-green-700' : 'text-slate-800'
               }`}
             >
               {getLabel()}
@@ -379,7 +382,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
             )}
 
             {/* Format hint (shown in idle state) */}
-            {!isUploading && !error && currentStage === 'idle' && (
+            {!isUploading && currentStage === 'idle' && (
               <p className="text-xs text-slate-400">Supports {SUPPORTED_FORMATS_TEXT} models</p>
             )}
 
@@ -388,18 +391,6 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
               <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-amber-600">
                 <AlertTriangle size={12} aria-hidden="true" />
                 <span>{warning}</span>
-              </div>
-            )}
-
-            {/* Error message */}
-            {error && (
-              <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left">
-                <AlertCircle
-                  size={14}
-                  className="mt-0.5 flex-shrink-0 text-red-500"
-                  aria-hidden="true"
-                />
-                <p className="text-xs leading-relaxed text-red-700">{error}</p>
               </div>
             )}
           </div>

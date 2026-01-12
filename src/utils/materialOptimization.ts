@@ -13,7 +13,7 @@
  * TEXTURE COLORSPACE (Three.js r152+):
  * - Color textures (map, emissiveMap) → SRGBColorSpace
  * - Data textures (normalMap, roughnessMap, etc.) → LinearSRGBColorSpace
- * - GLTFLoader handles this automatically, but FBX/OBJ may not
+ * - GLB files (via GLTFLoader) handle this automatically, but FBX/OBJ may not
  */
 
 import * as THREE from 'three';

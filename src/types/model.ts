@@ -10,14 +10,13 @@
 // =============================================================================
 
 /** Supported 3D model file types */
-export type ModelFileType = 'obj' | 'fbx' | 'glb' | 'gltf';
+export type ModelFileType = 'obj' | 'fbx' | 'glb';
 
 /** File extension to ModelFileType mapping */
 export const FILE_TYPE_EXTENSIONS: Record<string, ModelFileType> = {
   obj: 'obj',
   fbx: 'fbx',
   glb: 'glb',
-  gltf: 'gltf',
 };
 
 /** Human-readable labels for file types */
@@ -25,7 +24,6 @@ export const FILE_TYPE_LABELS: Record<ModelFileType, string> = {
   obj: 'OBJ',
   fbx: 'FBX',
   glb: 'GLB',
-  gltf: 'GLTF',
 };
 
 // =============================================================================

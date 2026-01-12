@@ -6,21 +6,90 @@
  * TEXTURE LOADING ARCHITECTURE:
  * - GLB/FBX: Uses ArrayBuffer + loader.parse() to properly handle embedded textures
  * - OBJ: Uses text parsing (no texture support without MTL files)
- * - GLTF: Uses ArrayBuffer parsing (external textures won't resolve)
  *
  * The key insight is that using loader.parse(arrayBuffer) instead of loader.load(url)
  * ensures embedded textures in GLB/FBX files are properly extracted and applied.
+ *
+ * NOTE: GLTF (separate .gltf + .bin files) is NOT supported - only GLB format is accepted
+ * for the glTF family. GLB embeds all data in a single file, avoiding multi-file upload issues.
  */
 
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { preprocessModel, PreprocessedModel } from './modelPreprocessing';
 import { optimizeMaterialsForScene } from './materialOptimization';
 import { MODEL_TARGET_SIZE } from '../constants';
 
-export type ModelFileType = 'obj' | 'fbx' | 'glb' | 'gltf';
+// =============================================================================
+// DRACO Loader Setup (Singleton)
+// =============================================================================
+
+let dracoLoader: DRACOLoader | null = null;
+
+/**
+ * Get or create the shared DRACO loader instance.
+ * Uses Google's CDN for the Draco decoder files.
+ */
+function getDRACOLoader(): DRACOLoader {
+  if (!dracoLoader) {
+    dracoLoader = new DRACOLoader();
+    // Use Google's CDN for Draco decoder - widely available and reliable
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    dracoLoader.setDecoderConfig({ type: 'js' }); // Use JS decoder for broader compatibility
+  }
+  return dracoLoader;
+}
+
+/**
+ * Create a GLTFLoader with DRACO support configured.
+ */
+function createGLTFLoader(): GLTFLoader {
+  const loader = new GLTFLoader();
+  loader.setDRACOLoader(getDRACOLoader());
+  return loader;
+}
+
+// =============================================================================
+// Error Handling Utilities
+// =============================================================================
+
+/**
+ * Extract a human-readable error message from various error types.
+ * GLTFLoader can pass Error, ErrorEvent, string, or other types to the error callback.
+ */
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (error instanceof ErrorEvent) {
+    return error.message || 'Network or file loading error';
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error && typeof error === 'object') {
+    // Check for common error-like properties
+    const errorObj = error as Record<string, unknown>;
+    if (typeof errorObj.message === 'string') {
+      return errorObj.message;
+    }
+    if (typeof errorObj.error === 'string') {
+      return errorObj.error;
+    }
+    // Try to stringify the object for debugging
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown parsing error (object)';
+    }
+  }
+  return 'Unknown error occurred';
+}
+
+export type ModelFileType = 'obj' | 'fbx' | 'glb';
 
 // =============================================================================
 // Development Mode Detection
@@ -225,37 +294,36 @@ async function loadFBXModel(base64: string): Promise<THREE.Object3D> {
 }
 
 /**
- * Load GLTF/GLB model from ArrayBuffer.
+ * Load GLB model from ArrayBuffer.
  * GLB files have embedded textures that are properly extracted via parse().
- * GLTF files with external textures won't resolve (need multi-file upload).
+ *
+ * Features:
+ * - DRACO compression support for compressed meshes
+ * - Robust error handling for various error types
  */
-async function loadGLTFModel(base64: string, isGLB: boolean): Promise<THREE.Object3D> {
-  const loader = new GLTFLoader();
+async function loadGLBModel(base64: string): Promise<THREE.Object3D> {
+  const loader = createGLTFLoader();
   const arrayBuffer = base64ToArrayBuffer(base64);
 
   return new Promise((resolve, reject) => {
     // GLTFLoader.parse() properly handles embedded textures in GLB
-    // For GLTF with external textures, they won't resolve but the model loads
     loader.parse(
       arrayBuffer,
-      '', // Resource path (empty - all resources should be embedded for GLB)
+      '', // Resource path (empty - all resources are embedded in GLB)
       (gltf) => {
         if (IS_DEV) {
-          console.log(`[modelLoaders] ${isGLB ? 'GLB' : 'GLTF'} loaded via ArrayBuffer parsing`);
-          if (!isGLB) {
-            console.log(
-              '[modelLoaders] Note: GLTF external textures require multi-file upload (not supported)'
-            );
-          }
+          console.log('[modelLoaders] GLB loaded via ArrayBuffer parsing');
         }
         resolve(gltf.scene);
       },
-      (error) => {
-        reject(
-          new Error(
-            `Failed to load ${isGLB ? 'GLB' : 'GLTF'} model: ${error.message || 'Unknown error'}`
-          )
-        );
+      (error: unknown) => {
+        const errorMessage = extractErrorMessage(error);
+        if (IS_DEV) {
+          console.error('[modelLoaders] GLB parsing failed:', error);
+        }
+
+        const userMessage = `Failed to load GLB: ${errorMessage}`;
+        reject(new Error(userMessage));
       }
     );
   });
@@ -284,10 +352,7 @@ export async function loadModelFromBase64(
         model = await loadFBXModel(base64);
         break;
       case 'glb':
-        model = await loadGLTFModel(base64, true);
-        break;
-      case 'gltf':
-        model = await loadGLTFModel(base64, false);
+        model = await loadGLBModel(base64);
         break;
       default:
         throw new Error(`Unsupported file type: ${fileType}`);
@@ -326,20 +391,22 @@ export async function loadModelFromArrayBuffer(
         model = loader.parse(arrayBuffer, '');
         break;
       }
-      case 'glb':
-      case 'gltf': {
-        const loader = new GLTFLoader();
+      case 'glb': {
+        const loader = createGLTFLoader();
         model = await new Promise((resolve, reject) => {
           loader.parse(
             arrayBuffer,
             '',
             (gltf) => resolve(gltf.scene),
-            (error) =>
-              reject(
-                new Error(
-                  `Failed to load ${fileType.toUpperCase()}: ${error.message || 'Unknown error'}`
-                )
-              )
+            (error: unknown) => {
+              const errorMessage = extractErrorMessage(error);
+              if (IS_DEV) {
+                console.error('[modelLoaders] GLB parsing failed:', error);
+              }
+
+              const userMessage = `Failed to load GLB: ${errorMessage}`;
+              reject(new Error(userMessage));
+            }
           );
         });
         break;
@@ -419,6 +486,7 @@ export async function loadAndPreprocessModelFromArrayBuffer(
 
 /**
  * Get appropriate loader for file type (for direct loader access if needed).
+ * Note: GLTFLoader is returned with DRACO support pre-configured for GLB files.
  */
 export function getLoaderForFileType(fileType: ModelFileType): OBJLoader | FBXLoader | GLTFLoader {
   switch (fileType) {
@@ -427,8 +495,7 @@ export function getLoaderForFileType(fileType: ModelFileType): OBJLoader | FBXLo
     case 'fbx':
       return new FBXLoader();
     case 'glb':
-    case 'gltf':
-      return new GLTFLoader();
+      return createGLTFLoader();
     default:
       throw new Error(`Unsupported file type: ${fileType}`);
   }

@@ -30,6 +30,8 @@ import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
+import { PopupProvider, usePopup } from '../contexts/PopupContext';
+import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { findChildByPath } from '../utils/modelLoaders';
 import { getOrLoadModel } from '../utils/modelCache';
@@ -55,8 +57,21 @@ import CameraControlsImpl from 'camera-controls';
  * EditorPage - The main 3D simulation editor interface.
  *
  * Handles loading/saving projects and provides the full editing experience.
+ * Wrapped with PopupProvider for global popup support.
  */
 export function EditorPage() {
+  return (
+    <PopupProvider>
+      <EditorPageContent />
+    </PopupProvider>
+  );
+}
+
+/**
+ * EditorPageContent - The actual editor implementation.
+ * Must be rendered inside a PopupProvider to use the usePopup hook.
+ */
+function EditorPageContent() {
   const { id: projectId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const { getProject, saveProject, createProject, isLoading: isLoadingProjects } = useProjects();
@@ -193,7 +208,30 @@ export function EditorPage() {
   const debugCubeCountRef = useRef(0);
 
   // Model upload hook - handles storage, preprocessing, and caching
-  const { uploadProgress, recentAssets, uploadFile, addRecentAssetToScene } = useModelUpload();
+  const {
+    uploadProgress,
+    recentAssets,
+    uploadFile,
+    addRecentAssetToScene,
+    lastError: uploadLastError,
+    clearError: clearUploadError,
+  } = useModelUpload();
+
+  // Global popup hook for displaying errors and notifications
+  const { showPopup } = usePopup();
+
+  // Show popup when upload error occurs
+  useEffect(() => {
+    if (uploadLastError) {
+      showPopup({
+        type: 'error',
+        title: 'Upload Failed',
+        message: uploadLastError,
+      });
+      // Clear the error from the hook so it doesn't show again if component re-renders
+      clearUploadError();
+    }
+  }, [uploadLastError, showPopup, clearUploadError]);
 
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1035,11 +1073,7 @@ export function EditorPage() {
 
   const handleReorderSteps = useCallback(
     (previousOrder: string[], newOrder: string[]) => {
-      const command = createReorderStepsCommandHelper(
-        previousOrder,
-        newOrder,
-        'Reorder steps'
-      );
+      const command = createReorderStepsCommandHelper(previousOrder, newOrder, 'Reorder steps');
       executeCommand(command);
     },
     [executeCommand]
@@ -1229,6 +1263,9 @@ export function EditorPage() {
           onLeaveAnyway={handleExitLeaveAnyway}
         />
       )}
+
+      {/* Global Popup - renders centered on screen for errors and notifications */}
+      <GlobalPopup />
     </div>
   );
 }

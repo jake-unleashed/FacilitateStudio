@@ -70,6 +70,10 @@ interface UseModelUploadReturn {
   isUploading: boolean;
   /** Reset progress to idle state */
   resetProgress: () => void;
+  /** Last error that occurred (shown in toast, independent of upload stage) */
+  lastError: string | null;
+  /** Clear the last error (dismiss the toast) */
+  clearError: () => void;
 }
 
 // =============================================================================
@@ -225,6 +229,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(INITIAL_UPLOAD_PROGRESS);
   const [recentAssets, setRecentAssets] = useState<AssetMetadata[]>([]);
+  // Separate error state for toast display - independent from upload stage
+  // This allows the button to stay usable while showing the error
+  const [lastError, setLastError] = useState<string | null>(null);
   const hasMigratedRef = useRef(false);
   const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -276,14 +283,12 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   );
 
   const setError = useCallback(
-    (fileName: string, error: string) => {
-      setUploadProgress({
-        stage: 'error',
-        fileName,
-        progress: 0,
-        error,
-        warning: null,
-      });
+    (_fileName: string, error: string) => {
+      // Set the error for toast display
+      setLastError(error);
+      // Reset the upload progress to idle so the button stays usable
+      // The error is shown in a separate toast, not in the button
+      setUploadProgress(INITIAL_UPLOAD_PROGRESS);
       onError?.(error);
     },
     [onError]
@@ -291,6 +296,10 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
   const resetProgress = useCallback(() => {
     setUploadProgress(INITIAL_UPLOAD_PROGRESS);
+  }, []);
+
+  const clearError = useCallback(() => {
+    setLastError(null);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -505,5 +514,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
     refreshRecentAssets,
     isUploading,
     resetProgress,
+    lastError,
+    clearError,
   };
 }
