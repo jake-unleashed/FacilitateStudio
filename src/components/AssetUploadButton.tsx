@@ -44,7 +44,7 @@ const ACCEPTED_EXTENSIONS = new Set<string>(['obj', 'fbx', 'glb']);
 
 /** Display configuration for each upload stage */
 const STAGE_CONFIG: Record<UploadStage, { label: string; progress: number }> = {
-  idle: { label: 'Upload Asset', progress: 0 },
+  idle: { label: 'Upload 3D Model', progress: 0 },
   validating: { label: 'Validating...', progress: 10 },
   storing: { label: 'Storing...', progress: 25 },
   processing: { label: 'Processing model...', progress: 50 },
@@ -275,7 +275,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     if (isDragging) return 'Drop file here';
     if (isUploading) return STAGE_CONFIG[currentStage]?.label ?? 'Processing...';
     if (currentStage === 'complete') return 'Added to scene!';
-    return 'Upload Asset';
+    return 'Upload 3D Model';
   }, [isDragging, isUploading, currentStage]);
 
   const progressWidth = useMemo(() => {
@@ -383,7 +383,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
 
             {/* Format hint (shown in idle state) */}
             {!isUploading && currentStage === 'idle' && (
-              <p className="text-xs text-slate-400">Supports {SUPPORTED_FORMATS_TEXT} models</p>
+              <p className="text-xs text-slate-400">Supported: {SUPPORTED_FORMATS_TEXT}</p>
             )}
 
             {/* Warning */}

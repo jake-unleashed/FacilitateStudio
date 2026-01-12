@@ -131,10 +131,10 @@ describe('App', () => {
     expect(screen.getByText('Add Step')).toBeInTheDocument();
   });
 
-  it('shows Upload Asset option in Add panel', () => {
+  it('shows Upload 3D Model option in Add panel', () => {
     renderApp();
     fireEvent.click(screen.getByText('Add'));
-    expect(screen.getByText('Upload Asset')).toBeInTheDocument();
+    expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
   });
 
   it('does not show right sidebar when no object is selected', () => {

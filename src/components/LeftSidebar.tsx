@@ -49,6 +49,7 @@ import { AssetUploadButton } from './AssetUploadButton';
 import { RecentAssetsList } from './RecentAssetsList';
 // DeleteStepModal removed - now using click-twice-to-confirm in StepCard
 import { AssetMetadata, UploadProgress } from '../types/model';
+import { usePopup } from '../contexts/PopupContext';
 
 // Step type configuration for minimized step indicators
 interface StepTypeConfig {
@@ -665,6 +666,9 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
 
+  // Global popup for request modal
+  const { showPopup } = usePopup();
+
   // Ref for scrollable content area (used for auto-scroll to selected item)
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -730,6 +734,15 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
       onAddStep(newStep);
     }
   }, [onAddStep]);
+
+  const handleRequestModel = useCallback(() => {
+    showPopup({
+      type: 'info',
+      title: 'Request a 3D Model',
+      message:
+        "To request a 3D model, please contact the Facilitate team. We'll work with you to create the perfect model for your needs.",
+    });
+  }, [showPopup]);
 
   // Auto-open newly created steps and scroll to them
   useEffect(() => {
@@ -886,11 +899,22 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                       <Upload size={24} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-800">Upload Asset</p>
+                      <p className="text-sm font-bold text-slate-800">Upload 3D Model</p>
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* Request 3D Model Section */}
+              <div className="pt-2 text-center">
+                <p className="mb-2 text-xs text-slate-500">Nothing to upload?</p>
+                <button
+                  onClick={handleRequestModel}
+                  className="text-sm font-medium text-blue-600 hover:underline"
+                >
+                  Request a 3D Model
+                </button>
+              </div>
 
               {/* Recent Section */}
               <div>

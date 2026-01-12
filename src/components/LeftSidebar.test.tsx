@@ -1,7 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, RenderOptions } from '@testing-library/react';
 import { LeftSidebar } from './LeftSidebar';
 import { SceneObject, SimStep } from '../types';
+import { PopupProvider } from '../contexts/PopupContext';
+import { GlobalPopup } from './GlobalPopup';
+import { ReactElement } from 'react';
+
+// Wrapper that provides PopupProvider and GlobalPopup for all tests
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <PopupProvider>
+      {children}
+      <GlobalPopup />
+    </PopupProvider>
+  );
+}
+
+function renderWithProvider(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+  return render(ui, { wrapper: TestWrapper, ...options });
+}
 
 // Test data for when we need objects/steps
 const TEST_OBJECTS: SceneObject[] = [
@@ -105,58 +122,83 @@ describe('LeftSidebar', () => {
   });
 
   it('renders navigation buttons', () => {
-    render(<LeftSidebar {...defaultProps} />);
+    renderWithProvider(<LeftSidebar {...defaultProps} />);
     expect(screen.getByText('Add')).toBeInTheDocument();
     expect(screen.getByText('Objects')).toBeInTheDocument();
     expect(screen.getByText('Steps')).toBeInTheDocument();
   });
 
   it('calls setActiveTab when Add button is clicked', () => {
-    render(<LeftSidebar {...defaultProps} />);
+    renderWithProvider(<LeftSidebar {...defaultProps} />);
     fireEvent.click(screen.getByText('Add'));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith('add');
   });
 
   it('calls setActiveTab when Objects button is clicked', () => {
-    render(<LeftSidebar {...defaultProps} />);
+    renderWithProvider(<LeftSidebar {...defaultProps} />);
     fireEvent.click(screen.getByText('Objects'));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith('objects');
   });
 
   it('calls setActiveTab when Steps button is clicked', () => {
-    render(<LeftSidebar {...defaultProps} />);
+    renderWithProvider(<LeftSidebar {...defaultProps} />);
     fireEvent.click(screen.getByText('Steps'));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith('steps');
   });
 
   it('toggles tab off when clicking active tab', () => {
-    render(<LeftSidebar {...defaultProps} activeTab="add" />);
+    renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
     fireEvent.click(screen.getByText('Add'));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith(null);
   });
 
   describe('Add Panel', () => {
     it('shows Add New title when add tab is active', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="add" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
       expect(screen.getByText('Add New')).toBeInTheDocument();
     });
 
-    it('shows Upload Asset section', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="add" />);
-      expect(screen.getByText('Upload Asset')).toBeInTheDocument();
+    it('shows Upload 3D Model section', () => {
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
+      expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
     });
 
     it('shows Recent section with empty state', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="add" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
       expect(screen.getByText('Recent')).toBeInTheDocument();
       expect(screen.getByText('No recent assets')).toBeInTheDocument();
       expect(screen.getByText('Uploaded assets will appear here')).toBeInTheDocument();
+    });
+
+    it('shows Request 3D Model section with correct text', () => {
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
+      expect(screen.getByText('Nothing to upload?')).toBeInTheDocument();
+      expect(screen.getByText('Request a 3D Model')).toBeInTheDocument();
+    });
+
+    it('Request a 3D Model button is clickable', () => {
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
+      const requestButton = screen.getByText('Request a 3D Model');
+      expect(requestButton.tagName).toBe('BUTTON');
+      expect(requestButton).not.toBeDisabled();
+    });
+
+    it('clicking Request a 3D Model shows popup', () => {
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
+      const requestButton = screen.getByText('Request a 3D Model');
+      fireEvent.click(requestButton);
+      // Popup should appear with message about contacting Facilitate team
+      expect(
+        screen.getByText(/contact the Facilitate team/i)
+      ).toBeInTheDocument();
+      // Popup should have a dialog role
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
   });
 
   describe('Steps Panel', () => {
     it('shows Steps title when steps tab is active', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="steps" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="steps" />);
       // Use getAllByText since "Steps" appears in both the nav button and the panel heading
       const stepsElements = screen.getAllByText('Steps');
       expect(stepsElements.length).toBeGreaterThan(0);
@@ -167,7 +209,7 @@ describe('LeftSidebar', () => {
     it('renders all steps when provided', () => {
       const mockOnAddStep = vi.fn();
       const mockOnUpdateStep = vi.fn();
-      render(
+      renderWithProvider(
         <LeftSidebar
           {...defaultProps}
           activeTab="steps"
@@ -184,12 +226,12 @@ describe('LeftSidebar', () => {
     });
 
     it('shows Add Step button', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="steps" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="steps" />);
       expect(screen.getByText('Add Step')).toBeInTheDocument();
     });
 
     it('renders step slot labels when steps provided', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="steps" steps={TEST_STEPS} />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="steps" steps={TEST_STEPS} />);
       // Step numbers are now displayed as "Step 1", "Step 2", etc.
       // Use getAllByText since step titles may also contain "Step N"
       const step1Labels = screen.getAllByText('Step 1');
@@ -201,7 +243,7 @@ describe('LeftSidebar', () => {
     });
 
     it('shows only Add Step button when no steps', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="steps" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="steps" />);
       expect(screen.getByText('Add Step')).toBeInTheDocument();
       expect(screen.queryByText('Step 1')).not.toBeInTheDocument();
     });
@@ -209,25 +251,25 @@ describe('LeftSidebar', () => {
 
   describe('Objects Panel', () => {
     it('shows Scene Objects title when objects tab is active', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" />);
       expect(screen.getByText('Scene Objects')).toBeInTheDocument();
     });
 
     it('renders all objects when provided', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />);
       TEST_OBJECTS.forEach((obj) => {
         expect(screen.getByText(obj.name)).toBeInTheDocument();
       });
     });
 
     it('calls onSelectObject when object is clicked', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />);
       fireEvent.click(screen.getByText('Test Cube'));
       expect(defaultProps.onSelectObject).toHaveBeenCalledWith('obj-1');
     });
 
     it('highlights selected object', () => {
-      render(
+      renderWithProvider(
         <LeftSidebar
           {...defaultProps}
           activeTab="objects"
@@ -241,14 +283,14 @@ describe('LeftSidebar', () => {
     });
 
     it('shows empty state when no objects', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" />);
       expect(screen.getByText('Scene Objects')).toBeInTheDocument();
       expect(screen.getByText('No objects in scene')).toBeInTheDocument();
       expect(screen.getByText('Add New')).toBeInTheDocument();
     });
 
     it('opens Add panel when Add New link is clicked in empty state', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" />);
       fireEvent.click(screen.getByText('Add New'));
       expect(defaultProps.setActiveTab).toHaveBeenCalledWith('add');
     });
@@ -273,7 +315,7 @@ describe('LeftSidebar', () => {
           properties: { visible: true, color: '#333' },
         },
       ];
-      render(
+      renderWithProvider(
         <LeftSidebar
           {...defaultProps}
           activeTab="objects"
@@ -285,13 +327,13 @@ describe('LeftSidebar', () => {
   });
 
   it('has minimize button that closes the panel', () => {
-    render(<LeftSidebar {...defaultProps} activeTab="add" />);
+    renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
     fireEvent.click(screen.getByTitle('Minimize Sidebar'));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith(null);
   });
 
   it('has proper glass styling on navigation strip', () => {
-    const { container } = render(<LeftSidebar {...defaultProps} />);
+    const { container } = renderWithProvider(<LeftSidebar {...defaultProps} />);
     const navStrip = container.querySelector('.bg-white\\/70.backdrop-blur-xl.rounded-\\[32px\\]');
     expect(navStrip).toBeInTheDocument();
   });
@@ -348,14 +390,14 @@ describe('LeftSidebar', () => {
     };
 
     it('shows dropdown button for objects with children', () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
       expect(dropdownButton).toBeInTheDocument();
     });
 
     it('expands to show children when dropdown is clicked', async () => {
-      render(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
+      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
 
@@ -378,7 +420,7 @@ describe('LeftSidebar', () => {
 
     it('selects child when child is clicked', () => {
       const onSelectObject = vi.fn();
-      render(
+      renderWithProvider(
         <LeftSidebar
           {...defaultProps}
           activeTab="objects"
@@ -402,7 +444,7 @@ describe('LeftSidebar', () => {
     });
 
     it('highlights selected child', () => {
-      render(
+      renderWithProvider(
         <LeftSidebar
           {...defaultProps}
           activeTab="objects"
@@ -424,7 +466,7 @@ describe('LeftSidebar', () => {
 
     it('deselects child when parent dropdown is closed', () => {
       const onSelectObject = vi.fn();
-      render(
+      renderWithProvider(
         <LeftSidebar
           {...defaultProps}
           activeTab="objects"
@@ -487,7 +529,7 @@ describe('LeftSidebar', () => {
         ],
       };
 
-      render(
+      renderWithProvider(
         <LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithNestedChildren]} />
       );
 
@@ -528,45 +570,45 @@ describe('LeftSidebar', () => {
     };
 
     it('renders step slot labels (Step 1, Step 2, etc.)', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       expect(screen.getByText('Step 1')).toBeInTheDocument();
       expect(screen.getByText('Step 2')).toBeInTheDocument();
       expect(screen.getByText('Step 3')).toBeInTheDocument();
     });
 
     it('renders step titles correctly', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       expect(screen.getByText('Alpha Step')).toBeInTheDocument();
       expect(screen.getByText('Beta Step')).toBeInTheDocument();
       expect(screen.getByText('Gamma Step')).toBeInTheDocument();
     });
 
     it('shows drag handles for each step', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       const dragHandles = screen.getAllByTitle('Drag to reorder');
       expect(dragHandles.length).toBe(3);
     });
 
     it('renders step type badges correctly', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       expect(screen.getByText('Info Card')).toBeInTheDocument();
       expect(screen.getByText('Move Item')).toBeInTheDocument();
     });
 
     it('renders "No Type" badge for steps without a type', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       expect(screen.getByText('No Type')).toBeInTheDocument();
     });
 
     it('opens step when clicked', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       fireEvent.click(screen.getByText('Alpha Step'));
       // After clicking, the StepCard should be visible (it has a minimize button)
       expect(screen.getByTitle('Minimize step')).toBeInTheDocument();
     });
 
     it('closes step when minimize button is clicked', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       // Open a step
       fireEvent.click(screen.getByText('Alpha Step'));
       // Find minimize button and click it
@@ -576,7 +618,7 @@ describe('LeftSidebar', () => {
     });
 
     it('toggles step when clicking same step twice', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       // Click to open
       fireEvent.click(screen.getByText('Alpha Step'));
       expect(screen.getByTitle('Minimize step')).toBeInTheDocument();
@@ -586,7 +628,7 @@ describe('LeftSidebar', () => {
     });
 
     it('calls onAddStep when Add Step button is clicked', () => {
-      render(<LeftSidebar {...reorderProps} />);
+      renderWithProvider(<LeftSidebar {...reorderProps} />);
       fireEvent.click(screen.getByText('Add Step'));
       expect(reorderProps.onAddStep).toHaveBeenCalledWith({
         title: '',
@@ -604,7 +646,7 @@ describe('LeftSidebar', () => {
         activeTab: 'steps' as const,
         steps: [{ ...TEST_STEPS[0], type: 'info-card' as const }],
       };
-      render(<LeftSidebar {...propsWithInfoCard} />);
+      renderWithProvider(<LeftSidebar {...propsWithInfoCard} />);
       const badge = screen.getByText('Info Card').closest('div');
       expect(badge).toHaveClass('border-blue-200/60');
     });
@@ -615,7 +657,7 @@ describe('LeftSidebar', () => {
         activeTab: 'steps' as const,
         steps: [{ ...TEST_STEPS[0], type: 'move-item' as const }],
       };
-      render(<LeftSidebar {...propsWithMoveItem} />);
+      renderWithProvider(<LeftSidebar {...propsWithMoveItem} />);
       const badge = screen.getByText('Move Item').closest('div');
       expect(badge).toHaveClass('border-purple-200/60');
     });
@@ -626,7 +668,7 @@ describe('LeftSidebar', () => {
         activeTab: 'steps' as const,
         steps: [{ ...TEST_STEPS[0], type: null }],
       };
-      render(<LeftSidebar {...propsWithNoType} />);
+      renderWithProvider(<LeftSidebar {...propsWithNoType} />);
       const badge = screen.getByText('No Type').closest('div');
       expect(badge).toHaveClass('border-slate-200/60');
     });

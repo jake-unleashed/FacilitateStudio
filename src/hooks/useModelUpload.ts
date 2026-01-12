@@ -306,7 +306,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   // Auto-reset progress after successful upload
   // ---------------------------------------------------------------------------
 
-  // Auto-reset delay: Time to show "Added to scene" message before resetting to "Upload Asset"
+  // Auto-reset delay: Time to show "Added to scene" message before resetting to "Upload 3D Model"
   const AUTO_RESET_DELAY_MS = 2500;
 
   useEffect(() => {
