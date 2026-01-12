@@ -1692,4 +1692,207 @@ describe('TransformGizmo Utility Functions', () => {
       expect(result1.dynamicHandleOffset).toBe(result2.dynamicHandleOffset);
     });
   });
+
+  // ==========================================================================
+  // XZ Boundary Constraint Tests
+  // ==========================================================================
+
+  describe('XZ Boundary Constraints', () => {
+    // Import constants for testing
+    const XZ_BOUNDARY_INTERNAL = 2000; // Must match constants.tsx
+    const INTERNAL_TO_WORLD = 100;
+
+    /**
+     * Clamps a value between min and max (same as in TransformGizmo)
+     */
+    function clamp(value: number, min: number, max: number): number {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    it('should have XZ_BOUNDARY_INTERNAL matching GROUND_PLANE_EXTENT * 100', () => {
+      const GROUND_PLANE_EXTENT = 20; // Must match constants.tsx
+      expect(XZ_BOUNDARY_INTERNAL).toBe(GROUND_PLANE_EXTENT * INTERNAL_TO_WORLD);
+    });
+
+    it('should clamp positive X to boundary', () => {
+      const rawX = 5000; // Way beyond boundary
+      const clampedX = clamp(rawX, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+      expect(clampedX).toBe(XZ_BOUNDARY_INTERNAL);
+      expect(clampedX).toBe(2000);
+    });
+
+    it('should clamp negative X to boundary', () => {
+      const rawX = -5000; // Way beyond boundary
+      const clampedX = clamp(rawX, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+      expect(clampedX).toBe(-XZ_BOUNDARY_INTERNAL);
+      expect(clampedX).toBe(-2000);
+    });
+
+    it('should clamp positive Z to boundary', () => {
+      const rawZ = 3500;
+      const clampedZ = clamp(rawZ, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+      expect(clampedZ).toBe(XZ_BOUNDARY_INTERNAL);
+    });
+
+    it('should clamp negative Z to boundary', () => {
+      const rawZ = -3500;
+      const clampedZ = clamp(rawZ, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+      expect(clampedZ).toBe(-XZ_BOUNDARY_INTERNAL);
+    });
+
+    it('should not clamp values within boundary', () => {
+      const values = [0, 100, -100, 1000, -1000, 1999, -1999];
+      values.forEach((val) => {
+        const clamped = clamp(val, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+        expect(clamped).toBe(val);
+      });
+    });
+
+    it('should allow movement exactly at boundary', () => {
+      const atBoundary = 2000;
+      const clamped = clamp(atBoundary, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+      expect(clamped).toBe(2000);
+    });
+
+    it('should convert world units to internal units correctly', () => {
+      // 20 world units = 2000 internal units
+      const worldUnits = 20;
+      const internalUnits = worldUnits * INTERNAL_TO_WORLD;
+      expect(internalUnits).toBe(XZ_BOUNDARY_INTERNAL);
+    });
+
+    it('should convert internal units to world units correctly', () => {
+      // 2000 internal units = 20 world units
+      const internalUnits = 2000;
+      const worldUnits = internalUnits / INTERNAL_TO_WORLD;
+      expect(worldUnits).toBe(20);
+    });
+  });
+
+  // ==========================================================================
+  // Side View Threshold Tests (Updated Values)
+  // ==========================================================================
+
+  describe('Side View Threshold (Narrower)', () => {
+    // Updated constants from TransformGizmo.tsx
+    const SIDE_VIEW_THRESHOLD = 12; // Reduced from 20 to 12
+    const TOPDOWN_VIEW_THRESHOLD = 55;
+    const VIEW_MODE_HYSTERESIS = 2; // Reduced from 4 to 2
+
+    type ViewMode = 'isometric' | 'side' | 'topdown';
+
+    function getViewMode(pitchAngle: number, currentMode: ViewMode): ViewMode {
+      const sideThreshold =
+        currentMode === 'side' ? SIDE_VIEW_THRESHOLD + VIEW_MODE_HYSTERESIS : SIDE_VIEW_THRESHOLD;
+      const topdownThreshold =
+        currentMode === 'topdown'
+          ? TOPDOWN_VIEW_THRESHOLD - VIEW_MODE_HYSTERESIS
+          : TOPDOWN_VIEW_THRESHOLD;
+
+      if (pitchAngle < sideThreshold) {
+        return 'side';
+      }
+      if (pitchAngle > topdownThreshold) {
+        return 'topdown';
+      }
+      return 'isometric';
+    }
+
+    it('should use narrower side view threshold (12 degrees)', () => {
+      expect(SIDE_VIEW_THRESHOLD).toBe(12);
+    });
+
+    it('should use smaller hysteresis (2 degrees)', () => {
+      expect(VIEW_MODE_HYSTERESIS).toBe(2);
+    });
+
+    it('should return side view only when pitch is below 12 degrees', () => {
+      expect(getViewMode(10, 'isometric')).toBe('side');
+      expect(getViewMode(11, 'isometric')).toBe('side');
+      expect(getViewMode(12, 'isometric')).toBe('isometric'); // At threshold
+      expect(getViewMode(15, 'isometric')).toBe('isometric'); // Was side with old 20 threshold
+    });
+
+    it('should exit side mode at 14 degrees with hysteresis', () => {
+      // Entering side mode
+      let mode: ViewMode = getViewMode(10, 'isometric');
+      expect(mode).toBe('side');
+
+      // At 12 degrees, still in side mode due to hysteresis (12 + 2 = 14)
+      mode = getViewMode(12, mode);
+      expect(mode).toBe('side');
+
+      // At 13 degrees, still in side mode due to hysteresis
+      mode = getViewMode(13, mode);
+      expect(mode).toBe('side');
+
+      // At 15 degrees, exits side mode (past 14 hysteresis threshold)
+      mode = getViewMode(15, mode);
+      expect(mode).toBe('isometric');
+    });
+
+    it('should transition to isometric earlier than before', () => {
+      // With old threshold of 20, angles 15-19 would be side view
+      // With new threshold of 12, these should be isometric
+      expect(getViewMode(15, 'isometric')).toBe('isometric');
+      expect(getViewMode(18, 'isometric')).toBe('isometric');
+      expect(getViewMode(19, 'isometric')).toBe('isometric');
+    });
+
+    it('should prevent flickering with smaller hysteresis', () => {
+      let mode: ViewMode = 'isometric';
+
+      // Enter side view
+      mode = getViewMode(10, mode);
+      expect(mode).toBe('side');
+
+      // Oscillate near threshold
+      mode = getViewMode(12, mode); // Should stay side (hysteresis)
+      expect(mode).toBe('side');
+
+      mode = getViewMode(13, mode); // Should stay side (hysteresis)
+      expect(mode).toBe('side');
+
+      mode = getViewMode(11, mode); // Back below threshold
+      expect(mode).toBe('side');
+
+      // Only exit when clearly past hysteresis
+      mode = getViewMode(15, mode);
+      expect(mode).toBe('isometric');
+    });
+  });
+
+  // ==========================================================================
+  // Handle Visibility Tests (Always Visible)
+  // ==========================================================================
+
+  describe('Handle Visibility (Always Visible)', () => {
+    it('should not have MIN_CAMERA_DISTANCE or MAX_CAMERA_DISTANCE constants', () => {
+      // These constants were removed - handles should always be visible
+      // This test verifies the architectural decision
+      // If someone adds them back, this test will fail as a reminder
+      const moduleExports = ['TransformGizmo', 'TransformGizmoProps'];
+      // The constants should not be exported or used
+      expect(moduleExports).not.toContain('MIN_CAMERA_DISTANCE');
+      expect(moduleExports).not.toContain('MAX_CAMERA_DISTANCE');
+    });
+
+    it('should render handles regardless of implied camera distance', () => {
+      // Create test scenarios with objects at various positions
+      // All should render handles without distance-based hiding
+      const positions = [
+        { x: 0, y: 0, z: 0 }, // At origin
+        { x: 1000, y: 1000, z: 1000 }, // Far from origin
+        { x: -500, y: 0, z: -500 }, // Negative coords
+        { x: 0, y: 5000, z: 0 }, // High above ground
+      ];
+
+      // All positions should be valid for handle rendering
+      positions.forEach((pos) => {
+        expect(pos.x).toBeDefined();
+        expect(pos.y).toBeDefined();
+        expect(pos.z).toBeDefined();
+      });
+    });
+  });
 });

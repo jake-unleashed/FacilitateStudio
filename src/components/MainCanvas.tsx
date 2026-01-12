@@ -7,7 +7,12 @@ import {
   createChildSelectionId,
   pathToString,
 } from '../types';
-import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
+import {
+  DEFAULT_CAMERA_POSITION,
+  DEFAULT_CAMERA_TARGET,
+  GROUND_PLANE_EXTENT,
+  XZ_BOUNDARY_INTERNAL,
+} from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import { CameraControls, Environment, Grid, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
@@ -29,25 +34,16 @@ import { TransformGizmo } from './scene/TransformGizmo';
 const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
 
 // ============================================================================
-// Grid and Shadow Configuration (Unified)
+// Grid and Shadow Configuration
 // ============================================================================
-
-/**
- * The visible extent of the ground plane from center (in world units).
- * This value is used by both the Grid (as fadeDistance) and the shadow plane
- * to ensure they are perfectly aligned.
- *
- * - Grid uses this as fadeDistance: grid starts fading at this distance
- * - Shadow plane uses this as scale: shadow extends this far in each direction
- */
-const GROUND_PLANE_EXTENT = 35;
 
 /**
  * How quickly the grid fades at its edges.
  * Higher values = faster fade = sharper edge
  * Lower values = slower fade = softer edge
+ * Note: With fixed-size grid, this controls the edge softness.
  */
-const GRID_FADE_STRENGTH = 1.5;
+const GRID_FADE_STRENGTH = 2.0;
 
 // ============================================================================
 // Fixed Contact Shadows Component
@@ -341,6 +337,11 @@ const DRAG_THRESHOLD_PIXELS = 5;
 
 /** Conversion factor from scene units to Three.js world units */
 const SCENE_TO_WORLD_SCALE = 100;
+
+/** Clamps a value between min and max */
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 // Note: Focus mode determination is now handled entirely in EditorPage.tsx
 // The 'soft' focus mode adaptively handles all cases (too close, too far, comfort zone)
@@ -756,8 +757,11 @@ const DragHandler: React.FC<{
           // Update parent object's transform
           // Apply delta to initial position (convert from world to scene units)
           // Note: Z is negated because Three.js Z is opposite to scene transform Z
-          const newX = dragState.initialObjectX + deltaX * SCENE_TO_WORLD_SCALE;
-          const newZ = dragState.initialObjectZ - deltaZ * SCENE_TO_WORLD_SCALE;
+          // Clamp to grid boundary
+          const rawX = dragState.initialObjectX + deltaX * SCENE_TO_WORLD_SCALE;
+          const rawZ = dragState.initialObjectZ - deltaZ * SCENE_TO_WORLD_SCALE;
+          const newX = clamp(rawX, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+          const newZ = clamp(rawZ, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
 
           const updatedObject: SceneObject = {
             ...dragState.object,
@@ -1424,10 +1428,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
         color="#1e293b"
       />
 
-      {/* Grid visible from both above and below
-          fadeDistance matches GROUND_PLANE_EXTENT to align with shadow plane */}
+      {/* Fixed-size grid visible from both above and below.
+          Grid size matches movement constraint boundary exactly.
+          Using args=[width, height] creates a fixed world-space grid. */}
       <Grid
-        infiniteGrid
+        args={[GROUND_PLANE_EXTENT * 2, GROUND_PLANE_EXTENT * 2]}
         cellSize={1}
         sectionSize={5}
         fadeDistance={GROUND_PLANE_EXTENT}

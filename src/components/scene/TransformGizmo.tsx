@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { SceneObject, ChildMesh, pathToString } from '../../types';
 import { findChildByPath } from '../../utils/modelLoaders';
 import { calculateLowestPointOffset } from '../../utils/groundHeight';
+import { XZ_BOUNDARY_INTERNAL, INTERNAL_TO_WORLD } from '../../constants';
 
 // ============================================================================
 // Types & Interfaces
@@ -181,15 +182,6 @@ const HANDLE_GAP_PIXELS = 35;
  */
 const HANDLE_SPACING_PIXELS = 65;
 
-/** Minimum camera distance to show gizmo */
-const MIN_CAMERA_DISTANCE = 1;
-
-/** Maximum camera distance to show gizmo */
-const MAX_CAMERA_DISTANCE = 50;
-
-/** Conversion factor: internal units to world units (100 internal = 1 world) */
-const INTERNAL_TO_WORLD = 100;
-
 /** Delay before showing hover tooltip (ms) */
 const TOOLTIP_HOVER_DELAY = 400;
 
@@ -233,15 +225,18 @@ const HEIGHT_MAX = 500;
  * - Side view: pitch < SIDE_VIEW_THRESHOLD (looking horizontally)
  * - Top-down view: pitch > TOPDOWN_VIEW_THRESHOLD (looking straight down/up)
  * - Isometric: everything in between
+ *
+ * SIDE_VIEW_THRESHOLD is narrow (~12°) so the side-to-side handle only appears
+ * when viewing approximately horizontally (e.g. from the side of an object).
  */
-const SIDE_VIEW_THRESHOLD = 20;
+const SIDE_VIEW_THRESHOLD = 12;
 const TOPDOWN_VIEW_THRESHOLD = 55;
 
 /**
  * Hysteresis values to prevent mode flickering at boundaries.
  * Enter a mode at the threshold, but don't exit until past threshold + hysteresis.
  */
-const VIEW_MODE_HYSTERESIS = 4;
+const VIEW_MODE_HYSTERESIS = 2;
 
 // ============================================================================
 // Types
@@ -868,14 +863,17 @@ const XZHandle = memo<XZHandleProps>(function XZHandle({
         const effectiveScaleX = state.childWorldScaleX || 1;
         const effectiveScaleZ = state.childWorldScaleZ || 1;
 
-        const newX = state.initialObjectX + (deltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
-        const newZ = state.initialObjectZ - (deltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+        const rawX = state.initialObjectX + (deltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
+        const rawZ = state.initialObjectZ - (deltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+
+        // Note: Child positions are local to parent, so we don't clamp them to grid boundary
+        // The parent's position determines if the child is within grid bounds
 
         const updatedChildren = object.children?.map((child) => {
           if (pathToString(child.path) === selectedChildPath) {
             return {
               ...child,
-              localTransform: { ...child.localTransform, x: newX, z: newZ },
+              localTransform: { ...child.localTransform, x: rawX, z: rawZ },
             };
           }
           return child;
@@ -883,9 +881,11 @@ const XZHandle = memo<XZHandleProps>(function XZHandle({
 
         onUpdateObject({ ...object, children: updatedChildren });
       } else {
-        // Parent movement
-        const newX = state.initialObjectX + deltaX * INTERNAL_TO_WORLD;
-        const newZ = state.initialObjectZ - deltaZ * INTERNAL_TO_WORLD;
+        // Parent movement - clamp to grid boundary
+        const rawX = state.initialObjectX + deltaX * INTERNAL_TO_WORLD;
+        const rawZ = state.initialObjectZ - deltaZ * INTERNAL_TO_WORLD;
+        const newX = clamp(rawX, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+        const newZ = clamp(rawZ, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
 
         onUpdateObject({
           ...object,
@@ -1090,14 +1090,17 @@ const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHandle({
         const effectiveScaleX = state.childWorldScaleX || 1;
         const effectiveScaleZ = state.childWorldScaleZ || 1;
 
-        const newX = state.initialObjectX + (worldDeltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
-        const newZ = state.initialObjectZ - (worldDeltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+        const rawX = state.initialObjectX + (worldDeltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
+        const rawZ = state.initialObjectZ - (worldDeltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+
+        // Note: Child positions are local to parent, so we don't clamp them to grid boundary
+        // The parent's position determines if the child is within grid bounds
 
         const updatedChildren = object.children?.map((child) => {
           if (pathToString(child.path) === selectedChildPath) {
             return {
               ...child,
-              localTransform: { ...child.localTransform, x: newX, z: newZ },
+              localTransform: { ...child.localTransform, x: rawX, z: rawZ },
             };
           }
           return child;
@@ -1105,9 +1108,11 @@ const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHandle({
 
         onUpdateObject({ ...object, children: updatedChildren });
       } else {
-        // Parent movement
-        const newX = state.initialObjectX + worldDeltaX * INTERNAL_TO_WORLD;
-        const newZ = state.initialObjectZ - worldDeltaZ * INTERNAL_TO_WORLD;
+        // Parent movement - clamp to grid boundary
+        const rawX = state.initialObjectX + worldDeltaX * INTERNAL_TO_WORLD;
+        const rawZ = state.initialObjectZ - worldDeltaZ * INTERNAL_TO_WORLD;
+        const newX = clamp(rawX, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
+        const newZ = clamp(rawZ, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
 
         onUpdateObject({
           ...object,
@@ -1178,8 +1183,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
 }) => {
   const { camera, gl, scene } = useThree();
 
-  // State for handle positions and visibility
-  const [isVisible, setIsVisible] = useState(true);
+  // State for handle positions
   const [heightHandlePosition, setHeightHandlePosition] = useState<[number, number, number]>([
     0, 0, 0,
   ]);
@@ -1497,13 +1501,6 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
     if (minWorldY !== actualMinWorldY) {
       setMinWorldY(actualMinWorldY);
     }
-
-    // Check visibility based on camera distance
-    const distance = camera.position.distanceTo(objectWorldPositionRef.current);
-    const shouldBeVisible = distance > MIN_CAMERA_DISTANCE && distance < MAX_CAMERA_DISTANCE;
-    if (shouldBeVisible !== isVisible) {
-      setIsVisible(shouldBeVisible);
-    }
   });
 
   /**
@@ -1546,11 +1543,6 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
     setIsAnyHandleDragging(false);
     onDragEnd?.();
   }, [onDragEnd]);
-
-  // Hide gizmo when camera is out of range
-  if (!isVisible) {
-    return null;
-  }
 
   // Determine which handles to show based on view mode
   const showHeightHandle = viewMode !== 'topdown';
