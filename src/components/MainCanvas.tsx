@@ -49,6 +49,45 @@ const SCENE_TO_WORLD_SCALE = 100;
 // MainCanvas just always triggers 'soft' focus on selection
 
 // ============================================================================
+// Selection-Before-Drag Logic
+// ============================================================================
+
+/**
+ * Determines whether dragging is allowed for a pointer interaction.
+ *
+ * FEATURE: "Selection Before Drag"
+ * Objects must be selected before they can be dragged. This prevents accidental
+ * object movement when users try to rotate the camera around objects.
+ *
+ * When canDrag is false:
+ * - Camera controls remain enabled (user can rotate/pan)
+ * - Click-to-select still works (object is selected on pointer up if no drag)
+ * - Object position is NOT updated during the gesture
+ *
+ * @param selectedParentId - ID of the currently selected parent object (null if none)
+ * @param selectedChildPath - Path of the currently selected child (null if parent or none)
+ * @param clickedObjectId - ID of the object being clicked
+ * @param dragChildPath - Path of the child that would be dragged (null for parent drag)
+ * @returns true if dragging should be allowed, false for selection-only interaction
+ */
+function calculateCanDrag(
+  selectedParentId: string | null,
+  selectedChildPath: string | null,
+  clickedObjectId: string,
+  dragChildPath?: string | null
+): boolean {
+  const isParentSelected = selectedParentId === clickedObjectId;
+
+  if (dragChildPath) {
+    // Dragging a specific child: only allowed if that exact child is selected
+    return isParentSelected && selectedChildPath === dragChildPath;
+  } else {
+    // Dragging the parent: only allowed if parent is selected AND no child is selected
+    return isParentSelected && selectedChildPath === null;
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -94,6 +133,12 @@ interface DragState {
    */
   childWorldScaleX?: number;
   childWorldScaleZ?: number;
+  /**
+   * Whether dragging is allowed for this interaction.
+   * When false, the interaction is selection-only (object must be selected first before dragging).
+   * This prevents accidental drags when navigating/rotating the camera around objects.
+   */
+  canDrag: boolean;
 }
 
 interface SceneContentProps {
@@ -327,16 +372,26 @@ const DragHandler: React.FC<{
         return;
       }
 
-      // Always block events while a pointer is down on an object (even before we
-      // cross the drag threshold). This prevents accidental camera movement
-      // from small hand jitter on click/drag.
-      event.stopPropagation();
-      event.preventDefault();
-
       // Check if we've moved beyond the drag threshold
       const dx = event.clientX - dragState.startPosition.x;
       const dy = event.clientY - dragState.startPosition.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // If canDrag is false (clicking on unselected object), let camera controls handle
+      // the gesture. We still track for click vs drag detection, but don't block events.
+      if (!dragState.canDrag) {
+        // Still mark as drag once threshold is crossed (for click vs drag distinction)
+        if (distance >= DRAG_THRESHOLD_PIXELS && !dragState.hasMoved && !hasMovedRef.current) {
+          onMarkAsDrag();
+        }
+        // Don't block - let camera controls rotate
+        return;
+      }
+
+      // Block events while dragging an object. This prevents accidental camera movement
+      // from small hand jitter on click/drag.
+      event.stopPropagation();
+      event.preventDefault();
 
       // Only start actual dragging if we've moved beyond threshold
       if (distance < DRAG_THRESHOLD_PIXELS) return;
@@ -420,10 +475,14 @@ const DragHandler: React.FC<{
     };
 
     const handlePointerUp = (event: PointerEvent) => {
-      // Prevent the pointer up event from reaching camera controls
-      // This is critical to avoid unwanted camera movement after dragging
-      event.stopPropagation();
-      event.preventDefault();
+      // Only block pointer up if we were actually dragging (canDrag=true and there was movement).
+      // When canDrag=false, we let camera controls finish their gesture normally.
+      if (dragState.canDrag && hasMovedRef.current) {
+        // Prevent the pointer up event from reaching camera controls
+        // This is critical to avoid unwanted camera movement after dragging
+        event.stopPropagation();
+        event.preventDefault();
+      }
 
       // Use hasMovedRef instead of dragState.hasMoved to avoid stale closure issues
       // The ref is updated synchronously, so it always has the current value
@@ -731,15 +790,22 @@ const SceneContent: React.FC<SceneContentProps> = ({
         }
       }
 
-      // CRITICAL: Stop the pointerdown from reaching CameraControls.
-      // R3F's `e.stopPropagation()` prevents other R3F handlers, but the camera
-      // controls also listen at the DOM level.
-      e.stopPropagation();
-      e.nativeEvent.stopPropagation();
-      // `stopImmediatePropagation` is not available on all Event types; guard it.
-      (
-        e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
-      ).stopImmediatePropagation?.();
+      // Determine if dragging is allowed using the "selection before drag" rule
+      const canDrag = calculateCanDrag(selectedParentId, selectedChildPath, obj.id, dragChildPath);
+
+      // Stop pointer events from reaching CameraControls ONLY when we're going to drag.
+      // When canDrag=false (clicking on unselected object), let camera controls handle
+      // the event so the user can rotate around. We'll still track for click-to-select.
+      if (canDrag) {
+        // R3F's `e.stopPropagation()` prevents other R3F handlers, but the camera
+        // controls also listen at the DOM level.
+        e.stopPropagation();
+        e.nativeEvent.stopPropagation();
+        // `stopImmediatePropagation` is not available on all Event types; guard it.
+        (
+          e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
+        ).stopImmediatePropagation?.();
+      }
 
       const clickPoint = e.point;
 
@@ -780,6 +846,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
             startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
             childWorldScaleX,
             childWorldScaleZ,
+            canDrag,
           });
           return;
         }
@@ -797,9 +864,17 @@ const SceneContent: React.FC<SceneContentProps> = ({
         initialGrabZ: clickPoint.z,
         hasMoved: false,
         startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
+        canDrag,
       });
     },
-    [recordingPositionForStepId, targetObjectId, previewMode, onPreviewObjectClick]
+    [
+      recordingPositionForStepId,
+      targetObjectId,
+      previewMode,
+      onPreviewObjectClick,
+      selectedParentId,
+      selectedChildPath,
+    ]
   );
 
   // Handle pointer down on a child mesh - selects the child and sets up drag state
@@ -848,6 +923,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       hasMovedRef.current = false;
 
       // Set up drag state for the child
+      // canDrag is true because this handler is only called when clicking on an already-selected child
       setDragState({
         objectId: obj.id,
         object: obj,
@@ -861,6 +937,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
         childWorldScaleX,
         childWorldScaleZ,
+        canDrag: true,
       });
 
       // Select the child
@@ -877,8 +954,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
   // Also triggers smart auto-focus when selecting an object (only if camera is far from ideal)
   const handleDragEnd = useCallback(
     (wasDrag: boolean) => {
-      console.log('[DRAG] End - wasDrag:', wasDrag, 'hasMovedRef:', hasMovedRef.current);
-
       if (dragState && !wasDrag) {
         // It was a click, not a drag
         // Check if there's a pending child path (two-tier selection from parent)
@@ -908,7 +983,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       // Notify parent that drag ended (for undo/redo batching)
       if (wasDrag && onDragEnd) {
-        console.log('[DRAG] Calling onDragEnd (endBatch)');
         onDragEnd();
       }
 
@@ -925,32 +999,37 @@ const SceneContent: React.FC<SceneContentProps> = ({
         }, 50); // 50ms is enough to skip the pointer up frame
       }
     },
-    [dragState, onSelectObject, onDragEnd, onFocusObject, selectedObjectId, controlsRef]
+    [dragState, onSelectObject, onDragEnd, onFocusObject]
   );
 
   // Mark the current interaction as a drag (mouse moved beyond threshold)
   const handleMarkAsDrag = useCallback(() => {
-    // Set ref SYNCHRONOUSLY before state update to avoid stale closure issues
-    // This ensures handlePointerUp always sees the correct value via hasMovedRef
-    console.log(
-      '[DRAG] Mark as drag - hasMovedRef before:',
-      hasMovedRef.current,
-      'dragState.hasMoved:',
-      dragState?.hasMoved
-    );
-
     // CRITICAL: Only proceed if this is the FIRST time marking as drag
+    // Check BOTH ref and state to handle rapid events before React re-renders
     if (hasMovedRef.current || dragState?.hasMoved) {
-      console.log('[DRAG] Already marked as drag, skipping');
       return;
     }
 
-    // Set ref SYNCHRONOUSLY
+    // Set ref SYNCHRONOUSLY before state update to avoid stale closure issues
+    // This ensures handlePointerUp always sees the correct value via hasMovedRef
     hasMovedRef.current = true;
+
+    // If canDrag is false, this is a selection-only interaction (object wasn't selected before).
+    // We still track hasMoved for click vs drag distinction, but don't start an actual drag.
+    // This allows camera rotation while preventing accidental object movement.
+    if (dragState && !dragState.canDrag) {
+      // Update state to mark as moved (for click vs drag distinction)
+      setDragState((prev) => {
+        if (prev && !prev.hasMoved) {
+          return { ...prev, hasMoved: true };
+        }
+        return prev;
+      });
+      return;
+    }
 
     // Dragging an object = working with that object = select it
     // This ensures consistent UX: any direct manipulation selects the target
-    // Handles both: dragging unselected objects, and dragging parent while child is selected
     if (dragState) {
       const targetSelectionId = dragState.childPath
         ? createChildSelectionId(dragState.objectId, dragState.childPath)
@@ -958,14 +1037,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       // Only update selection if it's different from current
       if (targetSelectionId !== selectedObjectId) {
-        console.log('[DRAG] Selecting dragged object:', targetSelectionId);
         onSelectObject(targetSelectionId);
       }
     }
 
     // Call onDragStart SYNCHRONOUSLY *before* any state updates
     // This prevents race conditions where updateObject commands are sent before batching begins
-    console.log('[DRAG] Calling onDragStart (beginBatch) SYNCHRONOUSLY');
     if (onDragStart) {
       onDragStart();
     }
@@ -1189,9 +1266,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
         makeDefault
         // Disable camera controls while a pointer interaction on an object is in-flight.
         // This prevents camera rotate/pan from competing with object click/drag.
+        // Exception: when canDrag=false (clicking unselected object), keep camera enabled
+        // so the user can rotate around. Selection will still happen on click (not drag).
         // Allow controls to be enabled in preview mode if camera is being positioned
         enabled={
-          (!previewMode && dragState === null && !isRecentlyDragged) ||
+          (!previewMode && (dragState === null || !dragState.canDrag) && !isRecentlyDragged) ||
           (previewMode && isPositioningCameraRef.current)
         }
         // Smooth damping for premium feel - slower for more comfortable camera movements
