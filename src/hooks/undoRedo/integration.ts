@@ -6,6 +6,8 @@ import {
   createUpdateTitleCommand,
   createCreateStepCommand,
   createUpdateStepCommand,
+  createDeleteStepCommand,
+  createReorderStepsCommand,
 } from './commandImplementations';
 import type { UndoRedoCommand } from './types';
 
@@ -93,4 +95,34 @@ export function createUpdateStepCommandHelper(
   description?: string
 ): UndoRedoCommand {
   return createUpdateStepCommand(stepId, previousState, newState, description);
+}
+
+/**
+ * Helper function to create a delete step command.
+ */
+export function createDeleteStepCommandHelper(
+  deletedStep: SimStep,
+  index: number,
+  description?: string
+): UndoRedoCommand {
+  return createDeleteStepCommand(deletedStep, index, description);
+}
+
+/**
+ * Helper function to create a reorder steps command.
+ */
+export function createReorderStepsCommandHelper(
+  previousOrder: string[],
+  newOrder: string[],
+  description?: string
+): UndoRedoCommand {
+  return createReorderStepsCommand(previousOrder, newOrder, description);
+}
+
+/**
+ * Finds the index of a step in an array by its ID.
+ * Returns -1 if not found.
+ */
+export function findStepIndex(steps: SimStep[], stepId: string): number {
+  return steps.findIndex((step) => step.id === stepId);
 }

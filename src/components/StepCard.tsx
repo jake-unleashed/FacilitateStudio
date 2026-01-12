@@ -10,13 +10,13 @@ import {
   CheckCircle2,
   X,
   CheckCircle,
+  Trash2,
 } from 'lucide-react';
 import { StepType, SimStep, SceneObject } from '../types';
 import { OBJECT_ICONS } from '../constants';
 
 interface StepCardProps {
   step: SimStep;
-  stepNumber: number;
   isOpen: boolean;
   onUpdate: (updated: SimStep) => void;
   onMinimize: () => void;
@@ -26,6 +26,7 @@ interface StepCardProps {
   onStopRecording?: () => void;
   isRecordingPosition?: boolean;
   onFocusObject?: (object: SceneObject) => void;
+  onDelete?: () => void;
 }
 
 interface StepTypeConfig {
@@ -119,7 +120,6 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export const StepCard: React.FC<StepCardProps> = ({
   step,
-  stepNumber,
   isOpen,
   onUpdate,
   onMinimize,
@@ -129,10 +129,12 @@ export const StepCard: React.FC<StepCardProps> = ({
   onStopRecording,
   isRecordingPosition = false,
   onFocusObject,
+  onDelete,
 }) => {
   // Local state for form fields
   const [stepName, setStepName] = useState(step.title);
-  const [selectedType, setSelectedType] = useState<StepType>(step.type || 'info-card');
+  // Keep selectedType as the actual step type (can be null) to prevent premature type assignment
+  const [selectedType, setSelectedType] = useState<StepType | null>(step.type ?? null);
   const [showTypeSelection, setShowTypeSelection] = useState(
     step.type === null || step.type === undefined
   );
@@ -151,6 +153,9 @@ export const StepCard: React.FC<StepCardProps> = ({
     null
   );
 
+  // Delete confirmation state (click twice to confirm)
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
   const stepNameTextareaRef = useRef<HTMLTextAreaElement>(null);
   const headingTextareaRef = useRef<HTMLTextAreaElement>(null);
   const bodyTextTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -160,8 +165,8 @@ export const StepCard: React.FC<StepCardProps> = ({
   // Use individual properties to ensure we catch all changes
   useEffect(() => {
     setStepName(step.title);
-    setSelectedType(step.type || 'info-card');
-    setShowTypeSelection(step.type === null);
+    setSelectedType(step.type ?? null);
+    setShowTypeSelection(step.type === null || step.type === undefined);
     setHeading(step.heading || '');
     setBodyText(step.bodyText || '');
     setButtonText(step.buttonText || '');
@@ -185,10 +190,11 @@ export const StepCard: React.FC<StepCardProps> = ({
   const createUpdatedStep = useCallback(
     (overrides?: Partial<SimStep>): SimStep => {
       // Use local state for move-item fields to ensure we have the latest values
+      // Preserve null type if user hasn't selected a type yet (showTypeSelection is true)
       const baseStep: SimStep = {
         ...step,
         title: stepName,
-        type: selectedType,
+        type: selectedType, // Can be null if user hasn't selected yet
         heading: heading || undefined,
         bodyText: bodyText || undefined,
         buttonText: buttonText || undefined,
@@ -310,6 +316,17 @@ export const StepCard: React.FC<StepCardProps> = ({
     // When user selects a new type, handleTypeSelect will update it
   }, []);
 
+  // Auto-focus step name input when newly created (empty step)
+  useEffect(() => {
+    if (isOpen && step.title === '' && step.type === null) {
+      // Small delay to ensure the DOM is ready
+      const timer = setTimeout(() => {
+        stepNameTextareaRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, step.title, step.type]);
+
   // Auto-resize textareas
   useEffect(() => {
     const textarea = stepNameTextareaRef.current;
@@ -407,6 +424,24 @@ export const StepCard: React.FC<StepCardProps> = ({
     [onFocusObject]
   );
 
+  // Handle delete button click (click twice to confirm)
+  const handleDeleteClick = useCallback(() => {
+    if (confirmingDelete) {
+      // Second click - actually delete
+      if (onDelete) {
+        onDelete();
+      }
+      setConfirmingDelete(false);
+    } else {
+      // First click - show confirmation
+      setConfirmingDelete(true);
+      // Reset confirmation state after 3 seconds if user doesn't confirm
+      setTimeout(() => {
+        setConfirmingDelete(false);
+      }, 3000);
+    }
+  }, [confirmingDelete, onDelete]);
+
   // Update end position when recording (called from parent via step updates)
   useEffect(() => {
     if (step.endPosition && isRecordingPosition) {
@@ -433,17 +468,9 @@ export const StepCard: React.FC<StepCardProps> = ({
   const canUseSelectedObject = hasSelectedObject && selectedObjectId !== effectiveTargetObjectId;
 
   return (
-    <div className="rounded-[20px] border border-white/50 bg-white/50 p-5 shadow-sm backdrop-blur-sm">
-      {/* Header: Step Number, Name, and Minimize Button */}
-      <div className="mb-4 flex items-start gap-3">
-        <div
-          className={`
-            mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm
-            ${step.completed ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-500'}
-          `}
-        >
-          {stepNumber}
-        </div>
+    <div className="rounded-[16px] border border-white/50 bg-white/50 p-4 shadow-sm backdrop-blur-sm">
+      {/* Header: Step Name and Minimize Button */}
+      <div className="mb-4 flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <textarea
             id={`step-name-input-${step.id}`}
@@ -911,6 +938,26 @@ export const StepCard: React.FC<StepCardProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Delete Button Section - Always at bottom */}
+      {onDelete && (
+        <div className="mt-4 border-t border-white/30 pt-4">
+          <button
+            onClick={handleDeleteClick}
+            className={`
+              flex w-full items-center justify-center gap-2 rounded-[12px] px-4 py-2.5 text-xs font-medium transition-all
+              ${
+                confirmingDelete
+                  ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20'
+                  : 'border border-slate-200/60 bg-white/40 text-slate-500 hover:border-rose-200 hover:bg-rose-50/50 hover:text-rose-600'
+              }
+            `}
+          >
+            <Trash2 size={14} />
+            <span>{confirmingDelete ? 'Click again to confirm delete' : 'Delete Step'}</span>
+          </button>
         </div>
       )}
     </div>

@@ -7,6 +7,8 @@ import {
   UpdateTitleCommand,
   CreateStepCommand,
   UpdateStepCommand,
+  DeleteStepCommand,
+  ReorderStepsCommand,
   BatchCommand,
   CommandExecutionResult,
 } from './types';
@@ -33,6 +35,10 @@ export function executeCommand(
         return executeCreateStep(command, currentState);
       case 'updateStep':
         return executeUpdateStep(command, currentState);
+      case 'deleteStep':
+        return executeDeleteStep(command, currentState);
+      case 'reorderSteps':
+        return executeReorderSteps(command, currentState);
       case 'batch':
         return executeBatch(command, currentState);
       default:
@@ -72,6 +78,10 @@ export function undoCommand(
         return undoCreateStep(command, currentState);
       case 'updateStep':
         return undoUpdateStep(command, currentState);
+      case 'deleteStep':
+        return undoDeleteStep(command, currentState);
+      case 'reorderSteps':
+        return undoReorderSteps(command, currentState);
       case 'batch':
         return undoBatch(command, currentState);
       default:
@@ -194,6 +204,51 @@ function executeUpdateStep(
 
   const newSteps = [...currentState.steps];
   newSteps[stepIndex] = command.newState;
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
+    },
+    success: true,
+  };
+}
+
+function executeDeleteStep(
+  command: DeleteStepCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  const newSteps = currentState.steps.filter((step) => step.id !== command.deletedStep.id);
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
+    },
+    success: true,
+  };
+}
+
+function executeReorderSteps(
+  command: ReorderStepsCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  // Create a map of step ID to step for quick lookup
+  const stepMap = new Map(currentState.steps.map((step) => [step.id, step]));
+
+  // Reorder steps according to newOrder
+  const newSteps = command.newOrder
+    .map((id) => stepMap.get(id))
+    .filter((step): step is SimStep => step !== undefined);
+
+  // Verify we didn't lose any steps
+  if (newSteps.length !== currentState.steps.length) {
+    return {
+      newState: currentState,
+      success: false,
+      error: 'Reorder failed: step count mismatch',
+    };
+  }
 
   return {
     newState: {
@@ -327,6 +382,52 @@ function undoUpdateStep(
 
   const newSteps = [...currentState.steps];
   newSteps[stepIndex] = command.previousState;
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
+    },
+    success: true,
+  };
+}
+
+function undoDeleteStep(
+  command: DeleteStepCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  const newSteps = [...currentState.steps];
+  newSteps.splice(command.index, 0, command.deletedStep);
+
+  return {
+    newState: {
+      ...currentState,
+      steps: newSteps,
+    },
+    success: true,
+  };
+}
+
+function undoReorderSteps(
+  command: ReorderStepsCommand,
+  currentState: EditorState
+): CommandExecutionResult {
+  // Create a map of step ID to step for quick lookup
+  const stepMap = new Map(currentState.steps.map((step) => [step.id, step]));
+
+  // Reorder steps according to previousOrder
+  const newSteps = command.previousOrder
+    .map((id) => stepMap.get(id))
+    .filter((step): step is SimStep => step !== undefined);
+
+  // Verify we didn't lose any steps
+  if (newSteps.length !== currentState.steps.length) {
+    return {
+      newState: currentState,
+      success: false,
+      error: 'Undo reorder failed: step count mismatch',
+    };
+  }
 
   return {
     newState: {
@@ -481,5 +582,39 @@ export function createUpdateStepCommand(
     stepId,
     previousState,
     newState,
+  };
+}
+
+/**
+ * Creates a DeleteStepCommand.
+ */
+export function createDeleteStepCommand(
+  deletedStep: SimStep,
+  index: number,
+  description?: string
+): DeleteStepCommand {
+  return {
+    type: 'deleteStep',
+    timestamp: Date.now(),
+    description,
+    deletedStep,
+    index,
+  };
+}
+
+/**
+ * Creates a ReorderStepsCommand.
+ */
+export function createReorderStepsCommand(
+  previousOrder: string[],
+  newOrder: string[],
+  description?: string
+): ReorderStepsCommand {
+  return {
+    type: 'reorderSteps',
+    timestamp: Date.now(),
+    description,
+    previousOrder,
+    newOrder,
   };
 }

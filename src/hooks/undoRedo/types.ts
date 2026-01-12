@@ -92,6 +92,28 @@ export interface UpdateStepCommand extends BaseCommand {
 }
 
 /**
+ * Command for deleting a step.
+ */
+export interface DeleteStepCommand extends BaseCommand {
+  type: 'deleteStep';
+  /** The step that was deleted (for undo) */
+  deletedStep: SimStep;
+  /** Index where the step was in the array (for undo) */
+  index: number;
+}
+
+/**
+ * Command for reordering steps.
+ */
+export interface ReorderStepsCommand extends BaseCommand {
+  type: 'reorderSteps';
+  /** Previous order of step IDs (for undo) */
+  previousOrder: string[];
+  /** New order of step IDs (for redo) */
+  newOrder: string[];
+}
+
+/**
  * Command that groups multiple commands into a single undo entry.
  * Used for operations like dragging, where many updates should be one undo.
  */
@@ -111,6 +133,8 @@ export type UndoRedoCommand =
   | UpdateTitleCommand
   | CreateStepCommand
   | UpdateStepCommand
+  | DeleteStepCommand
+  | ReorderStepsCommand
   | BatchCommand;
 
 /**

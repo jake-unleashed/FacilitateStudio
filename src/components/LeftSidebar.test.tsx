@@ -65,6 +65,31 @@ const TEST_STEPS: SimStep[] = [
   },
 ];
 
+// Additional test steps for reordering tests
+const TEST_STEPS_FOR_REORDER: SimStep[] = [
+  {
+    id: 'step-a',
+    title: 'Alpha Step',
+    description: 'First step',
+    completed: false,
+    type: 'info-card',
+  },
+  {
+    id: 'step-b',
+    title: 'Beta Step',
+    description: 'Second step',
+    completed: false,
+    type: 'move-item',
+  },
+  {
+    id: 'step-c',
+    title: 'Gamma Step',
+    description: 'Third step',
+    completed: false,
+    type: null, // No type selected
+  },
+];
+
 describe('LeftSidebar', () => {
   const defaultProps = {
     activeTab: null as 'add' | 'steps' | 'scenes' | 'objects' | null,
@@ -152,8 +177,9 @@ describe('LeftSidebar', () => {
         />
       );
       TEST_STEPS.forEach((step) => {
-        // Steps are displayed with their title, not description
-        expect(screen.getByText(step.title)).toBeInTheDocument();
+        // Steps are displayed with their title - use getAllByText since slot labels may also contain step text
+        const elements = screen.getAllByText(step.title);
+        expect(elements.length).toBeGreaterThan(0);
       });
     });
 
@@ -162,17 +188,22 @@ describe('LeftSidebar', () => {
       expect(screen.getByText('Add Step')).toBeInTheDocument();
     });
 
-    it('renders step numbers when steps provided', () => {
+    it('renders step slot labels when steps provided', () => {
       render(<LeftSidebar {...defaultProps} activeTab="steps" steps={TEST_STEPS} />);
-      expect(screen.getByText('1')).toBeInTheDocument();
-      expect(screen.getByText('2')).toBeInTheDocument();
-      expect(screen.getByText('3')).toBeInTheDocument();
+      // Step numbers are now displayed as "Step 1", "Step 2", etc.
+      // Use getAllByText since step titles may also contain "Step N"
+      const step1Labels = screen.getAllByText('Step 1');
+      const step2Labels = screen.getAllByText('Step 2');
+      const step3Labels = screen.getAllByText('Step 3');
+      expect(step1Labels.length).toBeGreaterThan(0);
+      expect(step2Labels.length).toBeGreaterThan(0);
+      expect(step3Labels.length).toBeGreaterThan(0);
     });
 
     it('shows only Add Step button when no steps', () => {
       render(<LeftSidebar {...defaultProps} activeTab="steps" />);
       expect(screen.getByText('Add Step')).toBeInTheDocument();
-      expect(screen.queryByText('1')).not.toBeInTheDocument();
+      expect(screen.queryByText('Step 1')).not.toBeInTheDocument();
     });
   });
 
@@ -482,6 +513,122 @@ describe('LeftSidebar', () => {
 
       // Should see nested child
       expect(screen.getByText('Nested Child')).toBeInTheDocument();
+    });
+  });
+
+  describe('Step Reordering', () => {
+    const reorderProps = {
+      ...defaultProps,
+      activeTab: 'steps' as const,
+      steps: TEST_STEPS_FOR_REORDER,
+      onAddStep: vi.fn(),
+      onUpdateStep: vi.fn(),
+      onDeleteStep: vi.fn(),
+      onReorderSteps: vi.fn(),
+    };
+
+    it('renders step slot labels (Step 1, Step 2, etc.)', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      expect(screen.getByText('Step 1')).toBeInTheDocument();
+      expect(screen.getByText('Step 2')).toBeInTheDocument();
+      expect(screen.getByText('Step 3')).toBeInTheDocument();
+    });
+
+    it('renders step titles correctly', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      expect(screen.getByText('Alpha Step')).toBeInTheDocument();
+      expect(screen.getByText('Beta Step')).toBeInTheDocument();
+      expect(screen.getByText('Gamma Step')).toBeInTheDocument();
+    });
+
+    it('shows drag handles for each step', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      const dragHandles = screen.getAllByTitle('Drag to reorder');
+      expect(dragHandles.length).toBe(3);
+    });
+
+    it('renders step type badges correctly', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      expect(screen.getByText('Info Card')).toBeInTheDocument();
+      expect(screen.getByText('Move Item')).toBeInTheDocument();
+    });
+
+    it('renders "No Type" badge for steps without a type', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      expect(screen.getByText('No Type')).toBeInTheDocument();
+    });
+
+    it('opens step when clicked', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      fireEvent.click(screen.getByText('Alpha Step'));
+      // After clicking, the StepCard should be visible (it has a minimize button)
+      expect(screen.getByTitle('Minimize step')).toBeInTheDocument();
+    });
+
+    it('closes step when minimize button is clicked', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      // Open a step
+      fireEvent.click(screen.getByText('Alpha Step'));
+      // Find minimize button and click it
+      fireEvent.click(screen.getByTitle('Minimize step'));
+      // Minimize button should no longer be visible
+      expect(screen.queryByTitle('Minimize step')).not.toBeInTheDocument();
+    });
+
+    it('toggles step when clicking same step twice', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      // Click to open
+      fireEvent.click(screen.getByText('Alpha Step'));
+      expect(screen.getByTitle('Minimize step')).toBeInTheDocument();
+      // Click the title again (find the step name input)
+      const stepNameInput = screen.getByPlaceholderText('Enter step name...');
+      expect(stepNameInput).toBeInTheDocument();
+    });
+
+    it('calls onAddStep when Add Step button is clicked', () => {
+      render(<LeftSidebar {...reorderProps} />);
+      fireEvent.click(screen.getByText('Add Step'));
+      expect(reorderProps.onAddStep).toHaveBeenCalledWith({
+        title: '',
+        description: '',
+        completed: false,
+        type: null,
+      });
+    });
+  });
+
+  describe('Step Type Badges', () => {
+    it('shows blue badge for info-card type', () => {
+      const propsWithInfoCard = {
+        ...defaultProps,
+        activeTab: 'steps' as const,
+        steps: [{ ...TEST_STEPS[0], type: 'info-card' as const }],
+      };
+      render(<LeftSidebar {...propsWithInfoCard} />);
+      const badge = screen.getByText('Info Card').closest('div');
+      expect(badge).toHaveClass('border-blue-200/60');
+    });
+
+    it('shows purple badge for move-item type', () => {
+      const propsWithMoveItem = {
+        ...defaultProps,
+        activeTab: 'steps' as const,
+        steps: [{ ...TEST_STEPS[0], type: 'move-item' as const }],
+      };
+      render(<LeftSidebar {...propsWithMoveItem} />);
+      const badge = screen.getByText('Move Item').closest('div');
+      expect(badge).toHaveClass('border-purple-200/60');
+    });
+
+    it('shows grey badge for null type', () => {
+      const propsWithNoType = {
+        ...defaultProps,
+        activeTab: 'steps' as const,
+        steps: [{ ...TEST_STEPS[0], type: null }],
+      };
+      render(<LeftSidebar {...propsWithNoType} />);
+      const badge = screen.getByText('No Type').closest('div');
+      expect(badge).toHaveClass('border-slate-200/60');
     });
   });
 });

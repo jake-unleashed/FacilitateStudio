@@ -25,7 +25,6 @@ describe('StepCard', () => {
       const { container } = render(
         <StepCard
           step={DEFAULT_STEP}
-          stepNumber={1}
           isOpen={false}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -34,29 +33,10 @@ describe('StepCard', () => {
       expect(container.firstChild).toBeNull();
     });
 
-    it('should render step number correctly', () => {
-      render(
-        <StepCard
-          step={DEFAULT_STEP}
-          stepNumber={3}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
-      );
-      expect(screen.getByText('3')).toBeInTheDocument();
-    });
-
     it('should render step title as editable textarea', () => {
       const step = { ...DEFAULT_STEP, title: 'My Test Step' };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       const textarea = screen.getByPlaceholderText('Enter step name...');
       expect(textarea).toBeInTheDocument();
@@ -67,7 +47,6 @@ describe('StepCard', () => {
       render(
         <StepCard
           step={DEFAULT_STEP}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -83,7 +62,6 @@ describe('StepCard', () => {
       render(
         <StepCard
           step={DEFAULT_STEP}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -96,13 +74,7 @@ describe('StepCard', () => {
     it('should show selected step type badge when type is selected', () => {
       const step = { ...DEFAULT_STEP, type: 'info-card' as const };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('Info Card')).toBeInTheDocument();
       expect(screen.queryByText('Move Item')).not.toBeInTheDocument();
@@ -113,7 +85,6 @@ describe('StepCard', () => {
       render(
         <StepCard
           step={DEFAULT_STEP}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -135,13 +106,7 @@ describe('StepCard', () => {
     it('should show Info Card preview when info-card type is selected', () => {
       const step = { ...DEFAULT_STEP, type: 'info-card' as const };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('Preview')).toBeInTheDocument();
     });
@@ -153,13 +118,7 @@ describe('StepCard', () => {
         heading: 'Test Heading',
       };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('Test Heading')).toBeInTheDocument();
     });
@@ -171,13 +130,7 @@ describe('StepCard', () => {
         bodyText: 'Test body text content',
       };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('Test body text content')).toBeInTheDocument();
     });
@@ -189,13 +142,7 @@ describe('StepCard', () => {
         buttonText: 'Continue',
       };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('Continue')).toBeInTheDocument();
     });
@@ -203,13 +150,7 @@ describe('StepCard', () => {
     it('should show default button text when buttonText is empty', () => {
       const step = { ...DEFAULT_STEP, type: 'info-card' as const };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('OK')).toBeInTheDocument();
     });
@@ -225,13 +166,7 @@ describe('StepCard', () => {
         buttonText: 'Click me',
       };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       // Edit icons should be visible (they're always visible now, not just on hover)
       const editButtons = screen.getAllByTitle(/Edit/);
@@ -246,13 +181,7 @@ describe('StepCard', () => {
         heading: 'Original Heading',
       };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
 
       const headingElement = screen.getByText('Original Heading');
@@ -268,13 +197,7 @@ describe('StepCard', () => {
     it('should show color picker for Info Card', () => {
       const step = { ...DEFAULT_STEP, type: 'info-card' as const };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       // Color picker buttons should be present
       const colorButtons = screen.getAllByTitle(/^(Blue|Green|Yellow|Red|Gray)$/);
@@ -284,13 +207,7 @@ describe('StepCard', () => {
     it('should default to blue color', () => {
       const step = { ...DEFAULT_STEP, type: 'info-card' as const };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       const blueButton = screen.getByTitle('Blue');
       expect(blueButton).toHaveClass('ring-2'); // Selected state
@@ -300,13 +217,7 @@ describe('StepCard', () => {
       const user = userEvent.setup();
       const step = { ...DEFAULT_STEP, type: 'info-card' as const };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
 
       const greenButton = screen.getByTitle('Green');
@@ -330,7 +241,6 @@ describe('StepCard', () => {
       render(
         <StepCard
           step={DEFAULT_STEP}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -363,7 +273,6 @@ describe('StepCard', () => {
       render(
         <StepCard
           step={DEFAULT_STEP}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -380,49 +289,15 @@ describe('StepCard', () => {
     });
   });
 
-  describe('Completed state', () => {
-    it('should show blue background for completed step number', () => {
-      const step = { ...DEFAULT_STEP, completed: true };
-      render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
-      );
-      const stepNumber = screen.getByText('1');
-      expect(stepNumber.closest('div')).toHaveClass('bg-blue-500');
-    });
-
-    it('should show gray background for incomplete step number', () => {
-      const step = { ...DEFAULT_STEP, completed: false };
-      render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
-      );
-      const stepNumber = screen.getByText('1');
-      expect(stepNumber.closest('div')).toHaveClass('bg-slate-200');
-    });
-  });
+  // Note: Completed state step number styling tests were removed
+  // because stepNumber prop was removed from StepCard.
+  // Step numbers are now rendered in LeftSidebar's SortableStepItem component.
 
   describe('Edge cases', () => {
     it('should handle empty step title', () => {
       const step = { ...DEFAULT_STEP, title: '' };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       const textarea = screen.getByPlaceholderText('Enter step name...');
       expect(textarea).toHaveValue('');
@@ -438,13 +313,7 @@ describe('StepCard', () => {
         cardColor: 'green' as const,
       };
       render(
-        <StepCard
-          step={step}
-          stepNumber={1}
-          isOpen={true}
-          onUpdate={mockOnUpdate}
-          onMinimize={mockOnMinimize}
-        />
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
       );
       expect(screen.getByText('Heading')).toBeInTheDocument();
       expect(screen.getByText('Body text')).toBeInTheDocument();

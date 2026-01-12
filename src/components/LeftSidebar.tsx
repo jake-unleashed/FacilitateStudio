@@ -1,5 +1,23 @@
 import React, { memo, useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  MeasuringStrategy,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS as DndCSS } from '@dnd-kit/utilities';
+import {
   Plus,
   ListOrdered,
   Box,
@@ -11,6 +29,8 @@ import {
   Info,
   MoveRight,
   Layers,
+  GripVertical,
+  CircleDashed,
 } from 'lucide-react';
 import {
   SidebarSection,
@@ -27,6 +47,7 @@ import { OBJECT_ICONS } from '../constants';
 import { StepCard } from './StepCard';
 import { AssetUploadButton } from './AssetUploadButton';
 import { RecentAssetsList } from './RecentAssetsList';
+// DeleteStepModal removed - now using click-twice-to-confirm in StepCard
 import { AssetMetadata, UploadProgress } from '../types/model';
 
 // Step type configuration for minimized step indicators
@@ -67,6 +88,8 @@ interface LeftSidebarProps {
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onAddStep?: (step: Omit<SimStep, 'id'>) => void;
   onUpdateStep?: (step: SimStep) => void;
+  onDeleteStep?: (stepId: string) => void;
+  onReorderSteps?: (previousOrder: string[], newOrder: string[]) => void;
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: (stepId: string) => void;
   recordingPositionForStepId?: string | null;
@@ -464,6 +487,158 @@ const HierarchyItem = memo<HierarchyItemProps>(
 HierarchyItem.displayName = 'HierarchyItem';
 
 // ============================================================================
+// Sortable Step Item Component
+// ============================================================================
+
+interface SortableStepItemProps {
+  step: SimStep;
+  stepNumber: number;
+  isOpen: boolean;
+  onUpdate: (step: SimStep) => void;
+  onMinimize: () => void;
+  onStepClick: (stepId: string) => void;
+  selectedObjectId: string | null;
+  objects: SceneObject[];
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
+  isRecordingPosition: boolean;
+  onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
+  onDeleteStep?: (stepId: string) => void;
+}
+
+const SortableStepItem = memo<SortableStepItemProps>(
+  ({
+    step,
+    stepNumber,
+    isOpen,
+    onUpdate,
+    onMinimize,
+    onStepClick,
+    selectedObjectId,
+    objects,
+    onStartRecording,
+    onStopRecording,
+    isRecordingPosition,
+    onFocusObject,
+    onDeleteStep,
+  }) => {
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({
+      id: step.id,
+      disabled: isOpen, // Disable dragging when step is open/expanded
+      transition: {
+        duration: 200, // ms
+        easing: 'cubic-bezier(0.25, 0.8, 0.25, 1)',
+      },
+    });
+
+    // Use a smooth custom transition for better animation
+    // Always provide a transition for smooth settling after drop
+    const style: React.CSSProperties = {
+      transform: DndCSS.Transform.toString(transform),
+      transition: isDragging
+        ? 'transform 0ms' // Immediate during drag for responsive feel
+        : 'transform 250ms cubic-bezier(0.22, 1, 0.36, 1)', // Smooth ease-out-expo settle
+      zIndex: isDragging ? 50 : undefined,
+      willChange: isDragging ? 'transform' : undefined, // GPU hint during drag
+      position: 'relative', // Ensure transform doesn't affect layout
+    };
+
+    // Get step type config for minimized view
+    const stepTypeConfig = STEP_TYPE_CONFIGS.find((config) => config.type === step.type);
+
+    if (isOpen) {
+      return (
+        <div className="flex flex-col gap-1">
+          {/* Static slot label - stays in place */}
+          <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Step {stepNumber}
+          </span>
+          {/* Sortable Step Content */}
+          <div ref={setNodeRef} style={style}>
+            <StepCard
+              step={step}
+              isOpen={true}
+              onUpdate={onUpdate}
+              onMinimize={onMinimize}
+              selectedObjectId={selectedObjectId}
+              objects={objects}
+              onStartRecording={onStartRecording}
+              onStopRecording={onStopRecording}
+              isRecordingPosition={isRecordingPosition}
+              onFocusObject={onFocusObject}
+              onDelete={onDeleteStep ? () => onDeleteStep(step.id) : undefined}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-1">
+        {/* Static slot label - stays in place */}
+        <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          Step {stepNumber}
+        </span>
+
+        {/* Sortable Step Bubble - only this moves */}
+        <div
+          ref={setNodeRef}
+          style={style}
+          className={`
+            group relative cursor-pointer rounded-[16px] border shadow-sm backdrop-blur-sm
+            ${isDragging ? 'cursor-grabbing border-blue-300 bg-white shadow-xl ring-2 ring-blue-400/50' : 'border-white/50 bg-white/50 hover:bg-white hover:shadow-md'}
+          `}
+        >
+          <div className="flex items-start gap-2.5 p-3">
+            {/* Drag Handle */}
+            <button
+              {...attributes}
+              {...listeners}
+              className="mt-0.5 flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded text-slate-300 opacity-40 transition-all hover:text-slate-500 active:cursor-grabbing group-hover:opacity-100"
+              title="Drag to reorder"
+            >
+              <GripVertical size={14} />
+            </button>
+
+            {/* Step Content */}
+            <div className="min-w-0 flex-1" onClick={() => onStepClick(step.id)}>
+              <p className="text-sm font-medium leading-snug text-slate-700">
+                {step.title || 'Untitled Step'}
+              </p>
+              {/* Step Type Badge */}
+              {stepTypeConfig ? (
+                <div
+                  className={`
+                    mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border px-2 py-0.5
+                    ${
+                      stepTypeConfig.color === 'text-blue-600'
+                        ? 'border-blue-200/60 bg-gradient-to-br from-blue-50/60 to-blue-100/30'
+                        : 'border-purple-200/60 bg-gradient-to-br from-purple-50/60 to-purple-100/30'
+                    }
+                  `}
+                >
+                  <stepTypeConfig.icon size={12} className={stepTypeConfig.color} />
+                  <span className="text-[10px] font-medium text-slate-600">
+                    {stepTypeConfig.label}
+                  </span>
+                </div>
+              ) : (
+                /* No Type Badge - shown when step type is not selected */
+                <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border border-slate-200/60 bg-gradient-to-br from-slate-50/60 to-slate-100/30 px-2 py-0.5">
+                  <CircleDashed size={12} className="text-slate-400" />
+                  <span className="text-[10px] font-medium text-slate-400">No Type</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+);
+SortableStepItem.displayName = 'SortableStepItem';
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -477,6 +652,8 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   onFocusObject,
   onAddStep,
   onUpdateStep,
+  onDeleteStep,
+  onReorderSteps,
   onStartRecordingPosition,
   onStopRecordingPosition,
   recordingPositionForStepId,
@@ -490,6 +667,9 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
 
   // Ref for scrollable content area (used for auto-scroll to selected item)
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Ref to track previous step count for detecting newly added steps
+  const prevStepCountRef = useRef<number>(steps.length);
 
   // Auto-scroll to selected object when selection changes
   useEffect(() => {
@@ -551,19 +731,40 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
     }
   }, [onAddStep]);
 
-  // Auto-open the most recently added step (only if it's empty and no step is currently open)
+  // Auto-open newly created steps and scroll to them
   useEffect(() => {
-    if (steps.length > 0 && openedStepId === null) {
-      const lastStep = steps[steps.length - 1];
-      // Check if it's a newly created empty step
+    const prevCount = prevStepCountRef.current;
+    const currentCount = steps.length;
+
+    // Detect if a new step was added (count increased)
+    if (currentCount > prevCount && currentCount > 0) {
+      const lastStep = steps[currentCount - 1];
+      // Check if it's a newly created empty step (default values)
       if (lastStep.title === '' && lastStep.type === null && lastStep.description === '') {
+        // Auto-open the newly created step
         setOpenedStepId(lastStep.id);
+
+        // Scroll to the newly created step after a short delay to allow DOM update
+        setTimeout(() => {
+          const container = scrollContainerRef.current;
+          if (container) {
+            // Scroll to the bottom where the new step will be
+            container.scrollTo({
+              top: container.scrollHeight,
+              behavior: 'smooth',
+            });
+          }
+        }, 150);
       }
     }
+
     // Close if the opened step was deleted
     if (openedStepId !== null && !steps.find((s) => s.id === openedStepId)) {
       setOpenedStepId(null);
     }
+
+    // Update the ref with current count
+    prevStepCountRef.current = currentCount;
   }, [steps, openedStepId]);
 
   const handleStepClick = useCallback(
@@ -576,6 +777,41 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   const handleMinimizeStep = useCallback(() => {
     setOpenedStepId(null);
   }, []);
+
+  // Drag-and-drop sensors for step reordering
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px drag before starting
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle drag end for step reordering
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+
+      if (over && active.id !== over.id) {
+        const oldIndex = steps.findIndex((step) => step.id === active.id);
+        const newIndex = steps.findIndex((step) => step.id === over.id);
+
+        if (oldIndex !== -1 && newIndex !== -1 && onReorderSteps) {
+          const previousOrder = steps.map((step) => step.id);
+          const reorderedSteps = arrayMove(steps, oldIndex, newIndex);
+          const newOrder = reorderedSteps.map((step) => step.id);
+          onReorderSteps(previousOrder, newOrder);
+        }
+      }
+    },
+    [steps, onReorderSteps]
+  );
+
+  // Step IDs for sortable context
+  const stepIds = useMemo(() => steps.map((step) => step.id), [steps]);
 
   return (
     <div
@@ -683,19 +919,27 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
           {/* Steps Panel */}
           {activeTab === 'steps' && (
             <div className="space-y-4">
-              {steps.map((step, index) => {
-                const isOpen = step.id === openedStepId;
-                // Use a composite key that includes step properties to force re-render when step changes
-                const stepKey = `${step.id}-${step.targetObjectId || 'none'}-${step.endPosition ? JSON.stringify(step.endPosition) : 'none'}`;
-                return (
-                  <div key={stepKey}>
-                    {isOpen ? (
-                      <StepCard
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+                measuring={{
+                  droppable: {
+                    strategy: MeasuringStrategy.Always,
+                  },
+                }}
+              >
+                <SortableContext items={stepIds} strategy={rectSortingStrategy}>
+                  <div className="space-y-4">
+                    {steps.map((step, index) => (
+                      <SortableStepItem
+                        key={step.id}
                         step={step}
                         stepNumber={index + 1}
-                        isOpen={true}
+                        isOpen={step.id === openedStepId}
                         onUpdate={onUpdateStep || (() => {})}
                         onMinimize={handleMinimizeStep}
+                        onStepClick={handleStepClick}
                         selectedObjectId={selectedObjectId}
                         objects={objects}
                         onStartRecording={
@@ -710,63 +954,12 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                         }
                         isRecordingPosition={recordingPositionForStepId === step.id}
                         onFocusObject={onFocusObject}
+                        onDeleteStep={onDeleteStep}
                       />
-                    ) : (
-                      <div
-                        onClick={() => handleStepClick(step.id)}
-                        className="group relative cursor-pointer rounded-[20px] border border-white/50 bg-white/50 p-4 shadow-sm backdrop-blur-sm transition-all hover:bg-white hover:shadow-md"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`
-                              mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm
-                              ${
-                                step.completed
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-slate-200 text-slate-500'
-                              }
-                            `}
-                          >
-                            {index + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium leading-snug text-slate-700">
-                              {step.title || 'Untitled Step'}
-                            </p>
-                            {/* Step Type Badge - Smaller, below step name */}
-                            {step.type &&
-                              (() => {
-                                const stepTypeConfig = STEP_TYPE_CONFIGS.find(
-                                  (config) => config.type === step.type
-                                );
-                                if (!stepTypeConfig) return null;
-                                const Icon = stepTypeConfig.icon;
-                                const isBlue = stepTypeConfig.color === 'text-blue-600';
-                                return (
-                                  <div
-                                    className={`
-                                    mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border px-2 py-0.5
-                                    ${
-                                      isBlue
-                                        ? 'border-blue-200/60 bg-gradient-to-br from-blue-50/60 to-blue-100/30'
-                                        : 'border-purple-200/60 bg-gradient-to-br from-purple-50/60 to-purple-100/30'
-                                    }
-                                  `}
-                                  >
-                                    <Icon size={12} className={stepTypeConfig.color} />
-                                    <span className="text-[10px] font-medium text-slate-600">
-                                      {stepTypeConfig.label}
-                                    </span>
-                                  </div>
-                                );
-                              })()}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                );
-              })}
+                </SortableContext>
+              </DndContext>
 
               {/* Add Step Button */}
               <button

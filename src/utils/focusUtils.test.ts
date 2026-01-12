@@ -138,12 +138,7 @@ describe('calculateIdealDistance', () => {
 // =============================================================================
 
 describe('calculateIdealCameraPosition', () => {
-  const createTarget = (
-    x: number,
-    y: number,
-    z: number,
-    size: number
-  ): FocusTarget => ({
+  const createTarget = (x: number, y: number, z: number, size: number): FocusTarget => ({
     targetX: x,
     targetY: y,
     targetZ: z,
@@ -206,17 +201,9 @@ describe('calculateIdealCameraPosition', () => {
       const target = createTarget(1, 2, 3, 2.0);
       const result = calculateIdealCameraPosition(target);
 
-      const distance = Math.sqrt(
-        Math.pow(result.x - target.targetX, 2) +
-          Math.pow(result.y - target.targetY, 2) +
-          Math.pow(result.z - target.targetZ, 2)
-      );
-
-      // Distance should be approximately the ideal distance (not exact due to height factor)
-      // The horizontal distance should match
+      // The horizontal distance should match the calculated ideal distance
       const horizontalDistance = Math.sqrt(
-        Math.pow(result.x - target.targetX, 2) +
-          Math.pow(result.z - target.targetZ, 2)
+        Math.pow(result.x - target.targetX, 2) + Math.pow(result.z - target.targetZ, 2)
       );
       expect(horizontalDistance).toBeCloseTo(result.distance, 5);
     });
@@ -335,12 +322,7 @@ describe('calculateZoomInFactor', () => {
 // =============================================================================
 
 describe('calculateSoftFocus', () => {
-  const createTarget = (
-    x: number,
-    y: number,
-    z: number,
-    size: number
-  ): FocusTarget => ({
+  const createTarget = (x: number, y: number, z: number, size: number): FocusTarget => ({
     targetX: x,
     targetY: y,
     targetZ: z,
@@ -476,9 +458,7 @@ describe('calculateSoftFocus', () => {
       const result50 = calculateSoftFocus(pos50, target, idealCamera);
       const result20 = calculateSoftFocus(pos20, target, idealCamera);
 
-      expect(result20.interpolationFactor).toBeGreaterThan(
-        result50.interpolationFactor
-      );
+      expect(result20.interpolationFactor).toBeGreaterThan(result50.interpolationFactor);
     });
 
     it('new camera position is between current and ideal', () => {
@@ -722,11 +702,7 @@ describe('focus system integration', () => {
     const scenePos = sceneToWorldCoordinates(200, 0, -100);
 
     // Create focus target for primitive
-    const target = calculatePrimitiveFocusTarget(
-      scenePos.x,
-      scenePos.y,
-      scenePos.z
-    );
+    const target = calculatePrimitiveFocusTarget(scenePos.x, scenePos.y, scenePos.z);
 
     expect(target.targetX).toBe(2);
     expect(target.targetY).toBe(0.5);
@@ -776,4 +752,3 @@ describe('focus system integration', () => {
     expect(result.shouldMoveCamera).toBe(true);
   });
 });
-

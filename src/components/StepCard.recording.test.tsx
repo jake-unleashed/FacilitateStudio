@@ -79,7 +79,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={stepWithoutTarget}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -106,7 +105,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={stepWithoutTarget}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -138,7 +136,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={stepWithoutTarget}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -159,7 +156,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -180,7 +176,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -205,7 +200,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -239,7 +233,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -260,7 +253,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -283,7 +275,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -307,7 +298,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -335,7 +325,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={stepWithEndPosition}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -360,7 +349,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={stepWithEndPosition}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -385,7 +373,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={stepWithMissingObject}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -418,7 +405,6 @@ describe('StepCard - Recording Mode', () => {
       render(
         <StepCard
           step={infoCardStep}
-          stepNumber={1}
           isOpen={true}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}
@@ -441,7 +427,6 @@ describe('StepCard - Recording Mode', () => {
       const { container } = render(
         <StepCard
           step={mockMoveItemStep}
-          stepNumber={1}
           isOpen={false}
           onUpdate={mockOnUpdate}
           onMinimize={mockOnMinimize}

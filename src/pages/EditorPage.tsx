@@ -42,7 +42,10 @@ import {
   createUpdateTitleCommandHelper,
   createCreateStepCommandHelper,
   createUpdateStepCommandHelper,
+  createDeleteStepCommandHelper,
+  createReorderStepsCommandHelper,
   findObjectIndex,
+  findStepIndex,
 } from '../hooks/undoRedo/integration';
 import { UpdateObjectCommand, UndoRedoCommand } from '../hooks/undoRedo/types';
 import '../types/testHooks'; // Import for global type augmentation
@@ -1011,6 +1014,37 @@ export function EditorPage() {
     [undoRedoState.steps, executeCommand]
   );
 
+  const handleDeleteStep = useCallback(
+    (stepId: string) => {
+      const stepToDelete = undoRedoState.steps.find((step) => step.id === stepId);
+      if (!stepToDelete) {
+        console.warn('[EditorPage] Cannot delete step: not found', stepId);
+        return;
+      }
+
+      const index = findStepIndex(undoRedoState.steps, stepId);
+      const command = createDeleteStepCommandHelper(
+        stepToDelete,
+        index,
+        `Delete step: ${stepToDelete.title || 'Untitled'}`
+      );
+      executeCommand(command);
+    },
+    [undoRedoState.steps, executeCommand]
+  );
+
+  const handleReorderSteps = useCallback(
+    (previousOrder: string[], newOrder: string[]) => {
+      const command = createReorderStepsCommandHelper(
+        previousOrder,
+        newOrder,
+        'Reorder steps'
+      );
+      executeCommand(command);
+    },
+    [executeCommand]
+  );
+
   // Recording handlers for move-item step end position
   const handleStartRecordingPosition = useCallback(
     (stepId: string) => {
@@ -1140,6 +1174,8 @@ export function EditorPage() {
         onFocusObject={handleFocusObject}
         onAddStep={handleAddStep}
         onUpdateStep={handleUpdateStep}
+        onDeleteStep={handleDeleteStep}
+        onReorderSteps={handleReorderSteps}
         onStartRecordingPosition={handleStartRecordingPosition}
         onStopRecordingPosition={handleStopRecordingPosition}
         recordingPositionForStepId={recordingPositionForStepId}
