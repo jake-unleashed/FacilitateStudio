@@ -108,7 +108,9 @@ describe('AssetUploadButton', () => {
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]');
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]');
       await userEvent.click(uploadArea!);
 
       expect(clickSpy).toHaveBeenCalled();
@@ -309,7 +311,9 @@ describe('AssetUploadButton', () => {
     it('shows drop hint on drag enter', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]')!;
 
       fireEvent.dragEnter(uploadArea, {
         dataTransfer: { types: ['Files'] },
@@ -321,7 +325,9 @@ describe('AssetUploadButton', () => {
     it('hides drop hint on drag leave', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]')!;
 
       // Enter
       fireEvent.dragEnter(uploadArea, {
@@ -342,7 +348,9 @@ describe('AssetUploadButton', () => {
       mockOnUpload.mockResolvedValue(undefined);
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]')!;
       const file = createMockFile('model.obj');
 
       fireEvent.drop(uploadArea, {
@@ -360,7 +368,9 @@ describe('AssetUploadButton', () => {
     it('shows error for dropped invalid file', async () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]')!;
       const file = createMockFile('model.stl');
 
       fireEvent.drop(uploadArea, {
@@ -422,7 +432,9 @@ describe('AssetUploadButton', () => {
     it('handles drag counter correctly with nested elements', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]')!;
 
       // Multiple drag enters (simulating nested elements)
       fireEvent.dragEnter(uploadArea, {
@@ -830,7 +842,9 @@ describe('AssetUploadButton', () => {
     it('shows file box icon when dragging', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen
+        .getByText('Upload 3D Model')
+        .closest('div[class*="cursor-pointer"]')!;
 
       fireEvent.dragEnter(uploadArea, {
         dataTransfer: { types: ['Files'] },

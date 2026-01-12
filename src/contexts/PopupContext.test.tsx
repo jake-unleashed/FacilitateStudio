@@ -4,7 +4,14 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { PopupProvider, usePopup, createErrorPopup, createWarningPopup, createInfoPopup, createSuccessPopup } from './PopupContext';
+import {
+  PopupProvider,
+  usePopup,
+  createErrorPopup,
+  createWarningPopup,
+  createInfoPopup,
+  createSuccessPopup,
+} from './PopupContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import React from 'react';
 
@@ -48,14 +55,16 @@ describe('PopupContext', () => {
     it('throws error when used outside PopupProvider', () => {
       // Suppress console.error for this test
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+
       const TestComponent = () => {
         usePopup();
         return null;
       };
 
-      expect(() => render(<TestComponent />)).toThrow('usePopup must be used within a PopupProvider');
-      
+      expect(() => render(<TestComponent />)).toThrow(
+        'usePopup must be used within a PopupProvider'
+      );
+
       consoleSpy.mockRestore();
     });
 
@@ -64,7 +73,11 @@ describe('PopupContext', () => {
 
       render(
         <PopupProvider>
-          <TestConsumer onReady={(api) => { capturedApi = api; }} />
+          <TestConsumer
+            onReady={(api) => {
+              capturedApi = api;
+            }}
+          />
         </PopupProvider>
       );
 
@@ -82,7 +95,9 @@ describe('PopupContext', () => {
   describe('showPopup', () => {
     it('displays error popup', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'error', title: 'Error Title', message: 'Error message here' });
 
@@ -95,7 +110,9 @@ describe('PopupContext', () => {
 
     it('displays warning popup', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'warning', title: 'Warning Title', message: 'Warning message' });
 
@@ -107,7 +124,9 @@ describe('PopupContext', () => {
 
     it('displays info popup', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'info', title: 'Info Title', message: 'Info message' });
 
@@ -119,7 +138,9 @@ describe('PopupContext', () => {
 
     it('displays success popup', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'success', title: 'Success!', message: 'Operation completed' });
 
@@ -131,10 +152,12 @@ describe('PopupContext', () => {
 
     it('replaces existing popup when called again', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'error', title: 'First Popup', message: 'First message' });
-      
+
       await waitFor(() => {
         expect(screen.getByText('First Popup')).toBeInTheDocument();
       });
@@ -155,7 +178,9 @@ describe('PopupContext', () => {
   describe('dismissPopup', () => {
     it('dismisses popup when called', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'error', title: 'Test Popup', message: 'Test message' });
 
@@ -172,7 +197,9 @@ describe('PopupContext', () => {
 
     it('dismisses popup when OK button is clicked', async () => {
       let api: ReturnType<typeof usePopup>;
-      renderWithPopup((popupApi) => { api = popupApi; });
+      renderWithPopup((popupApi) => {
+        api = popupApi;
+      });
 
       api!.showPopup({ type: 'error', title: 'Test Popup', message: 'Test message' });
 
@@ -183,9 +210,12 @@ describe('PopupContext', () => {
       const okButton = screen.getByText('OK');
       fireEvent.click(okButton);
 
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      }, { timeout: 500 });
+      await waitFor(
+        () => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+        { timeout: 500 }
+      );
     });
   });
 
@@ -240,7 +270,11 @@ describe('PopupContext', () => {
       let api: ReturnType<typeof usePopup>;
       render(
         <PopupProvider>
-          <TestConsumer onReady={(popupApi) => { api = popupApi; }} />
+          <TestConsumer
+            onReady={(popupApi) => {
+              api = popupApi;
+            }}
+          />
         </PopupProvider>
       );
 
@@ -251,7 +285,11 @@ describe('PopupContext', () => {
       let api: ReturnType<typeof usePopup>;
       const { rerender } = render(
         <PopupProvider>
-          <TestConsumer onReady={(popupApi) => { api = popupApi; }} />
+          <TestConsumer
+            onReady={(popupApi) => {
+              api = popupApi;
+            }}
+          />
         </PopupProvider>
       );
 
@@ -260,7 +298,11 @@ describe('PopupContext', () => {
       // Force re-render to get updated state
       rerender(
         <PopupProvider>
-          <TestConsumer onReady={(popupApi) => { api = popupApi; }} />
+          <TestConsumer
+            onReady={(popupApi) => {
+              api = popupApi;
+            }}
+          />
         </PopupProvider>
       );
 

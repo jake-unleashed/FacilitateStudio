@@ -11,7 +11,15 @@ import { GlobalPopup } from './GlobalPopup';
 // Test Utilities
 // =============================================================================
 
-function TestTrigger({ type, title, message }: { type: 'error' | 'warning' | 'info' | 'success'; title: string; message: string }) {
+function TestTrigger({
+  type,
+  title,
+  message,
+}: {
+  type: 'error' | 'warning' | 'info' | 'success';
+  title: string;
+  message: string;
+}) {
   const { showPopup } = usePopup();
   return (
     <button onClick={() => showPopup({ type, title, message })} data-testid="trigger">
@@ -20,7 +28,11 @@ function TestTrigger({ type, title, message }: { type: 'error' | 'warning' | 'in
   );
 }
 
-function renderWithProvider(type: 'error' | 'warning' | 'info' | 'success', title: string, message: string) {
+function renderWithProvider(
+  type: 'error' | 'warning' | 'info' | 'success',
+  title: string,
+  message: string
+) {
   return render(
     <PopupProvider>
       <TestTrigger type={type} title={title} message={message} />
@@ -168,9 +180,12 @@ describe('GlobalPopup', () => {
 
       fireEvent.click(screen.getByText('OK'));
 
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      }, { timeout: 500 });
+      await waitFor(
+        () => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+        { timeout: 500 }
+      );
     });
 
     it('does not dismiss popup when clicking inside the card', async () => {

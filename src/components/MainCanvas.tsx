@@ -9,13 +9,7 @@ import {
 } from '../types';
 import { DEFAULT_CAMERA_POSITION, DEFAULT_CAMERA_TARGET } from '../constants';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
-import {
-  CameraControls,
-  Environment,
-  ContactShadows,
-  Grid,
-  PerspectiveCamera,
-} from '@react-three/drei';
+import { CameraControls, Environment, Grid, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
 import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
@@ -33,6 +27,310 @@ import { TransformGizmo } from './scene/TransformGizmo';
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
+
+// ============================================================================
+// Grid and Shadow Configuration (Unified)
+// ============================================================================
+
+/**
+ * The visible extent of the ground plane from center (in world units).
+ * This value is used by both the Grid (as fadeDistance) and the shadow plane
+ * to ensure they are perfectly aligned.
+ *
+ * - Grid uses this as fadeDistance: grid starts fading at this distance
+ * - Shadow plane uses this as scale: shadow extends this far in each direction
+ */
+const GROUND_PLANE_EXTENT = 35;
+
+/**
+ * How quickly the grid fades at its edges.
+ * Higher values = faster fade = sharper edge
+ * Lower values = slower fade = softer edge
+ */
+const GRID_FADE_STRENGTH = 1.5;
+
+// ============================================================================
+// Fixed Contact Shadows Component
+// ============================================================================
+
+/**
+ * FixedContactShadows - A contact shadow implementation that explicitly clears
+ * its render target before each render to prevent shadow trail accumulation.
+ *
+ * This fixes an issue where the EffectComposer's autoClear={false} setting
+ * causes the global renderer.autoClear to be disabled, which then causes
+ * ContactShadows to accumulate frames instead of clearing between renders.
+ *
+ * The fix: We explicitly clear the render target before rendering.
+ */
+interface FixedContactShadowsProps {
+  opacity?: number;
+  width?: number;
+  height?: number;
+  blur?: number;
+  far?: number;
+  resolution?: number;
+  smooth?: boolean;
+  color?: string;
+  scale?: number | [number, number];
+  depthWrite?: boolean;
+}
+
+const FixedContactShadows: React.FC<FixedContactShadowsProps> = ({
+  opacity = 0.4,
+  width = 1,
+  height = 1,
+  blur = 1,
+  far = 10,
+  resolution = 512,
+  smooth = true,
+  color = '#000000',
+  scale = 10,
+  depthWrite = false,
+}) => {
+  const ref = useRef<THREE.Group>(null);
+  const scene = useThree((state) => state.scene);
+  const gl = useThree((state) => state.gl);
+  const shadowCameraRef = useRef<THREE.OrthographicCamera>(null);
+
+  // Calculate dimensions
+  const scaledWidth = width * (Array.isArray(scale) ? scale[0] : scale);
+  const scaledHeight = height * (Array.isArray(scale) ? scale[1] : scale);
+
+  // Create render targets and materials (memoized)
+  const [
+    renderTarget,
+    renderTargetBlur,
+    planeGeometry,
+    depthMaterial,
+    blurPlane,
+    horizontalBlurMaterial,
+    verticalBlurMaterial,
+  ] = useMemo(() => {
+    const rt = new THREE.WebGLRenderTarget(resolution, resolution);
+    const rtBlur = new THREE.WebGLRenderTarget(resolution, resolution);
+    rt.texture.generateMipmaps = rtBlur.texture.generateMipmaps = false;
+
+    const geo = new THREE.PlaneGeometry(scaledWidth, scaledHeight).rotateX(Math.PI / 2);
+    const blurMesh = new THREE.Mesh(geo);
+
+    const depthMat = new THREE.MeshDepthMaterial();
+    depthMat.depthTest = depthMat.depthWrite = false;
+    depthMat.onBeforeCompile = (shader) => {
+      shader.uniforms = {
+        ...shader.uniforms,
+        ucolor: { value: new THREE.Color(color) },
+      };
+      shader.fragmentShader = shader.fragmentShader.replace(
+        `void main() {`,
+        `uniform vec3 ucolor;
+           void main() {`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'vec4( vec3( 1.0 - fragCoordZ ), opacity );',
+        'vec4( ucolor * fragCoordZ * 2.0, ( 1.0 - fragCoordZ ) * 1.0 );'
+      );
+    };
+
+    // Import blur shaders dynamically
+    const hBlurMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null },
+        h: { value: 1.0 / 256.0 },
+      },
+      vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+      fragmentShader: `
+          uniform sampler2D tDiffuse;
+          uniform float h;
+          varying vec2 vUv;
+          void main() {
+            vec4 sum = vec4(0.0);
+            sum += texture2D(tDiffuse, vec2(vUv.x - 4.0 * h, vUv.y)) * 0.051;
+            sum += texture2D(tDiffuse, vec2(vUv.x - 3.0 * h, vUv.y)) * 0.0918;
+            sum += texture2D(tDiffuse, vec2(vUv.x - 2.0 * h, vUv.y)) * 0.12245;
+            sum += texture2D(tDiffuse, vec2(vUv.x - 1.0 * h, vUv.y)) * 0.1531;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y)) * 0.1633;
+            sum += texture2D(tDiffuse, vec2(vUv.x + 1.0 * h, vUv.y)) * 0.1531;
+            sum += texture2D(tDiffuse, vec2(vUv.x + 2.0 * h, vUv.y)) * 0.12245;
+            sum += texture2D(tDiffuse, vec2(vUv.x + 3.0 * h, vUv.y)) * 0.0918;
+            sum += texture2D(tDiffuse, vec2(vUv.x + 4.0 * h, vUv.y)) * 0.051;
+            gl_FragColor = sum;
+          }
+        `,
+    });
+
+    const vBlurMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null },
+        v: { value: 1.0 / 256.0 },
+      },
+      vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+      fragmentShader: `
+          uniform sampler2D tDiffuse;
+          uniform float v;
+          varying vec2 vUv;
+          void main() {
+            vec4 sum = vec4(0.0);
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y - 4.0 * v)) * 0.051;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y - 3.0 * v)) * 0.0918;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y - 2.0 * v)) * 0.12245;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y - 1.0 * v)) * 0.1531;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y)) * 0.1633;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y + 1.0 * v)) * 0.1531;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y + 2.0 * v)) * 0.12245;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y + 3.0 * v)) * 0.0918;
+            sum += texture2D(tDiffuse, vec2(vUv.x, vUv.y + 4.0 * v)) * 0.051;
+            gl_FragColor = sum;
+          }
+        `,
+    });
+
+    vBlurMat.depthTest = hBlurMat.depthTest = false;
+
+    return [rt, rtBlur, geo, depthMat, blurMesh, hBlurMat, vBlurMat];
+  }, [resolution, scaledWidth, scaledHeight, color]);
+
+  // Blur helper function
+  const blurShadows = useCallback(
+    (blurAmount: number) => {
+      if (!shadowCameraRef.current) return;
+
+      blurPlane.visible = true;
+      blurPlane.material = horizontalBlurMaterial;
+      horizontalBlurMaterial.uniforms.tDiffuse.value = renderTarget.texture;
+      horizontalBlurMaterial.uniforms.h.value = (blurAmount * 1) / 256;
+      gl.setRenderTarget(renderTargetBlur);
+      gl.render(blurPlane, shadowCameraRef.current);
+
+      blurPlane.material = verticalBlurMaterial;
+      verticalBlurMaterial.uniforms.tDiffuse.value = renderTargetBlur.texture;
+      verticalBlurMaterial.uniforms.v.value = (blurAmount * 1) / 256;
+      gl.setRenderTarget(renderTarget);
+      gl.render(blurPlane, shadowCameraRef.current);
+
+      blurPlane.visible = false;
+    },
+    [gl, renderTarget, renderTargetBlur, blurPlane, horizontalBlurMaterial, verticalBlurMaterial]
+  );
+
+  // Render shadows each frame
+  useFrame(() => {
+    if (!shadowCameraRef.current || !ref.current) return;
+
+    const initialBackground = scene.background;
+    const initialOverrideMaterial = scene.overrideMaterial;
+
+    ref.current.visible = false;
+    scene.background = null;
+    scene.overrideMaterial = depthMaterial;
+
+    // THE FIX: Explicitly clear the render target before rendering
+    // This prevents shadow trail accumulation caused by EffectComposer's autoClear={false}
+    gl.setRenderTarget(renderTarget);
+    gl.clear(true, true, false); // Clear color and depth, not stencil
+
+    gl.render(scene, shadowCameraRef.current);
+
+    blurShadows(blur);
+    if (smooth) blurShadows(blur * 0.4);
+
+    gl.setRenderTarget(null);
+    ref.current.visible = true;
+    scene.overrideMaterial = initialOverrideMaterial;
+    scene.background = initialBackground;
+  });
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      renderTarget.dispose();
+      renderTargetBlur.dispose();
+      planeGeometry.dispose();
+      depthMaterial.dispose();
+      horizontalBlurMaterial.dispose();
+      verticalBlurMaterial.dispose();
+    };
+  }, [
+    renderTarget,
+    renderTargetBlur,
+    planeGeometry,
+    depthMaterial,
+    horizontalBlurMaterial,
+    verticalBlurMaterial,
+  ]);
+
+  return (
+    // eslint-disable-next-line react/no-unknown-property
+    <group rotation-x={Math.PI / 2} position={[0, -0.01, 0]} ref={ref}>
+      {/* eslint-disable react/no-unknown-property */}
+      <mesh geometry={planeGeometry} scale={[1, -1, 1]} rotation={[-Math.PI / 2, 0, 0]}>
+        <meshBasicMaterial
+          transparent
+          map={renderTarget.texture}
+          opacity={opacity}
+          depthWrite={depthWrite}
+        />
+      </mesh>
+      {/* eslint-enable react/no-unknown-property */}
+      <orthographicCamera
+        ref={shadowCameraRef}
+        args={[-scaledWidth / 2, scaledWidth / 2, scaledHeight / 2, -scaledHeight / 2, 0, far]}
+      />
+    </group>
+  );
+};
+
+// ============================================================================
+// Shadow System Debugger
+// ============================================================================
+
+/**
+ * ContactShadowDebugger - Monitors for shadow trail issues
+ * Logs when render target is being cleared and tracks frame consistency
+ */
+const ContactShadowDebugger: React.FC = () => {
+  const { gl } = useThree();
+  const frameCountRef = useRef(0);
+  const lastAutoClearRef = useRef<boolean | null>(null);
+
+  useFrame(() => {
+    frameCountRef.current++;
+
+    // Log whenever autoClear state changes (this helps detect when EffectComposer modifies it)
+    if (lastAutoClearRef.current !== gl.autoClear) {
+      console.log('[ContactShadowDebugger] autoClear changed:', {
+        previous: lastAutoClearRef.current,
+        current: gl.autoClear,
+        frame: frameCountRef.current,
+      });
+      lastAutoClearRef.current = gl.autoClear;
+    }
+
+    // Periodic status log every 600 frames (~10 seconds at 60fps)
+    if (frameCountRef.current % 600 === 0) {
+      console.log('[ContactShadowDebugger] Status:', {
+        autoClear: gl.autoClear,
+        autoClearColor: gl.autoClearColor,
+        autoClearDepth: gl.autoClearDepth,
+        frame: frameCountRef.current,
+      });
+    }
+  });
+
+  return null;
+};
 
 // ============================================================================
 // Constants
@@ -1078,15 +1376,16 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
   return (
     <>
+      {/* Contact shadow debugger - monitors for trail issues in dev mode */}
+      {IS_DEV && <ContactShadowDebugger />}
+
       {/* Enhanced lighting for better model visibility */}
       <ambientLight intensity={1.2} />
-      {/* eslint-disable-next-line react/no-unknown-property */}
-      <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow />
+      <directionalLight position={[10, 15, 10]} intensity={1.8} />
       <directionalLight position={[-10, 10, -5]} intensity={0.8} />
       <pointLight position={[10, 10, 10]} intensity={2.0} />
       <pointLight position={[-10, 8, -10]} intensity={1.5} />
-      {/* eslint-disable-next-line react/no-unknown-property */}
-      <spotLight position={[0, 20, 0]} angle={0.6} penumbra={0.5} intensity={2.5} castShadow />
+      <spotLight position={[0, 20, 0]} angle={0.6} penumbra={0.5} intensity={2.5} />
 
       {/* Preview Move Item Step - renders outline and handles animation */}
       {previewMode && previewStep?.type === 'move-item' && (
@@ -1106,6 +1405,39 @@ const SceneContent: React.FC<SceneContentProps> = ({
       </Suspense>
 
       <PerspectiveCamera makeDefault position={DEFAULT_CAMERA_POSITION} fov={35} />
+
+      {/* FixedContactShadows - Custom implementation that explicitly clears render target
+          to prevent shadow trail accumulation caused by EffectComposer's autoClear={false}
+          Scale is matched to GROUND_PLANE_EXTENT for perfect grid alignment
+          
+          Shadow settings tuned for:
+          - Darker, tighter shadow when objects touch ground
+          - Shadow dissipates as objects lift off (controlled by 'far')
+          - Minimal scattering for clean, focused shadows */}
+      <FixedContactShadows
+        opacity={0.18}
+        scale={GROUND_PLANE_EXTENT * 2}
+        blur={1.2}
+        far={1.5}
+        resolution={1024}
+        smooth={true}
+        color="#1e293b"
+      />
+
+      {/* Grid visible from both above and below
+          fadeDistance matches GROUND_PLANE_EXTENT to align with shadow plane */}
+      <Grid
+        infiniteGrid
+        cellSize={1}
+        sectionSize={5}
+        fadeDistance={GROUND_PLANE_EXTENT}
+        fadeStrength={GRID_FADE_STRENGTH}
+        sectionColor="#94a3b8"
+        cellColor="#cbd5e1"
+        sectionThickness={0.8}
+        cellThickness={0.4}
+        side={THREE.DoubleSide}
+      />
 
       {/* ChildSelectionProvider wraps everything for child outline support */}
       <ChildSelectionProvider>
@@ -1238,27 +1570,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
           isDragging={dragState?.hasMoved ?? false}
         />
       )}
-
-      <ContactShadows
-        position={[0, -0.01, 0]}
-        opacity={0.2}
-        scale={20}
-        blur={2.5}
-        far={1}
-        resolution={256} // Lower resolution for better performance (default is 512)
-        frames={1} // Only render shadow once (static shadows)
-      />
-
-      {/* Grid visible from both above and below */}
-      <Grid
-        infiniteGrid
-        fadeDistance={40}
-        sectionColor="#94a3b8"
-        cellColor="#cbd5e1"
-        sectionThickness={1.0}
-        cellThickness={0.4}
-        side={THREE.DoubleSide}
-      />
 
       {/* Premium CameraControls - tuned for beginners */}
       <CameraControls

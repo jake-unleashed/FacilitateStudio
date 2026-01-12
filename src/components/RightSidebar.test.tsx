@@ -633,11 +633,7 @@ describe('RightSidebar', () => {
         },
       });
       render(
-        <RightSidebar
-          {...defaultProps}
-          object={objectWithOriginal}
-          onFocusObject={onFocusObject}
-        />
+        <RightSidebar {...defaultProps} object={objectWithOriginal} onFocusObject={onFocusObject} />
       );
       fireEvent.click(screen.getByTestId('reset-button'));
       expect(onFocusObject).toHaveBeenCalledTimes(1);
@@ -684,24 +680,64 @@ describe('RightSidebar', () => {
           {
             name: 'Child 1',
             path: ['Scene', 'Child1'],
-            localTransform: { x: 10, y: 5, z: 10, rotationX: 30, rotationY: 45, rotationZ: 60, scaleX: 1.5, scaleY: 1.5, scaleZ: 1.5 },
+            localTransform: {
+              x: 10,
+              y: 5,
+              z: 10,
+              rotationX: 30,
+              rotationY: 45,
+              rotationZ: 60,
+              scaleX: 1.5,
+              scaleY: 1.5,
+              scaleZ: 1.5,
+            },
           },
           {
             name: 'Child 2',
             path: ['Scene', 'Child2'],
-            localTransform: { x: -10, y: 2, z: -10, rotationX: -30, rotationY: -45, rotationZ: -60, scaleX: 0.5, scaleY: 0.5, scaleZ: 0.5 },
+            localTransform: {
+              x: -10,
+              y: 2,
+              z: -10,
+              rotationX: -30,
+              rotationY: -45,
+              rotationZ: -60,
+              scaleX: 0.5,
+              scaleY: 0.5,
+              scaleZ: 0.5,
+            },
           },
           {
             name: 'Child 3',
             path: ['Scene', 'Child3'],
-            localTransform: { x: 20, y: 10, z: 20, rotationX: 90, rotationY: 180, rotationZ: 45, scaleX: 2, scaleY: 2, scaleZ: 2 },
+            localTransform: {
+              x: 20,
+              y: 10,
+              z: 20,
+              rotationX: 90,
+              rotationY: 180,
+              rotationZ: 45,
+              scaleX: 2,
+              scaleY: 2,
+              scaleZ: 2,
+            },
           },
         ],
       });
       render(<RightSidebar {...defaultProps} object={objectWithMultipleChildren} />);
       fireEvent.click(screen.getByTestId('reset-button'));
 
-      const DEFAULT_TRANSFORM = { x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 };
+      const DEFAULT_TRANSFORM = {
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+      };
       expect(defaultProps.onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           children: [
@@ -715,9 +751,21 @@ describe('RightSidebar', () => {
   });
 
   describe('Child Mode Reset', () => {
-    const createChildMesh = (name: string, path: string[], localTransform = {
-      x: 10, y: 5, z: 10, rotationX: 30, rotationY: 45, rotationZ: 60, scaleX: 1.5, scaleY: 1.5, scaleZ: 1.5,
-    }) => ({ name, path, localTransform });
+    const createChildMesh = (
+      name: string,
+      path: string[],
+      localTransform = {
+        x: 10,
+        y: 5,
+        z: 10,
+        rotationX: 30,
+        rotationY: 45,
+        rotationZ: 60,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        scaleZ: 1.5,
+      }
+    ) => ({ name, path, localTransform });
 
     it('resets only the selected child in child mode', () => {
       const parent = createMockObject({
@@ -731,12 +779,35 @@ describe('RightSidebar', () => {
       render(<RightSidebar {...defaultProps} object={parent} selectedChild={selectedChild} />);
       fireEvent.click(screen.getByTestId('reset-button'));
 
-      const DEFAULT_TRANSFORM = { x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 };
+      const DEFAULT_TRANSFORM = {
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+      };
       expect(defaultProps.onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           children: [
             expect.objectContaining({ name: 'Child A', localTransform: DEFAULT_TRANSFORM }),
-            expect.objectContaining({ name: 'Child B', localTransform: { x: 10, y: 5, z: 10, rotationX: 30, rotationY: 45, rotationZ: 60, scaleX: 1.5, scaleY: 1.5, scaleZ: 1.5 } }),
+            expect.objectContaining({
+              name: 'Child B',
+              localTransform: {
+                x: 10,
+                y: 5,
+                z: 10,
+                rotationX: 30,
+                rotationY: 45,
+                rotationZ: 60,
+                scaleX: 1.5,
+                scaleY: 1.5,
+                scaleZ: 1.5,
+              },
+            }),
           ],
         })
       );
@@ -757,8 +828,28 @@ describe('RightSidebar', () => {
       render(<RightSidebar {...defaultProps} object={parent} selectedChild={selectedChild} />);
       fireEvent.click(screen.getByTestId('reset-button'));
 
-      const DEFAULT_TRANSFORM = { x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 };
-      const UNCHANGED = { x: 10, y: 5, z: 10, rotationX: 30, rotationY: 45, rotationZ: 60, scaleX: 1.5, scaleY: 1.5, scaleZ: 1.5 };
+      const DEFAULT_TRANSFORM = {
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+      };
+      const UNCHANGED = {
+        x: 10,
+        y: 5,
+        z: 10,
+        rotationX: 30,
+        rotationY: 45,
+        rotationZ: 60,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        scaleZ: 1.5,
+      };
 
       expect(defaultProps.onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -788,8 +879,28 @@ describe('RightSidebar', () => {
       render(<RightSidebar {...defaultProps} object={parent} selectedChild={selectedChild} />);
       fireEvent.click(screen.getByTestId('reset-button'));
 
-      const DEFAULT_TRANSFORM = { x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 };
-      const UNCHANGED = { x: 10, y: 5, z: 10, rotationX: 30, rotationY: 45, rotationZ: 60, scaleX: 1.5, scaleY: 1.5, scaleZ: 1.5 };
+      const DEFAULT_TRANSFORM = {
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+      };
+      const UNCHANGED = {
+        x: 10,
+        y: 5,
+        z: 10,
+        rotationX: 30,
+        rotationY: 45,
+        rotationZ: 60,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        scaleZ: 1.5,
+      };
 
       expect(defaultProps.onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({

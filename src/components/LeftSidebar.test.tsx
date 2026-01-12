@@ -188,9 +188,7 @@ describe('LeftSidebar', () => {
       const requestButton = screen.getByText('Request a 3D Model');
       fireEvent.click(requestButton);
       // Popup should appear with message about contacting Facilitate team
-      expect(
-        screen.getByText(/contact the Facilitate team/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/contact the Facilitate team/i)).toBeInTheDocument();
       // Popup should have a dialog role
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
@@ -256,14 +254,18 @@ describe('LeftSidebar', () => {
     });
 
     it('renders all objects when provided', () => {
-      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />);
+      renderWithProvider(
+        <LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />
+      );
       TEST_OBJECTS.forEach((obj) => {
         expect(screen.getByText(obj.name)).toBeInTheDocument();
       });
     });
 
     it('calls onSelectObject when object is clicked', () => {
-      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />);
+      renderWithProvider(
+        <LeftSidebar {...defaultProps} activeTab="objects" objects={TEST_OBJECTS} />
+      );
       fireEvent.click(screen.getByText('Test Cube'));
       expect(defaultProps.onSelectObject).toHaveBeenCalledWith('obj-1');
     });
@@ -390,14 +392,18 @@ describe('LeftSidebar', () => {
     };
 
     it('shows dropdown button for objects with children', () => {
-      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
+      renderWithProvider(
+        <LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />
+      );
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
       expect(dropdownButton).toBeInTheDocument();
     });
 
     it('expands to show children when dropdown is clicked', async () => {
-      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />);
+      renderWithProvider(
+        <LeftSidebar {...defaultProps} activeTab="objects" objects={[objectWithChildren]} />
+      );
       const parentItem = screen.getByText('Parent Object').closest('div');
       const dropdownButton = parentItem?.querySelector('button');
 
