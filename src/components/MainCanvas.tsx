@@ -45,6 +45,49 @@ const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'develo
  */
 const GRID_FADE_STRENGTH = 2.0;
 
+/**
+ * GridWithNoDepth - A wrapper around the drei Grid component that disables depth writing.
+ *
+ * Problem: The Grid component writes to the depth buffer, which interferes with the
+ * postprocessing Outline effect's depth comparison. This causes selection outlines to
+ * incorrectly appear as "hidden" (showing the hiddenEdgeColor) when objects are positioned
+ * on certain sides of the grid.
+ *
+ * Solution: Disable depthWrite on the Grid's shader material so it doesn't affect
+ * depth-based post-processing effects. Combined with renderOrder={-1}, this ensures
+ * the grid is purely visual and doesn't interfere with object selection outlines.
+ */
+interface GridWithNoDepthProps {
+  args: [number, number];
+  cellSize: number;
+  sectionSize: number;
+  fadeDistance: number;
+  fadeStrength: number;
+  sectionColor: string;
+  cellColor: string;
+  sectionThickness: number;
+  cellThickness: number;
+  side: THREE.Side;
+}
+
+const GridWithNoDepth: React.FC<GridWithNoDepthProps> = (props) => {
+  const gridRef = useRef<THREE.Mesh>(null);
+
+  useEffect(() => {
+    if (gridRef.current) {
+      // The Grid component creates a mesh with a custom shader material
+      // Disable depthWrite to prevent interference with Outline effect's depth comparison
+      const material = gridRef.current.material as THREE.ShaderMaterial;
+      if (material) {
+        material.depthWrite = false;
+      }
+    }
+  }, []);
+
+  // renderOrder={-1} ensures grid renders before scene objects
+  return <Grid ref={gridRef} {...props} renderOrder={-1} />;
+};
+
 // ============================================================================
 // Fixed Contact Shadows Component
 // ============================================================================
@@ -53,11 +96,12 @@ const GRID_FADE_STRENGTH = 2.0;
  * FixedContactShadows - A contact shadow implementation that explicitly clears
  * its render target before each render to prevent shadow trail accumulation.
  *
- * This fixes an issue where the EffectComposer's autoClear={false} setting
- * causes the global renderer.autoClear to be disabled, which then causes
- * ContactShadows to accumulate frames instead of clearing between renders.
+ * This fixes an issue where the EffectComposer could interfere with render target
+ * clearing, causing ContactShadows to accumulate frames instead of clearing
+ * between renders.
  *
- * The fix: We explicitly clear the render target before rendering.
+ * The fix: We explicitly clear the render target before rendering, making this
+ * component independent of EffectComposer's autoClear setting.
  */
 interface FixedContactShadowsProps {
   opacity?: number;
@@ -233,7 +277,7 @@ const FixedContactShadows: React.FC<FixedContactShadowsProps> = ({
     scene.overrideMaterial = depthMaterial;
 
     // THE FIX: Explicitly clear the render target before rendering
-    // This prevents shadow trail accumulation caused by EffectComposer's autoClear={false}
+    // This prevents shadow trail accumulation regardless of EffectComposer settings
     gl.setRenderTarget(renderTarget);
     gl.clear(true, true, false); // Clear color and depth, not stencil
 
@@ -1411,7 +1455,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <PerspectiveCamera makeDefault position={DEFAULT_CAMERA_POSITION} fov={35} />
 
       {/* FixedContactShadows - Custom implementation that explicitly clears render target
-          to prevent shadow trail accumulation caused by EffectComposer's autoClear={false}
+          to prevent shadow trail accumulation (independent of EffectComposer settings)
           Scale is matched to GROUND_PLANE_EXTENT for perfect grid alignment
           
           Shadow settings tuned for:
@@ -1430,8 +1474,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       {/* Fixed-size grid visible from both above and below.
           Grid size matches movement constraint boundary exactly.
-          Using args=[width, height] creates a fixed world-space grid. */}
-      <Grid
+          Using args=[width, height] creates a fixed world-space grid.
+          
+          GridWithNoDepth disables depthWrite to prevent the grid from 
+          interfering with the Outline effect's depth comparison. */}
+      <GridWithNoDepth
         args={[GROUND_PLANE_EXTENT * 2, GROUND_PLANE_EXTENT * 2]}
         cellSize={1}
         sectionSize={5}

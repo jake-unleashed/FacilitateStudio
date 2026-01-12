@@ -456,7 +456,9 @@ describe('useModelUpload', () => {
 
       // Should not need to load and preprocess since metrics are cached
       // (The processAsset function handles this)
-      expect(result.current.uploadProgress.stage).toBe('complete');
+      // Note: Progress stage remains 'idle' for recent assets - feedback is
+      // shown on the asset card instead of the upload button
+      expect(result.current.uploadProgress.stage).toBe('idle');
     });
 
     it('processes model when metrics not cached', async () => {

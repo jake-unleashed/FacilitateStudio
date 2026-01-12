@@ -2,10 +2,14 @@
  * Tests for RecentAssetsList component
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RecentAssetsList, stripFileExtension } from './RecentAssetsList';
+import {
+  RecentAssetsList,
+  stripFileExtension,
+  ADDED_FEEDBACK_DURATION_MS,
+} from './RecentAssetsList';
 import type { AssetMetadata } from '../types/model';
 
 // Mock formatRelativeDate
@@ -283,6 +287,214 @@ describe('RecentAssetsList', () => {
       // Package and Clock icons should be marked as aria-hidden
       const icons = container.querySelectorAll('[aria-hidden="true"]');
       expect(icons.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ===========================================================================
+  // "Added to Scene" Feedback
+  // ===========================================================================
+
+  describe('added to scene feedback', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    });
+
+    it('shows "Added to scene!" feedback when asset is clicked', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      // Initially should show the asset name
+      expect(screen.getByText('chair')).toBeInTheDocument();
+      expect(screen.queryByText('Added to scene!')).not.toBeInTheDocument();
+
+      // Click the asset
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(button);
+
+      // Should now show "Added to scene!" feedback
+      expect(screen.getByText('Added to scene!')).toBeInTheDocument();
+      // The asset name should still be visible (below the "Added to scene!" text)
+      expect(screen.getByText('chair')).toBeInTheDocument();
+    });
+
+    it('disables the button while showing feedback', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+
+      // Initially enabled
+      expect(button).not.toBeDisabled();
+
+      // Click the asset
+      await user.click(button);
+
+      // Button should now be disabled
+      expect(button).toBeDisabled();
+    });
+
+    it('updates aria-label when showing feedback', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      // Click the asset
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(button);
+
+      // Aria-label should update to indicate it was added
+      expect(screen.getByRole('button', { name: /chair added to scene/i })).toBeInTheDocument();
+    });
+
+    it('shows green styling when in feedback state', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      // Click the asset
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(button);
+
+      // Button should have green styling (border-green-200 class)
+      expect(button).toHaveClass('border-green-200');
+    });
+
+    it('resets feedback after timeout duration', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      // Click the asset
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(button);
+
+      // Verify feedback is showing
+      expect(screen.getByText('Added to scene!')).toBeInTheDocument();
+      expect(button).toBeDisabled();
+
+      // Advance time past the feedback duration
+      await act(async () => {
+        vi.advanceTimersByTime(ADDED_FEEDBACK_DURATION_MS + 100);
+      });
+
+      // Feedback should be reset - button should now be enabled and show the asset name
+      expect(screen.queryByText('Added to scene!')).not.toBeInTheDocument();
+      expect(screen.getByText('chair')).toBeInTheDocument();
+      expect(button).not.toBeDisabled();
+    });
+
+    it('only shows feedback on the clicked asset', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const assets = [
+        createMockAsset('1', { name: 'chair.obj' }),
+        createMockAsset('2', { name: 'table.obj' }),
+        createMockAsset('3', { name: 'lamp.obj' }),
+      ];
+
+      render(<RecentAssetsList assets={assets} onAddAsset={mockOnAddAsset} />);
+
+      // Click the second asset (table)
+      const tableButton = screen.getByRole('button', { name: /add table to scene/i });
+      await user.click(tableButton);
+
+      // Table button should be disabled and show feedback
+      expect(tableButton).toBeDisabled();
+
+      // Chair and lamp buttons should still be enabled
+      const chairButton = screen.getByRole('button', { name: /add chair to scene/i });
+      const lampButton = screen.getByRole('button', { name: /add lamp to scene/i });
+      expect(chairButton).not.toBeDisabled();
+      expect(lampButton).not.toBeDisabled();
+
+      // Only one "Added to scene!" should be visible
+      expect(screen.getAllByText('Added to scene!')).toHaveLength(1);
+    });
+
+    it('switches feedback when clicking different asset before timeout', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const assets = [
+        createMockAsset('1', { name: 'chair.obj' }),
+        createMockAsset('2', { name: 'table.obj' }),
+      ];
+
+      render(<RecentAssetsList assets={assets} onAddAsset={mockOnAddAsset} />);
+
+      // Click the chair
+      const chairButton = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(chairButton);
+
+      // Chair should show feedback
+      expect(chairButton).toBeDisabled();
+
+      // Advance time partially
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      // Click the table
+      const tableButton = screen.getByRole('button', { name: /add table to scene/i });
+      await user.click(tableButton);
+
+      // Now table should show feedback and chair should be back to normal
+      expect(tableButton).toBeDisabled();
+      expect(chairButton).not.toBeDisabled();
+
+      // Still only one "Added to scene!" visible
+      expect(screen.getAllByText('Added to scene!')).toHaveLength(1);
+    });
+
+    it('calls onAddAsset immediately (not delayed)', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(button);
+
+      // onAddAsset should be called immediately, not after timeout
+      expect(mockOnAddAsset).toHaveBeenCalledTimes(1);
+      expect(mockOnAddAsset).toHaveBeenCalledWith(asset);
+    });
+
+    it('cleans up timeout on unmount', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      const { unmount } = render(
+        <RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />
+      );
+
+      // Click the asset
+      const button = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(button);
+
+      // Unmount before timeout completes
+      unmount();
+
+      // Advancing time should not cause errors
+      expect(() => {
+        act(() => {
+          vi.advanceTimersByTime(ADDED_FEEDBACK_DURATION_MS + 100);
+        });
+      }).not.toThrow();
+    });
+
+    it('exports the feedback duration constant', () => {
+      // Verify the constant is exported and has the expected value
+      expect(ADDED_FEEDBACK_DURATION_MS).toBe(2500);
     });
   });
 });

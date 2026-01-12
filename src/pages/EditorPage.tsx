@@ -428,18 +428,12 @@ function EditorPageContent() {
     canvasRef.current = canvas;
   }, []);
 
-  const handleSelectObject = useCallback(
-    (id: string | null) => {
-      setSelectedObjectId(id);
-      // When selecting an object (not deselecting), switch to Objects tab IF the sidebar is already open
-      // This syncs the scene selection with the sidebar hierarchy, but respects the user's choice
-      // to keep the sidebar closed
-      if (id !== null && activeTab !== null && activeTab !== 'objects') {
-        setActiveTab('objects');
-      }
-    },
-    [activeTab]
-  );
+  const handleSelectObject = useCallback((id: string | null) => {
+    setSelectedObjectId(id);
+    // Note: We no longer auto-switch panels when selecting an object.
+    // Users can manually switch to the Objects tab if they want to see the hierarchy.
+    // This allows users to stay on the Add panel when adding multiple objects.
+  }, []);
 
   /**
    * Focus camera on a scene object or its child.

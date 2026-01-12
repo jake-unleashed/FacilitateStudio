@@ -356,14 +356,18 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       fileType: AssetMetadata['fileType'],
       existingObjects: SceneObject[],
       existingMetrics?: ModelMetrics,
-      existingChildren?: ChildMesh[]
+      existingChildren?: ChildMesh[],
+      /** Skip progress updates (used for recent assets where feedback is shown on the card) */
+      skipProgressUpdates?: boolean
     ): Promise<UploadResult | null> => {
       // Get metrics (compute if not provided)
       let metrics = existingMetrics;
       let children = existingChildren;
 
       if (!metrics) {
-        setProgress('processing', 50, { fileName: assetName });
+        if (!skipProgressUpdates) {
+          setProgress('processing', 50, { fileName: assetName });
+        }
 
         const assetData = await getAsset(assetId);
         if (!assetData) {
@@ -393,14 +397,18 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       }
 
       // Create scene object
-      setProgress('adding', 85, { fileName: assetName });
+      if (!skipProgressUpdates) {
+        setProgress('adding', 85, { fileName: assetName });
+      }
 
       const position = calculateOptimalPosition(metrics, existingObjects);
       const uniqueName = generateUniqueName(assetName, existingObjects);
       const sceneObject = createSceneObject(assetId, uniqueName, position, metrics, children);
 
-      // Complete
-      setProgress('complete', 100, { fileName: assetName });
+      // Complete (only update progress for actual uploads, not recent assets)
+      if (!skipProgressUpdates) {
+        setProgress('complete', 100, { fileName: assetName });
+      }
 
       const result: UploadResult = {
         assetMetadata: {
@@ -480,13 +488,15 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       try {
         // Pass cached metrics AND children from asset metadata
         // This avoids re-extraction when adding from recent assets
+        // Skip progress updates - feedback is shown on the asset card instead
         return await processAsset(
           asset.id,
           asset.name,
           asset.fileType,
           existingObjects,
           asset.metrics,
-          asset.children
+          asset.children,
+          true // skipProgressUpdates - recent asset cards handle their own feedback
         );
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Failed to add asset';

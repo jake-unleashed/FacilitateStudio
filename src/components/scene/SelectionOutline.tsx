@@ -17,6 +17,12 @@
  * - Smooth, anti-aliased edges
  * - Non-interactive (purely visual effect)
  * - Supports programmatic selection of THREE.Object3D
+ *
+ * Technical Notes:
+ * - xRay mode is enabled to bypass depth buffer issues that could cause outlines
+ *   to disappear at certain object positions (particularly when the Grid or other
+ *   scene elements interfere with depth comparison)
+ * - Hidden and visible edge colors are set to the same value for consistent appearance
  */
 
 /* eslint-disable react-refresh/only-export-components */
@@ -29,17 +35,17 @@ import * as THREE from 'three';
 // Constants
 // ============================================================================
 
-/** Selection outline color - blue for parent/root objects */
-const PARENT_SELECTION_COLOR = 0x3b82f6;
+/**
+ * Selection outline color - blue for parent/root objects (Tailwind blue-500)
+ * Used for both visible and hidden edges to ensure consistent appearance.
+ */
+const PARENT_OUTLINE_COLOR = 0x3b82f6;
 
-/** Child selection outline color - emerald to match UI */
-const CHILD_SELECTION_COLOR = 0x10b981;
-
-/** Hidden edge color (darker blue) */
-const HIDDEN_EDGE_COLOR = 0x1e40af;
-
-/** Hidden edge color for children (darker emerald) */
-const CHILD_HIDDEN_EDGE_COLOR = 0x059669;
+/**
+ * Child selection outline color - emerald to match UI (Tailwind emerald-500)
+ * Used for both visible and hidden edges to ensure consistent appearance.
+ */
+const CHILD_OUTLINE_COLOR = 0x10b981;
 
 // ============================================================================
 // Child Selection Context - Separate from parent selection
@@ -160,10 +166,13 @@ export const ChildOutlineEffect: React.FC = () => {
         blur
         edgeStrength={5}
         pulseSpeed={0}
-        visibleEdgeColor={CHILD_SELECTION_COLOR}
-        hiddenEdgeColor={CHILD_HIDDEN_EDGE_COLOR}
+        visibleEdgeColor={CHILD_OUTLINE_COLOR}
+        hiddenEdgeColor={CHILD_OUTLINE_COLOR}
         width={1024}
-        xRay={false}
+        // xRay={true} ensures outlines are visible even when depth buffer has artifacts
+        // from other scene elements (like the Grid). Without this, outlines can disappear
+        // when objects are positioned at certain coordinates.
+        xRay={true}
         blendFunction={BlendFunction.SCREEN}
       />
     </EffectComposer>
@@ -198,10 +207,13 @@ export const SelectionOutlineEffect: React.FC = () => {
         blur
         edgeStrength={5}
         pulseSpeed={0}
-        visibleEdgeColor={PARENT_SELECTION_COLOR}
-        hiddenEdgeColor={HIDDEN_EDGE_COLOR}
+        visibleEdgeColor={PARENT_OUTLINE_COLOR}
+        hiddenEdgeColor={PARENT_OUTLINE_COLOR}
         width={1024}
-        xRay={false}
+        // xRay={true} ensures outlines are visible even when depth buffer has artifacts
+        // from other scene elements (like the Grid). Without this, outlines can disappear
+        // when objects are positioned at certain coordinates.
+        xRay={true}
         blendFunction={BlendFunction.SCREEN}
       />
     </EffectComposer>
