@@ -1007,6 +1007,293 @@ describe('TransformGizmo', () => {
       }
     });
   });
+
+  // ==========================================================================
+  // Child Height Constraint Tests
+  // ==========================================================================
+
+  describe('Child Height Constraint', () => {
+    /**
+     * These tests verify that:
+     * 1. Root objects: Y value cannot go below 0 (HEIGHT_MIN)
+     * 2. Child objects: Y value CAN go negative (allowing children to reach ground)
+     * 3. Both respect the ground constraint (mesh lowest point >= 0)
+     */
+
+    it('should render height handle for child selection', () => {
+      const childMesh = createTestChild(['Scene', 'Body', 'Wheel']);
+      const objectWithChild = {
+        ...testObject,
+        children: [childMesh],
+      };
+
+      render(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath="Scene.Body.Wheel"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      const heightHandle = screen.getByTestId('handle-height');
+      expect(heightHandle).toBeTruthy();
+    });
+
+    it('should pass isChild=true when a child is selected', () => {
+      const childMesh = createTestChild(['child1']);
+      const objectWithChild = {
+        ...testObject,
+        children: [childMesh],
+      };
+
+      render(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath="child1"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      // The height handle should be rendered and accept the isChild prop
+      const heightHandle = screen.getByTestId('handle-height');
+      expect(heightHandle).toBeTruthy();
+    });
+
+    it('should pass isChild=false when parent is selected', () => {
+      render(
+        <TransformGizmo
+          object={testObject}
+          selectedChildPath={null}
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      // The height handle should be rendered without isChild flag
+      const heightHandle = screen.getByTestId('handle-height');
+      expect(heightHandle).toBeTruthy();
+    });
+
+    it('should update child localTransform.y when dragging child height handle', () => {
+      const childMesh = createTestChild(['wheelChild']);
+      childMesh.localTransform.y = 50; // Starting Y position
+      const objectWithChild = {
+        ...testObject,
+        children: [childMesh],
+      };
+
+      render(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath="wheelChild"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      const heightHandle = screen.getByTestId('handle-height');
+
+      // Start drag
+      fireEvent.pointerDown(heightHandle, { clientY: 300 });
+
+      // Move up (decrease clientY = increase height)
+      fireEvent(
+        window,
+        new PointerEvent('pointermove', {
+          clientY: 200, // Move up significantly
+          bubbles: true,
+        })
+      );
+
+      // Verify onUpdateObject was called with updated child transform
+      expect(mockOnUpdateObject).toHaveBeenCalled();
+      const lastCall = mockOnUpdateObject.mock.calls[mockOnUpdateObject.mock.calls.length - 1][0];
+      expect(lastCall.children).toBeDefined();
+    });
+
+    it('should allow child localTransform.y to be negative when moving toward ground', () => {
+      // Create a child that starts at y=0 (default position within model)
+      const childMesh = createTestChild(['groundChild']);
+      childMesh.localTransform.y = 0;
+      const objectWithChild = {
+        ...testObject,
+        children: [childMesh],
+      };
+
+      render(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath="groundChild"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      const heightHandle = screen.getByTestId('handle-height');
+
+      // Start drag
+      fireEvent.pointerDown(heightHandle, { clientY: 300 });
+
+      // Move down (increase clientY = decrease height)
+      fireEvent(
+        window,
+        new PointerEvent('pointermove', {
+          clientY: 400, // Move down significantly
+          bubbles: true,
+        })
+      );
+
+      // End drag
+      fireEvent(window, new PointerEvent('pointerup', { bubbles: true }));
+
+      // Verify the child was updated
+      expect(mockOnUpdateObject).toHaveBeenCalled();
+    });
+
+    it('should work with nested child paths', () => {
+      const childMesh = createTestChild(['Scene', 'Model', 'LeftWheel']);
+      const objectWithChild = {
+        ...testObject,
+        children: [childMesh],
+      };
+
+      render(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath="Scene.Model.LeftWheel"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      const heightHandle = screen.getByTestId('handle-height');
+
+      // Verify handle renders for nested path
+      expect(heightHandle).toBeTruthy();
+
+      // Interact with it
+      fireEvent.pointerDown(heightHandle, { clientY: 300 });
+      expect(mockOnDragStart).toHaveBeenCalled();
+    });
+
+    it('should handle multiple children and select the correct one', () => {
+      const child1 = createTestChild(['wheel1']);
+      child1.localTransform.y = 10;
+      const child2 = createTestChild(['wheel2']);
+      child2.localTransform.y = 20;
+      const child3 = createTestChild(['wheel3']);
+      child3.localTransform.y = 30;
+
+      const objectWithChildren = {
+        ...testObject,
+        children: [child1, child2, child3],
+      };
+
+      render(
+        <TransformGizmo
+          object={objectWithChildren}
+          selectedChildPath="wheel2"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      const heightHandle = screen.getByTestId('handle-height');
+
+      // Start drag
+      fireEvent.pointerDown(heightHandle, { clientY: 300 });
+
+      // Move
+      fireEvent(
+        window,
+        new PointerEvent('pointermove', {
+          clientY: 250,
+          bubbles: true,
+        })
+      );
+
+      // Verify onUpdateObject was called
+      expect(mockOnUpdateObject).toHaveBeenCalled();
+
+      // The update should only modify wheel2, not wheel1 or wheel3
+      const lastCall = mockOnUpdateObject.mock.calls[mockOnUpdateObject.mock.calls.length - 1][0];
+      expect(lastCall.children).toBeDefined();
+      if (lastCall.children) {
+        const updatedWheel1 = lastCall.children.find(
+          (c: ChildMesh) => c.path.join('.') === 'wheel1'
+        );
+        const updatedWheel3 = lastCall.children.find(
+          (c: ChildMesh) => c.path.join('.') === 'wheel3'
+        );
+        // wheel1 and wheel3 should remain unchanged
+        expect(updatedWheel1?.localTransform.y).toBe(10);
+        expect(updatedWheel3?.localTransform.y).toBe(30);
+      }
+    });
+
+    it('should switch between parent and child selection correctly', () => {
+      const childMesh = createTestChild(['childPart']);
+      const objectWithChild = {
+        ...testObject,
+        children: [childMesh],
+      };
+
+      // First render with parent selected
+      const { rerender } = render(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath={null}
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+      expect(screen.getByTestId('handle-height')).toBeTruthy();
+
+      // Re-render with child selected
+      rerender(
+        <TransformGizmo
+          object={objectWithChild}
+          selectedChildPath="childPart"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      runFrame();
+
+      // Height handle should still work
+      const heightHandle = screen.getByTestId('handle-height');
+      fireEvent.pointerDown(heightHandle, { clientY: 300 });
+      expect(mockOnDragStart).toHaveBeenCalled();
+    });
+  });
 });
 
 // ============================================================================

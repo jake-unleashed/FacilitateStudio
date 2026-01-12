@@ -67,6 +67,16 @@ interface HeightHandleProps extends BaseHandleProps {
   scaleFactor: number;
   /** Three.js mesh for child - used to extract effective world scale */
   childMesh: THREE.Object3D | null;
+  /**
+   * Whether this handle is editing a child object.
+   *
+   * When true, allows negative Y values because a child's localTransform.y = 0
+   * represents its default position within the model (not ground level).
+   * To move a child down to ground level, localTransform.y may need to be negative.
+   *
+   * The ground constraint (minWorldY >= 0) still applies to prevent going below ground.
+   */
+  isChild?: boolean;
 }
 
 /** Props specific to XZHandle */
@@ -206,7 +216,15 @@ const POSITION_LERP_FACTOR = 0.08;
  */
 const SOURCE_SMOOTHING_FACTOR = 0.15;
 
-/** Height value constraints */
+/**
+ * Height value constraints (in internal units, where 100 = 1 world unit/meter).
+ *
+ * HEIGHT_MIN: Minimum Y value for ROOT objects only. Child objects can have
+ * negative localTransform.y values to move below their default position within
+ * the model (while still respecting ground constraint).
+ *
+ * HEIGHT_MAX: Maximum Y value (500 internal units = 5 meters above ground).
+ */
 const HEIGHT_MIN = 0;
 const HEIGHT_MAX = 500;
 
@@ -542,6 +560,7 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
   worldPosition,
   scaleFactor,
   childMesh,
+  isChild = false,
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -648,8 +667,16 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
         clampedInternalDelta = Math.max(internalDelta, maxDownDelta);
       }
 
-      // Also clamp to HEIGHT_MAX for upward movement
-      const newValue = clamp(state.initialValue + clampedInternalDelta, HEIGHT_MIN, HEIGHT_MAX);
+      // Calculate effective height minimum based on object type:
+      // - Root objects: HEIGHT_MIN (0) - their Y value represents ground level
+      // - Child objects: -Infinity - their localTransform.y is relative to default position,
+      //   so negative values are valid (ground constraint above prevents going below ground)
+      const effectiveHeightMin = isChild ? -Infinity : HEIGHT_MIN;
+      const newValue = clamp(
+        state.initialValue + clampedInternalDelta,
+        effectiveHeightMin,
+        HEIGHT_MAX
+      );
       onChange(newValue);
     };
 
@@ -673,7 +700,7 @@ const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isDragging, onChange, onDragEnd, tooltip]);
+  }, [isDragging, onChange, onDragEnd, tooltip, isChild]);
 
   return (
     <div className="relative">
@@ -1570,6 +1597,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
               worldPosition={heightPositionRef.current}
               scaleFactor={scaleFactor}
               childMesh={childMesh}
+              isChild={selectedChildPath !== null}
             />
           </div>
         </Html>
