@@ -22,7 +22,7 @@ import {
   SelectionOutlineEffect,
 } from './scene/SelectionOutline';
 import { Selection } from '@react-three/postprocessing';
-import { TransformGizmo } from './scene/TransformGizmo';
+import { TransformGizmo } from './scene/transformGizmo';
 import { FixedContactShadows, ContactShadowDebugger } from './scene/FixedContactShadows';
 import { IndustrialPrimitive } from './scene/IndustrialPrimitive';
 import { DragHandler, CursorManager, DragState } from './scene/DragHandler';

@@ -57,7 +57,7 @@ describe('programmaticTestUtil', () => {
         }
         undoStackSize++;
         return {
-          type: 'updateObject',
+          type: 'updateObject' as const,
           timestamp: Date.now(),
           objectId,
           previousState: mockObjects[0],
@@ -72,7 +72,7 @@ describe('programmaticTestUtil', () => {
         }
         undoStackSize++;
         return {
-          type: 'updateObject',
+          type: 'updateObject' as const,
           timestamp: Date.now(),
           objectId,
           previousState: mockObjects[0],

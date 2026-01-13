@@ -7,7 +7,7 @@ import { ProjectMetadata } from '../types/project';
 
 // Mock useProjects hook
 const mockDeleteProject = vi.fn();
-const mockGetProjectMetadata = vi.fn<[], ProjectMetadata[]>();
+const mockGetProjectMetadata = vi.fn<() => ProjectMetadata[]>();
 const mockSaveProject = vi.fn();
 let mockIsLoading = false;
 

@@ -13,15 +13,22 @@ import {
 export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  /** Error message if project operations fail (can be displayed to user) */
+  const [error, setError] = useState<string | null>(null);
   const persistence = useMemo(() => new LocalStorageProjectPersistence(), []);
+
+  /** Clear the current error */
+  const clearError = useCallback(() => setError(null), []);
 
   // Load projects from localStorage on mount
   useEffect(() => {
     try {
       const loaded = persistence.loadProjects();
       setProjects(loaded);
+      setError(null);
     } catch (error) {
       console.error('Failed to load projects from localStorage:', error);
+      setError('Failed to load projects. Your browser storage may be corrupted or inaccessible.');
     } finally {
       setIsLoading(false);
     }
@@ -32,8 +39,10 @@ export function useProjects() {
     (updatedProjects: Project[]) => {
       try {
         persistence.saveProjects(updatedProjects);
+        setError(null); // Clear any previous errors on successful save
       } catch (error) {
         console.error('Failed to save projects to localStorage:', error);
+        setError('Failed to save project. Your browser storage may be full or inaccessible.');
         throw error;
       }
     },
@@ -112,6 +121,10 @@ export function useProjects() {
   return {
     projects,
     isLoading,
+    /** Error message if project operations failed */
+    error,
+    /** Clear the current error */
+    clearError,
     getProject,
     saveProject,
     deleteProject,

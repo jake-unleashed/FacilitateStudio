@@ -356,6 +356,8 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       setRecentAssets(await getRecentAssets(20));
     } catch (error) {
       console.error('[useModelUpload] Failed to refresh recent assets:', error);
+      // Non-critical error - don't show popup, but set error for toast display
+      setLastError('Failed to load asset library. Try refreshing the page.');
     }
   }, []);
 

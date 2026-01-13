@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import {
   PopupProvider,
   usePopup,
@@ -99,7 +99,9 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'error', title: 'Error Title', message: 'Error message here' });
+      await act(async () => {
+        api!.showPopup({ type: 'error', title: 'Error Title', message: 'Error message here' });
+      });
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -114,7 +116,9 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'warning', title: 'Warning Title', message: 'Warning message' });
+      await act(async () => {
+        api!.showPopup({ type: 'warning', title: 'Warning Title', message: 'Warning message' });
+      });
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -128,7 +132,9 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'info', title: 'Info Title', message: 'Info message' });
+      await act(async () => {
+        api!.showPopup({ type: 'info', title: 'Info Title', message: 'Info message' });
+      });
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -142,7 +148,9 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'success', title: 'Success!', message: 'Operation completed' });
+      await act(async () => {
+        api!.showPopup({ type: 'success', title: 'Success!', message: 'Operation completed' });
+      });
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -156,13 +164,17 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'error', title: 'First Popup', message: 'First message' });
+      await act(async () => {
+        api!.showPopup({ type: 'error', title: 'First Popup', message: 'First message' });
+      });
 
       await waitFor(() => {
         expect(screen.getByText('First Popup')).toBeInTheDocument();
       });
 
-      api!.showPopup({ type: 'success', title: 'Second Popup', message: 'Second message' });
+      await act(async () => {
+        api!.showPopup({ type: 'success', title: 'Second Popup', message: 'Second message' });
+      });
 
       await waitFor(() => {
         expect(screen.queryByText('First Popup')).not.toBeInTheDocument();
@@ -182,13 +194,17 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'error', title: 'Test Popup', message: 'Test message' });
+      await act(async () => {
+        api!.showPopup({ type: 'error', title: 'Test Popup', message: 'Test message' });
+      });
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
       });
 
-      api!.dismissPopup();
+      await act(async () => {
+        api!.dismissPopup();
+      });
 
       await waitFor(() => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -201,7 +217,9 @@ describe('PopupContext', () => {
         api = popupApi;
       });
 
-      api!.showPopup({ type: 'error', title: 'Test Popup', message: 'Test message' });
+      await act(async () => {
+        api!.showPopup({ type: 'error', title: 'Test Popup', message: 'Test message' });
+      });
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -293,7 +311,9 @@ describe('PopupContext', () => {
         </PopupProvider>
       );
 
-      api!.showPopup({ type: 'error', title: 'Test', message: 'Message' });
+      await act(async () => {
+        api!.showPopup({ type: 'error', title: 'Test', message: 'Message' });
+      });
 
       // Force re-render to get updated state
       rerender(

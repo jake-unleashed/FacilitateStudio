@@ -418,7 +418,7 @@ describe('useProjectAutoSave', () => {
     });
 
     it('should timeout thumbnail capture if too slow', async () => {
-      const slowCapture: () => Promise<string | undefined> = vi.fn(
+      const slowCapture = vi.fn<() => Promise<string | undefined>>(
         () =>
           new Promise((resolve) => setTimeout(() => resolve('data:image/png;base64,slow'), 5000))
       );

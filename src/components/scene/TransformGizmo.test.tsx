@@ -63,7 +63,7 @@ vi.mock('../../utils/modelLoaders', () => ({
 }));
 
 // Import after mocks
-import { TransformGizmo } from './TransformGizmo';
+import { TransformGizmo } from './transformGizmo';
 
 // ============================================================================
 // Test Helpers

@@ -10,6 +10,11 @@
  *   showPopup({ type: 'error', title: 'Upload Failed', message: 'File is too large' });
  */
 
+/* eslint-disable react-refresh/only-export-components */
+// Disabled: This file exports both PopupProvider (component) and usePopup (hook).
+// Co-locating hooks with their context is the standard React pattern.
+// Helper functions are in popupHelpers.ts but re-exported here for convenience.
+
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
 // =============================================================================
@@ -101,33 +106,14 @@ export function usePopup(): PopupContextValue {
 }
 
 // =============================================================================
-// Convenience Functions
+// Re-export Convenience Functions
 // =============================================================================
+// Helper functions are in a separate file to allow fast refresh to work properly.
+// Re-exported here for backward compatibility.
 
-/**
- * Helper to create error popup options
- */
-export function createErrorPopup(title: string, message: string): PopupOptions {
-  return { type: 'error', title, message };
-}
-
-/**
- * Helper to create warning popup options
- */
-export function createWarningPopup(title: string, message: string): PopupOptions {
-  return { type: 'warning', title, message };
-}
-
-/**
- * Helper to create info popup options
- */
-export function createInfoPopup(title: string, message: string): PopupOptions {
-  return { type: 'info', title, message };
-}
-
-/**
- * Helper to create success popup options
- */
-export function createSuccessPopup(title: string, message: string): PopupOptions {
-  return { type: 'success', title, message };
-}
+export {
+  createErrorPopup,
+  createWarningPopup,
+  createInfoPopup,
+  createSuccessPopup,
+} from './popupHelpers';
