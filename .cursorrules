@@ -1,0 +1,314 @@
+# Facilitate Studio - Cursor AI Rules
+
+This project is a 3D simulation editor built with React, TypeScript, and Three.js via React Three Fiber.
+
+---
+
+## Project Overview
+
+**Facilitate Studio** is a desktop-first web application for creating interactive 3D simulations and tutorials. Users can:
+- Import 3D models (GLB, GLTF, FBX, OBJ)
+- Arrange objects in a scene
+- Create simulation steps (info cards, move-item animations)
+- Preview simulations with camera animations
+- Save/load projects with IndexedDB persistence
+
+---
+
+## AI Approach
+
+When working on this codebase:
+
+1. **Analyze before acting** - Read relevant code, understand patterns, then make changes
+2. **Be proactive** - Don't just report issues, fix them
+3. **Use judgment** - You understand the codebase; make decisions accordingly
+4. **Maintain quality** - This is a production codebase; keep it that way
+
+For complex tasks, think through the problem thoroughly before implementing.
+
+---
+
+## Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| **Framework** | React 18 with TypeScript |
+| **3D Rendering** | Three.js via @react-three/fiber and @react-three/drei |
+| **State** | React hooks (useState, useCallback, useMemo, useRef) |
+| **Routing** | react-router-dom v7 |
+| **Styling** | Tailwind CSS with custom "liquid glass" design system |
+| **Persistence** | IndexedDB via idb library |
+| **Icons** | lucide-react |
+| **Build** | Vite |
+| **Testing** | Vitest with @testing-library/react |
+| **Linting** | ESLint + Prettier |
+
+---
+
+## TypeScript Rules
+
+### Strict Mode
+- TypeScript strict mode is enabled - honor it
+- Never use `any` - use proper types, generics, or `unknown`
+- One explicit exception: `[key: string]: any` in `SceneObject.properties` for extensibility
+
+### Type Patterns
+- Use discriminated unions for type-safe branching
+- Export types from the module where they're defined
+- Use interfaces for objects, type aliases for unions/primitives
+- JSDoc comments on all exported functions and complex types
+
+### Examples
+
+```typescript
+// ✅ Good: Discriminated union for step types
+type StepType = 'info-card' | 'move-item';
+interface SimStep {
+  type?: StepType | null;
+  // ... type-specific fields
+}
+
+// ✅ Good: Generic with constraints
+function findByProperty<T extends { id: string }>(items: T[], id: string): T | undefined {
+  return items.find(item => item.id === id);
+}
+
+// ❌ Bad: Using any
+function processData(data: any) { ... }
+```
+
+---
+
+## React Patterns
+
+### Component Structure
+- Functional components only, no class components
+- Components in `src/components/` with `.tsx` extension
+- One component per file (exceptions: related sub-components)
+- Use React.FC sparingly, prefer explicit prop types
+
+### Hook Patterns
+```typescript
+// Memoize expensive computations
+const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
+
+// Memoize callbacks that are passed as props
+const handleClick = useCallback((id: string) => {
+  setSelectedId(id);
+}, []);
+
+// Use refs for mutable values that don't trigger re-renders
+const hasNotifiedRef = useRef(false);
+
+// Use refs for stale closure prevention in event handlers
+const dragStateRef = useRef<DragState | null>(null);
+useEffect(() => {
+  dragStateRef.current = dragState;
+}, [dragState]);
+```
+
+### State Management
+- Local state with useState for component-specific data
+- Context for global state (PopupContext pattern)
+- Custom hooks for complex logic (useModelUpload, useProjects, useUndoRedo)
+- No Redux or Zustand
+
+---
+
+## Three.js / React Three Fiber Patterns
+
+### Performance
+- Pre-allocate THREE objects outside render loops
+- Use refs to avoid re-creating objects
+- Memoize position/rotation/scale arrays
+- Dispose of materials, geometries, and render targets on cleanup
+
+```typescript
+// ✅ Good: Pre-allocated objects
+const raycaster = useRef(new THREE.Raycaster());
+const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+
+// ✅ Good: Memoized transform arrays
+const position = useMemo<[number, number, number]>(
+  () => [obj.transform.x / 100, obj.transform.y / 100, -obj.transform.z / 100],
+  [obj.transform.x, obj.transform.y, obj.transform.z]
+);
+
+// ✅ Good: Cleanup on unmount
+useEffect(() => {
+  return () => {
+    renderTarget.dispose();
+    material.dispose();
+  };
+}, [renderTarget, material]);
+```
+
+### Component Memoization
+```typescript
+// Use React.memo with custom comparator for 3D objects
+const IndustrialPrimitive = memo(IndustrialPrimitiveInner, (prevProps, nextProps) => {
+  return (
+    prevProps.obj.id === nextProps.obj.id &&
+    prevProps.obj.transform.x === nextProps.obj.transform.x &&
+    // ... compare all relevant props
+  );
+});
+```
+
+---
+
+## Error Handling Requirements
+
+### Use PopupContext for User-Facing Errors
+```typescript
+import { usePopup } from '../contexts/PopupContext';
+
+function MyComponent() {
+  const { showPopup } = usePopup();
+  
+  const handleError = (error: Error) => {
+    showPopup({
+      type: 'error',
+      title: 'Upload Failed',
+      message: error.message
+    });
+  };
+}
+```
+
+### Helper Functions
+```typescript
+import { createErrorPopup, createWarningPopup, createSuccessPopup } from '../contexts/PopupContext';
+
+showPopup(createErrorPopup('Storage Full', 'Unable to save project. Please free up space.'));
+```
+
+### Error Handling Rules
+- Never swallow errors silently - always log or display
+- Use try/catch for async operations
+- Provide actionable error messages for users
+- Log technical details to console for debugging
+
+---
+
+## Testing Requirements
+
+### Test Structure
+- Tests co-located with source files: `Component.test.tsx`
+- Describe blocks for logical grouping
+- Test file structure: setup → tests by category
+
+```typescript
+describe('GlobalPopup', () => {
+  describe('rendering', () => {
+    it('does not render when no popup is shown', () => { ... });
+    it('renders popup dialog when triggered', async () => { ... });
+  });
+  
+  describe('accessibility', () => {
+    it('has role="dialog"', async () => { ... });
+  });
+});
+```
+
+### Testing Patterns
+- Use `renderWithProvider()` helpers for context-dependent components
+- Use `waitFor` for async assertions
+- Test user interactions with `@testing-library/user-event`
+- Mock Three.js/WebGL in `src/test/setup.ts`
+
+### Run Tests
+```bash
+npm run test          # Run once
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report
+```
+
+---
+
+## File Organization
+
+```
+src/
+├── components/           # React components
+│   ├── scene/           # Three.js scene components
+│   └── preview/         # Preview mode components
+├── contexts/            # React contexts (PopupContext)
+├── hooks/               # Custom hooks
+│   └── undoRedo/        # Undo/redo system
+├── pages/               # Route-level pages
+├── persistence/         # IndexedDB operations
+├── types/               # TypeScript types
+├── utils/               # Utility functions
+└── test/                # Test setup
+```
+
+### Naming Conventions
+- Components: `PascalCase.tsx` (e.g., `MainCanvas.tsx`)
+- Hooks: `useCamelCase.ts` (e.g., `useModelUpload.ts`)
+- Utils: `camelCase.ts` (e.g., `focusUtils.ts`)
+- Tests: `*.test.ts` or `*.test.tsx`
+- Types: `camelCase.ts` for modules (e.g., `project.ts`)
+
+---
+
+## UI/Styling
+
+### Reference STYLE_GUIDE.md for:
+- Color palette (slate scale, blue accents)
+- Typography (Inter, JetBrains Mono)
+- Border radius system (32px panels, 20px cards, 12px badges)
+- Glass panel effects
+- Shadow system
+- Button and input variants
+
+### Key Tailwind Classes
+```jsx
+// Glass panel
+<div className="rounded-[32px] border border-white/40 bg-white/70 shadow-glass backdrop-blur-xl">
+
+// Standard card
+<div className="rounded-[20px] border border-white/40 bg-white/40 p-4 shadow-sm">
+
+// Primary button
+<button className="rounded-[20px] bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/30">
+```
+
+---
+
+## Quality Checklist
+
+Before completing any feature:
+- [ ] TypeScript compiles with no errors (`npm run typecheck`)
+- [ ] ESLint passes (`npm run lint`)
+- [ ] Prettier formatted (`npm run format`)
+- [ ] Tests pass (`npm run test`)
+- [ ] Errors shown to users via PopupContext
+- [ ] Edge cases handled (empty data, null values, loading states)
+- [ ] Accessibility: ARIA labels, keyboard navigation, focus management
+- [ ] Performance: No new memory leaks, dispose Three.js resources
+
+---
+
+## Common Gotchas
+
+1. **Scene units vs world units**: Scene uses centimeters (transform.x), Three.js uses meters (divide by 100)
+2. **Z-axis flip**: Scene Z is positive-forward, Three.js Z is negative-forward (`-obj.transform.z`)
+3. **Stale closures**: Use refs for values accessed in event handlers
+4. **IndexedDB limits**: Blob storage limited, warn users on large models
+5. **Camera controls**: CameraControls from camera-controls lib, not drei's OrbitControls
+
+---
+
+## Slash Commands
+
+Use these Cursor commands for quality workflows:
+- `/post-feature` - **Main command** - comprehensive production-ready check (includes refactoring, testing, accessibility)
+- `/refactor` - Improve existing code without adding features
+- `/health` - Weekly codebase audit
+- `/release` - Pre-deployment checklist
+- `/fix-tests` - Debug failing tests
+
+**Workflow**: Plan (Cursor built-in) → Implement → `/post-feature` → Push
+
+See `AI_WORKFLOW.md` for detailed documentation.
