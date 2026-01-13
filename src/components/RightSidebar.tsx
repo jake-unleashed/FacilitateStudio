@@ -650,10 +650,9 @@ const ActionButtonsSection = memo<ActionButtonsSectionProps>(
             Reset
             <div
               ref={helpIconRef}
-              className="ml-1 cursor-help"
+              className="ml-1"
               onMouseEnter={() => setShowTooltip(true)}
               onMouseLeave={() => setShowTooltip(false)}
-              onClick={(e) => e.stopPropagation()}
             >
               <HelpCircle size={12} className="text-blue-400" />
             </div>

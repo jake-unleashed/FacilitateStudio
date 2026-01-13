@@ -1010,7 +1010,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                   </div>
                   <p className="text-sm font-medium text-slate-500">No objects in scene</p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Add objects from the{' '}
+                    Add objects from{' '}
                     <button
                       onClick={handleSwitchToAddPanel}
                       className="font-semibold text-blue-500 underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-600"

@@ -285,7 +285,7 @@ export function HomePage(): JSX.Element {
               className="transition-transform duration-300 group-hover:rotate-90 group-hover:scale-110"
               aria-hidden="true"
             />
-            Create New Simulation
+            Create New Project
           </Button>
         </section>
 

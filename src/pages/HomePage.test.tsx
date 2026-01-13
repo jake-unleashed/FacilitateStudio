@@ -119,10 +119,10 @@ describe('HomePage', () => {
   });
 
   describe('create new button', () => {
-    it('renders the Create New Simulation button', () => {
+    it('renders the Create New Project button', () => {
       renderHomePage();
 
-      const button = screen.getByRole('button', { name: /create new simulation/i });
+      const button = screen.getByRole('button', { name: /create new project/i });
       expect(button).toBeInTheDocument();
     });
 
@@ -130,7 +130,7 @@ describe('HomePage', () => {
       renderHomePage();
       const user = userEvent.setup();
 
-      const button = screen.getByRole('button', { name: /create new simulation/i });
+      const button = screen.getByRole('button', { name: /create new project/i });
       await user.click(button);
 
       // Should navigate to editor page
