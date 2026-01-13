@@ -34,13 +34,7 @@ vi.mock('@react-three/postprocessing', () => ({
   Selection: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="selection">{children}</div>
   ),
-  Select: ({
-    children,
-    enabled,
-  }: {
-    children: React.ReactNode;
-    enabled: boolean;
-  }) => (
+  Select: ({ children, enabled }: { children: React.ReactNode; enabled: boolean }) => (
     <div data-testid="select" data-enabled={String(enabled)}>
       {children}
     </div>
@@ -204,7 +198,7 @@ describe('SelectionOutline', () => {
 
   describe('ChildSelectionProvider', () => {
     it('should provide child selection context to descendants', () => {
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -217,9 +211,9 @@ describe('SelectionOutline', () => {
         </ChildSelectionProvider>
       );
 
-      expect(contextValue).not.toBeNull();
-      expect(contextValue?.selectedChildren).toEqual([]);
-      expect(typeof contextValue?.setSelectedChildren).toBe('function');
+      expect(contextValue!).not.toBeNull();
+      expect(contextValue!.selectedChildren).toEqual([]);
+      expect(typeof contextValue!.setSelectedChildren).toBe('function');
     });
 
     it('should return null when used outside provider', () => {
@@ -233,7 +227,7 @@ describe('SelectionOutline', () => {
         new THREE.MeshStandardMaterial()
       );
 
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -247,14 +241,14 @@ describe('SelectionOutline', () => {
       );
 
       // Initial state
-      expect(contextValue?.selectedChildren).toEqual([]);
+      expect(contextValue!.selectedChildren).toEqual([]);
 
       // Update selection
       act(() => {
-        contextValue?.setSelectedChildren([mockMesh]);
+        contextValue!.setSelectedChildren([mockMesh]);
       });
 
-      expect(contextValue?.selectedChildren).toContain(mockMesh);
+      expect(contextValue!.selectedChildren).toContain(mockMesh);
     });
   });
 
@@ -271,7 +265,7 @@ describe('SelectionOutline', () => {
       const mockGroup = new THREE.Group();
       mockGroup.add(mockMesh);
 
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -285,7 +279,7 @@ describe('SelectionOutline', () => {
         </ChildSelectionProvider>
       );
 
-      expect(contextValue?.selectedChildren).toContain(mockMesh);
+      expect(contextValue!.selectedChildren).toContain(mockMesh);
     });
 
     it('should not add meshes when disabled', () => {
@@ -296,7 +290,7 @@ describe('SelectionOutline', () => {
       const mockGroup = new THREE.Group();
       mockGroup.add(mockMesh);
 
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -310,7 +304,7 @@ describe('SelectionOutline', () => {
         </ChildSelectionProvider>
       );
 
-      expect(contextValue?.selectedChildren).not.toContain(mockMesh);
+      expect(contextValue!.selectedChildren).not.toContain(mockMesh);
     });
 
     it('should remove meshes when disabled after being enabled', () => {
@@ -321,7 +315,7 @@ describe('SelectionOutline', () => {
       const mockGroup = new THREE.Group();
       mockGroup.add(mockMesh);
 
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -335,7 +329,7 @@ describe('SelectionOutline', () => {
         </ChildSelectionProvider>
       );
 
-      expect(contextValue?.selectedChildren).toContain(mockMesh);
+      expect(contextValue!.selectedChildren).toContain(mockMesh);
 
       rerender(
         <ChildSelectionProvider>
@@ -344,11 +338,11 @@ describe('SelectionOutline', () => {
         </ChildSelectionProvider>
       );
 
-      expect(contextValue?.selectedChildren).not.toContain(mockMesh);
+      expect(contextValue!.selectedChildren).not.toContain(mockMesh);
     });
 
     it('should handle null object gracefully', () => {
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -362,7 +356,7 @@ describe('SelectionOutline', () => {
         </ChildSelectionProvider>
       );
 
-      expect(contextValue?.selectedChildren).toEqual([]);
+      expect(contextValue!.selectedChildren).toEqual([]);
     });
 
     it('should render nothing (returns null)', () => {
@@ -520,7 +514,7 @@ describe('SelectionOutline', () => {
     });
 
     it('should make child selection context available to children', () => {
-      let contextValue: ReturnType<typeof useChildSelection> = null;
+      let contextValue: ReturnType<typeof useChildSelection>;
 
       const TestConsumer = () => {
         contextValue = useChildSelection();
@@ -533,7 +527,7 @@ describe('SelectionOutline', () => {
         </SelectionProvider>
       );
 
-      expect(contextValue).not.toBeNull();
+      expect(contextValue!).not.toBeNull();
     });
   });
 

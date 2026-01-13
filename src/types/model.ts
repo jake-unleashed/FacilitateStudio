@@ -66,6 +66,13 @@ export interface ModelMetrics {
   maxDimension: number;
   /** Number of triangles (for complexity warnings) */
   triangleCount?: number;
+  /**
+   * Scale factor applied during preprocessing to normalize the model size.
+   * This is the multiplier used to scale the original model to fit within
+   * MODEL_TARGET_SIZE (default 2.0 units). Stored for debugging and potential
+   * future features like "show original size".
+   */
+  originalScale?: number;
 }
 
 // =============================================================================

@@ -181,6 +181,10 @@ function createSceneObject(
       // Store model dimensions for accurate ground height calculations during scale/rotation
       // This is the preprocessed model's height in world units (before any scale applied)
       modelHeight: metrics.size.y,
+      // Store the base scale factor applied during preprocessing to normalize the model.
+      // This is useful for debugging and potential future features like "show original size".
+      // The user's scale controls (scaleX/Y/Z) multiply on top of this base scale.
+      baseScale: metrics.originalScale,
     },
     children: children && children.length > 0 ? children : undefined,
   };
@@ -188,19 +192,25 @@ function createSceneObject(
 
 /**
  * Serialize THREE.js metrics to plain JSON objects.
+ *
+ * @param metrics - The metrics from preprocessing (may contain THREE.js Vector3/Box3)
+ * @param originalScale - The scale factor applied during preprocessing to normalize the model
  */
-function serializeMetrics(metrics: {
-  boundingBox: {
-    min: { x: number; y: number; z: number };
-    max: { x: number; y: number; z: number };
-  };
-  center: { x: number; y: number; z: number };
-  size: { x: number; y: number; z: number };
-  bottomY: number;
-  topY: number;
-  maxDimension: number;
-  triangleCount?: number;
-}): ModelMetrics {
+function serializeMetrics(
+  metrics: {
+    boundingBox: {
+      min: { x: number; y: number; z: number };
+      max: { x: number; y: number; z: number };
+    };
+    center: { x: number; y: number; z: number };
+    size: { x: number; y: number; z: number };
+    bottomY: number;
+    topY: number;
+    maxDimension: number;
+    triangleCount?: number;
+  },
+  originalScale?: number
+): ModelMetrics {
   return {
     boundingBox: {
       min: {
@@ -220,6 +230,7 @@ function serializeMetrics(metrics: {
     topY: metrics.topY,
     maxDimension: metrics.maxDimension,
     triangleCount: metrics.triangleCount,
+    originalScale,
   };
 }
 
@@ -382,7 +393,8 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           // Use ArrayBuffer for proper embedded texture support in GLB/FBX
           const arrayBuffer = await blobToArrayBuffer(assetData.blob);
           const preprocessed = await loadAndPreprocessModelFromArrayBuffer(arrayBuffer, fileType);
-          metrics = serializeMetrics(preprocessed.metrics);
+          // Include originalScale from preprocessing to track the normalization factor
+          metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
 
           // Extract child meshes from the model hierarchy
           children = extractChildMeshes(preprocessed.model);

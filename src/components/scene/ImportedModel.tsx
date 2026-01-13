@@ -37,6 +37,89 @@ const SELECTION_INTENSITY = 0.25;
 const HOVER_INTENSITY = 0.18;
 
 // =============================================================================
+// Transform Utilities
+// =============================================================================
+
+/**
+ * Computes pivot points for a mesh in its parent's local space.
+ * Used to apply rotation around the geometric center and scale around the base.
+ *
+ * @param mesh - The Three.js object to compute pivots for
+ * @returns Object containing localCenter (geometric center) and localBase (bottom-center)
+ */
+function computeMeshPivots(mesh: THREE.Object3D): {
+  localCenter: THREE.Vector3;
+  localBase: THREE.Vector3;
+} {
+  // Reset to identity to get the "base" bounding box
+  mesh.position.set(0, 0, 0);
+  mesh.rotation.set(0, 0, 0);
+  mesh.scale.set(1, 1, 1);
+  mesh.updateMatrixWorld(true);
+
+  // Compute world-space bounding box
+  const box = new THREE.Box3().setFromObject(mesh);
+
+  // Get geometric center (for rotation)
+  const worldCenter = new THREE.Vector3();
+  box.getCenter(worldCenter);
+
+  // Get base center (center X, min Y, center Z) for scaling
+  // This keeps objects grounded when scaled
+  const worldBase = new THREE.Vector3(worldCenter.x, box.min.y, worldCenter.z);
+
+  // Convert both to the mesh's parent's local space
+  const parent = mesh.parent as THREE.Object3D | null;
+  const localCenter = worldCenter.clone();
+  const localBase = worldBase.clone();
+
+  if (parent) {
+    parent.updateMatrixWorld(true);
+    const parentWorldMatrixInverse = parent.matrixWorld.clone().invert();
+    localCenter.applyMatrix4(parentWorldMatrixInverse);
+    localBase.applyMatrix4(parentWorldMatrixInverse);
+  }
+
+  return { localCenter, localBase };
+}
+
+/**
+ * Calculates the position offset needed to rotate around a pivot point.
+ *
+ * When rotating around origin, a pivot point P moves to R(P).
+ * To keep P stationary, we offset by P - R(P).
+ *
+ * @param pivot - The pivot point to rotate around
+ * @param rotation - The rotation to apply (in radians)
+ * @returns Position offset to compensate for rotation
+ */
+function calculateRotationOffset(pivot: THREE.Vector3, rotation: THREE.Euler): THREE.Vector3 {
+  const rotatedPivot = pivot.clone().applyEuler(rotation);
+  return pivot.clone().sub(rotatedPivot);
+}
+
+/**
+ * Calculates the position offset needed to scale around a pivot point.
+ *
+ * When scaling around origin, a pivot point P moves to S*P.
+ * To keep P stationary, we offset by P - S*P = P*(1-S).
+ *
+ * @param pivot - The pivot point to scale around
+ * @param scale - The scale factors (x, y, z)
+ * @returns Position offset to compensate for scaling
+ */
+function calculateScaleOffset(
+  pivot: THREE.Vector3,
+  scale: { x: number; y: number; z: number }
+): THREE.Vector3 {
+  return new THREE.Vector3(
+    pivot.x * (1 - scale.x),
+    pivot.y * (1 - scale.y),
+    pivot.z * (1 - scale.z)
+  );
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -583,6 +666,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   }, [model, opacity]);
 
   // Apply child transforms when they change
+  // Uses center-based rotation (around visual center) and base-centered scaling (around bottom-center)
   useEffect(() => {
     if (!model || !obj.children) return;
 
@@ -591,18 +675,42 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
       const entry = childPathToMesh.get(pathStr);
       if (!entry) continue;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mesh = entry.mesh as any;
+      const mesh = entry.mesh as THREE.Object3D;
       const lt = entry.childInfo.localTransform;
 
-      // Apply local transform offset (position only for now)
-      // Scale of 100 matches the parent transform convention
-      mesh.position.set(lt.x / 100, lt.y / 100, -lt.z / 100);
-      mesh.rotation.set(
+      // User-specified position offset (scaled and Z-negated per coordinate convention)
+      const userOffset = new THREE.Vector3(lt.x / 100, lt.y / 100, -lt.z / 100);
+
+      // Compute pivot points dynamically from the mesh's bounding box
+      // - localCenter: geometric center (for rotation)
+      // - localBase: bottom-center (for scaling, keeps objects grounded)
+      const { localCenter, localBase } = computeMeshPivots(mesh);
+
+      // Convert user rotation from degrees to radians
+      const rotationEuler = new THREE.Euler(
         THREE.MathUtils.degToRad(lt.rotationX),
         THREE.MathUtils.degToRad(lt.rotationY),
-        THREE.MathUtils.degToRad(lt.rotationZ)
+        THREE.MathUtils.degToRad(lt.rotationZ),
+        'XYZ'
       );
+
+      // Calculate position offsets for pivot-based transforms
+      const rotationOffset = calculateRotationOffset(localCenter, rotationEuler);
+      const scaleOffset = calculateScaleOffset(localBase, {
+        x: lt.scaleX,
+        y: lt.scaleY,
+        z: lt.scaleZ,
+      });
+
+      // Apply combined position: user offset + rotation compensation + scale compensation
+      mesh.position.set(
+        userOffset.x + rotationOffset.x + scaleOffset.x,
+        userOffset.y + rotationOffset.y + scaleOffset.y,
+        userOffset.z + rotationOffset.z + scaleOffset.z
+      );
+
+      // Apply rotation and scale
+      mesh.rotation.copy(rotationEuler);
       mesh.scale.set(lt.scaleX, lt.scaleY, lt.scaleZ);
     }
   }, [model, obj.children, childPathToMesh]);

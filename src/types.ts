@@ -31,6 +31,12 @@ export interface ChildMesh {
   path: string[];
   /** Local transform offset from the default position (applied on top of parent) */
   localTransform: Transform;
+  /**
+   * Geometry center offset from mesh origin (for center-based rotation).
+   * This is the offset from the mesh's local origin to the center of its bounding box.
+   * Used to rotate around the visual center instead of the arbitrary pivot point.
+   */
+  geometryCenterOffset?: { x: number; y: number; z: number };
 }
 
 /**

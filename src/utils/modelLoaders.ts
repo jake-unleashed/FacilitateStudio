@@ -552,6 +552,125 @@ export interface ExtractedChildInfo {
 }
 
 /**
+ * Check if an object or any of its descendants has actual renderable geometry.
+ * This verifies not just that a THREE.Mesh exists, but that it has vertices.
+ *
+ * @param obj - The Three.js object to check
+ * @returns True if the object has actual geometry with vertices
+ */
+function hasActualGeometry(obj: THREE.Object3D): boolean {
+  if (obj instanceof THREE.Mesh && obj.geometry) {
+    const positionAttr = obj.geometry.attributes.position;
+    if (positionAttr && positionAttr.count > 0) {
+      return true;
+    }
+  }
+
+  for (const child of obj.children) {
+    if (hasActualGeometry(child)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Calculate the geometry center offset for a mesh or group.
+ * This is the offset from the object's local origin to the center of its bounding box.
+ * Used for center-based rotation instead of rotating around the arbitrary pivot point.
+ *
+ * For meshes: computes the geometry bounding box directly (local space)
+ * For groups: computes combined bounding box of all descendant geometries in local space
+ *
+ * @param obj - The Three.js object to calculate center for
+ * @returns The center offset in the object's local space
+ */
+function calculateGeometryCenterOffset(obj: THREE.Object3D): { x: number; y: number; z: number } {
+  const center = new THREE.Vector3();
+
+  // Ensure world matrices are up to date for transform calculations
+  obj.updateMatrixWorld(true);
+
+  // For a single Mesh, compute the geometry bounding box directly
+  // This gives us the center in the mesh's local coordinate space
+  if (obj instanceof THREE.Mesh && obj.geometry) {
+    obj.geometry.computeBoundingBox();
+    const box = obj.geometry.boundingBox;
+
+    if (box && !box.isEmpty()) {
+      box.getCenter(center);
+
+      if (IS_DEV) {
+        console.log(
+          `[calculateGeometryCenterOffset] Mesh "${obj.name}": center = (${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`
+        );
+      }
+
+      return { x: center.x, y: center.y, z: center.z };
+    }
+    return { x: 0, y: 0, z: 0 };
+  }
+
+  // For groups/objects with children, compute combined bounding box
+  // by iterating through all descendant geometries in local space
+  const box = new THREE.Box3();
+  let hasGeometry = false;
+
+  obj.traverse((child: THREE.Object3D) => {
+    if (child instanceof THREE.Mesh && child.geometry) {
+      // Verify the mesh has actual vertices, not just an empty geometry
+      const positionAttr = child.geometry.attributes.position;
+      if (!positionAttr || positionAttr.count === 0) return;
+
+      child.geometry.computeBoundingBox();
+      const geomBox = child.geometry.boundingBox;
+
+      if (geomBox && !geomBox.isEmpty()) {
+        // Transform geometry bounding box corners to the target object's local space
+        // We need to account for the child's transform relative to obj
+        const corners = [
+          new THREE.Vector3(geomBox.min.x, geomBox.min.y, geomBox.min.z),
+          new THREE.Vector3(geomBox.min.x, geomBox.min.y, geomBox.max.z),
+          new THREE.Vector3(geomBox.min.x, geomBox.max.y, geomBox.min.z),
+          new THREE.Vector3(geomBox.min.x, geomBox.max.y, geomBox.max.z),
+          new THREE.Vector3(geomBox.max.x, geomBox.min.y, geomBox.min.z),
+          new THREE.Vector3(geomBox.max.x, geomBox.min.y, geomBox.max.z),
+          new THREE.Vector3(geomBox.max.x, geomBox.max.y, geomBox.min.z),
+          new THREE.Vector3(geomBox.max.x, geomBox.max.y, geomBox.max.z),
+        ];
+
+        // Get the transform from child to obj's local space
+        // child local -> world -> obj local
+        const childWorldMatrix = child.matrixWorld.clone();
+        const objWorldMatrixInverse = obj.matrixWorld.clone().invert();
+        const localMatrix = objWorldMatrixInverse.multiply(childWorldMatrix);
+
+        for (const corner of corners) {
+          corner.applyMatrix4(localMatrix);
+          box.expandByPoint(corner);
+        }
+        hasGeometry = true;
+      }
+    }
+  });
+
+  if (!hasGeometry || box.isEmpty()) {
+    return { x: 0, y: 0, z: 0 };
+  }
+
+  box.getCenter(center);
+
+  if (IS_DEV) {
+    console.log(
+      `[calculateGeometryCenterOffset] Group "${obj.name}": center = (${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`
+    );
+  }
+
+  return { x: center.x, y: center.y, z: center.z };
+}
+
+/**
  * Extract child mesh hierarchy from a loaded 3D model.
  * Returns an array of ChildMesh objects suitable for storing in SceneObject.children.
  *
@@ -560,6 +679,7 @@ export interface ExtractedChildInfo {
  * 2. Recursively traverse the ENTIRE hierarchy (all levels deep)
  * 3. Add every named mesh/group that contains geometry
  * 4. Use meaningful names from the model or generate fallbacks
+ * 5. Calculate geometry center offset for center-based rotation
  *
  * Children are stored in a flat list with full paths - the UI uses path depth for indentation.
  */
@@ -605,15 +725,8 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
       // Skip if already processed
       if (visitedPaths.has(pathKey)) continue;
 
-      // Check if this child or its descendants contain meshes
-      let hasMeshes = false;
-      child.traverse((desc: THREE.Object3D) => {
-        if (desc instanceof THREE.Mesh) {
-          hasMeshes = true;
-        }
-      });
-
-      if (!hasMeshes) continue;
+      // Check if this child or its descendants contain actual geometry (not just empty meshes)
+      if (!hasActualGeometry(child)) continue;
 
       // If this is a mesh directly, add it
       if (child instanceof THREE.Mesh) {
@@ -622,6 +735,7 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
           name: sanitizeChildName(child.name) || `Part ${children.length + 1}`,
           path: childPath,
           localTransform: { ...DEFAULT_TRANSFORM },
+          geometryCenterOffset: calculateGeometryCenterOffset(child),
         });
         // Meshes don't have meaningful children, so no recursion needed
       } else {
@@ -634,6 +748,7 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
             name: sanitizeChildName(child.name),
             path: childPath,
             localTransform: { ...DEFAULT_TRANSFORM },
+            geometryCenterOffset: calculateGeometryCenterOffset(child),
           });
         }
 
@@ -657,6 +772,7 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
             name: sanitizeChildName(child.name) || `Part ${partIndex++}`,
             path: path,
             localTransform: { ...DEFAULT_TRANSFORM },
+            geometryCenterOffset: calculateGeometryCenterOffset(child),
           });
         }
       }

@@ -57,8 +57,9 @@ export async function getOrLoadModel(
   if (cached) {
     cached.lastAccessed = Date.now();
     // Deep clone ensures independent materials for opacity/emissive modifications
+    const clonedModel = deepCloneGroup(cached.model);
     return {
-      model: deepCloneGroup(cached.model),
+      model: clonedModel,
       metrics: cached.metrics,
     };
   }
@@ -187,7 +188,8 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
   );
 
   // Serialize metrics for storage (convert THREE.Vector3/Box3 to plain objects)
-  const metrics = serializeMetrics(preprocessed.metrics);
+  // Include originalScale from preprocessing to track the normalization factor
+  const metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
 
   // Update stored metadata if metrics weren't present
   if (!assetData.metadata.metrics) {
@@ -211,8 +213,14 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
 
 /**
  * Serialize THREE.js metrics to plain JSON-serializable objects.
+ *
+ * @param metrics - The metrics from preprocessing (may contain THREE.js Vector3/Box3)
+ * @param originalScale - The scale factor applied during preprocessing to normalize the model
  */
-function serializeMetrics(metrics: PreprocessedModel['metrics']): ModelMetrics {
+function serializeMetrics(
+  metrics: PreprocessedModel['metrics'],
+  originalScale?: number
+): ModelMetrics {
   return {
     boundingBox: {
       min: {
@@ -240,6 +248,7 @@ function serializeMetrics(metrics: PreprocessedModel['metrics']): ModelMetrics {
     topY: metrics.topY,
     maxDimension: metrics.maxDimension,
     triangleCount: metrics.triangleCount,
+    originalScale,
   };
 }
 

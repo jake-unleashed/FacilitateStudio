@@ -477,9 +477,7 @@ describe('RecentAssetsList', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
-      const { unmount } = render(
-        <RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />
-      );
+      const { unmount } = render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
 
       // Click the asset
       const button = screen.getByRole('button', { name: /add chair to scene/i });

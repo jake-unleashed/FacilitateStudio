@@ -250,6 +250,78 @@ type ViewMode = 'isometric' | 'side' | 'topdown';
 // ============================================================================
 
 /**
+ * Calculate bounding box only from meshes with actual geometry.
+ * This excludes empty transforms, cameras, lights, and other non-renderable objects
+ * that may have positions but no visible geometry.
+ *
+ * @param obj - The Three.js object to calculate bounds for
+ * @returns A Box3 containing only the bounds of visible geometry
+ */
+function calculateVisibleBounds(obj: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  obj.updateMatrixWorld(true);
+
+  obj.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.geometry) {
+      const posAttr = child.geometry.attributes.position;
+      if (posAttr && posAttr.count > 0) {
+        child.geometry.computeBoundingBox();
+        const geomBox = child.geometry.boundingBox;
+        if (geomBox && !geomBox.isEmpty()) {
+          const worldBox = geomBox.clone();
+          worldBox.applyMatrix4(child.matrixWorld);
+          box.union(worldBox);
+        }
+      }
+    }
+  });
+
+  return box;
+}
+
+/**
+ * Calculate volume-weighted center from meshes with actual geometry.
+ * This gives more weight to larger meshes (main body) and less to tiny parts (screws).
+ * Useful for positioning gizmos at the visual center of a model rather than at
+ * the mathematical center of the bounding box (which can be skewed by outliers).
+ *
+ * @param obj - The Three.js object to calculate the weighted center for
+ * @returns A Vector3 representing the volume-weighted center position
+ */
+function calculateWeightedCenter(obj: THREE.Object3D): THREE.Vector3 {
+  let totalVolume = 0;
+  const weightedSum = new THREE.Vector3();
+  obj.updateMatrixWorld(true);
+
+  obj.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.geometry) {
+      const posAttr = child.geometry.attributes.position;
+      if (posAttr && posAttr.count > 0) {
+        child.geometry.computeBoundingBox();
+        const box = child.geometry.boundingBox;
+        if (box && !box.isEmpty()) {
+          const size = new THREE.Vector3();
+          const center = new THREE.Vector3();
+          box.getSize(size);
+          box.getCenter(center);
+
+          center.applyMatrix4(child.matrixWorld);
+
+          const volume = Math.max(size.x * size.y * size.z, 0.0001);
+          weightedSum.addScaledVector(center, volume);
+          totalVolume += volume;
+        }
+      }
+    }
+  });
+
+  if (totalVolume > 0) {
+    weightedSum.divideScalar(totalVolume);
+  }
+  return weightedSum;
+}
+
+/**
  * Determines the current view mode based on camera pitch angle.
  * Uses hysteresis to prevent flickering at mode boundaries.
  *
@@ -1368,13 +1440,15 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
       currentScaleFactor = object.transform.scaleY;
     }
 
-    // Calculate bounding box
-    const box = boxRef.current;
-    box.setFromObject(targetObject);
+    // Calculate bounding box from ONLY visible geometry (excludes empty transforms)
+    const box = calculateVisibleBounds(targetObject);
+    // Copy to ref for consistency with existing code
+    boxRef.current.copy(box);
 
     if (!box.isEmpty()) {
-      const rawCenter = centerRef.current;
-      box.getCenter(rawCenter);
+      // Use volume-weighted center for positioning (focuses on bulk of geometry, not outliers)
+      const rawCenter = calculateWeightedCenter(targetObject);
+      centerRef.current.copy(rawCenter);
 
       // Calculate raw bounding box half-extent in XZ plane (without gap - gap is calculated dynamically)
       box.getSize(boxSizeRef.current);

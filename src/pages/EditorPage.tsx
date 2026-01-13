@@ -53,6 +53,9 @@ import { UpdateObjectCommand, UndoRedoCommand } from '../hooks/undoRedo/types';
 import '../types/testHooks'; // Import for global type augmentation
 import CameraControlsImpl from 'camera-controls';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
+
 /**
  * EditorPage - The main 3D simulation editor interface.
  *
@@ -524,6 +527,7 @@ function EditorPageContent() {
     };
 
     if (!object.properties.modelAssetId) {
+      console.log('[Focus Debug] Using primitive defaults (no modelAssetId)');
       return focusTarget;
     }
 
@@ -537,6 +541,69 @@ function EditorPageContent() {
         object.transform.scaleZ
       );
 
+      // Calculate actual world-space bounding box from ONLY visible geometry
+      // This excludes empty transforms, cameras, lights, etc.
+      const visibleBox = calculateVisibleBounds(model);
+      const visibleSize = new THREE.Vector3();
+      visibleBox.getSize(visibleSize);
+      const visibleMaxDim = Math.max(visibleSize.x, visibleSize.y, visibleSize.z);
+
+      // Use volume-weighted center instead of bounding box center
+      // This focuses on where the bulk of the geometry is, not outlier parts
+      const weightedCenter = calculateWeightedCenter(model);
+      const boxCenter = visibleBox.getCenter(new THREE.Vector3());
+
+      // Calculate effective bounds size for camera distance
+      // When one dimension is extremely elongated (like small screws extending far above main body),
+      // use the second-largest dimension to avoid zooming out too far
+      const dims = [visibleSize.x, visibleSize.y, visibleSize.z].sort((a, b) => b - a);
+      const largest = dims[0];
+      const secondLargest = dims[1];
+
+      // If largest is more than 2.5x the second largest, the model has extreme outliers
+      // Use a capped value based on the second largest dimension
+      let effectiveMaxDim: number;
+      if (largest > secondLargest * 2.5 && secondLargest > 0) {
+        // Cap at 1.5x the second largest dimension
+        effectiveMaxDim = secondLargest * 1.5;
+        if (IS_DEV) {
+          console.log('[Focus] Aspect ratio cap applied:', {
+            largest: largest.toFixed(2),
+            secondLargest: secondLargest.toFixed(2),
+            capped: effectiveMaxDim.toFixed(2),
+          });
+        }
+      } else {
+        effectiveMaxDim = visibleMaxDim > 0 ? visibleMaxDim : metrics.maxDimension;
+      }
+
+      const effectiveHeight = visibleSize.y > 0 ? visibleSize.y : modelHeight;
+
+      if (IS_DEV) {
+        console.group('[Focus Debug] calculateFocusTarget');
+        console.log('Object:', object.name);
+        console.log('Stored metrics:', {
+          size: `(${metrics.size.x.toFixed(2)}, ${metrics.size.y.toFixed(2)}, ${metrics.size.z.toFixed(2)})`,
+          maxDimension: metrics.maxDimension.toFixed(2),
+        });
+        console.log('Bounding box center vs Weighted center:', {
+          boxCenter: `(${boxCenter.x.toFixed(2)}, ${boxCenter.y.toFixed(2)}, ${boxCenter.z.toFixed(2)})`,
+          weightedCenter: `(${weightedCenter.x.toFixed(2)}, ${weightedCenter.y.toFixed(2)}, ${weightedCenter.z.toFixed(2)})`,
+          difference: `Y offset: ${(boxCenter.y - weightedCenter.y).toFixed(2)}`,
+        });
+        console.log('Visible geometry bounds:', {
+          size: `(${visibleSize.x.toFixed(2)}, ${visibleSize.y.toFixed(2)}, ${visibleSize.z.toFixed(2)})`,
+          maxDimension: visibleMaxDim.toFixed(2),
+        });
+        console.log('Effective maxDimension:', effectiveMaxDim.toFixed(2));
+        console.log('User scale:', {
+          scaleX: object.transform.scaleX,
+          scaleY: object.transform.scaleY,
+          scaleZ: object.transform.scaleZ,
+        });
+        console.log('maxScale:', maxScale.toFixed(2));
+      }
+
       if (childPath) {
         // Child focus: find and compute bounds for specific child mesh
         focusTarget = calculateChildFocusTarget(
@@ -544,17 +611,30 @@ function EditorPageContent() {
           parentWorld,
           model,
           childPath,
-          modelHeight,
-          metrics.maxDimension
+          effectiveHeight,
+          effectiveMaxDim
         );
       } else {
-        // Root object focus: use model metrics
+        // Root object focus: use volume-weighted center (where the bulk of geometry is)
         focusTarget = {
-          targetX: parentWorld.x,
-          targetY: parentWorld.y + modelHeight / 2,
-          targetZ: parentWorld.z,
-          boundsSize: metrics.maxDimension * maxScale,
+          targetX: parentWorld.x + weightedCenter.x * object.transform.scaleX,
+          targetY: parentWorld.y + weightedCenter.y * object.transform.scaleY,
+          targetZ: parentWorld.z + weightedCenter.z * object.transform.scaleZ,
+          boundsSize: effectiveMaxDim * maxScale,
         };
+      }
+
+      if (IS_DEV) {
+        console.log('Focus target:', {
+          target: `(${focusTarget.targetX.toFixed(2)}, ${focusTarget.targetY.toFixed(2)}, ${focusTarget.targetZ.toFixed(2)})`,
+          boundsSize: focusTarget.boundsSize.toFixed(2),
+        });
+        console.log(
+          'Ideal camera distance will be:',
+          (focusTarget.boundsSize * 2.5).toFixed(2),
+          '(boundsSize * 2.5)'
+        );
+        console.groupEnd();
       }
     } catch (error) {
       console.warn('[EditorPage] Failed to load model for camera focus:', error);
@@ -562,6 +642,92 @@ function EditorPageContent() {
     }
 
     return focusTarget;
+  }
+
+  /**
+   * Check if a Three.js object has actual renderable geometry.
+   * Returns true only if there are meshes with vertices.
+   */
+  function hasActualGeometry(obj: THREE.Object3D): boolean {
+    let found = false;
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        const posAttr = child.geometry.attributes.position;
+        if (posAttr && posAttr.count > 0) {
+          found = true;
+        }
+      }
+    });
+    return found;
+  }
+
+  /**
+   * Calculate bounding box only from meshes with actual geometry.
+   * This excludes empty transforms, cameras, lights, etc. that might have positions
+   * but no visible geometry.
+   */
+  function calculateVisibleBounds(obj: THREE.Object3D): THREE.Box3 {
+    const box = new THREE.Box3();
+    obj.updateMatrixWorld(true);
+
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        const posAttr = child.geometry.attributes.position;
+        // Only include meshes with actual vertices
+        if (posAttr && posAttr.count > 0) {
+          child.geometry.computeBoundingBox();
+          const geomBox = child.geometry.boundingBox;
+          if (geomBox && !geomBox.isEmpty()) {
+            // Transform geometry bounding box to world space
+            const worldBox = geomBox.clone();
+            worldBox.applyMatrix4(child.matrixWorld);
+            box.union(worldBox);
+          }
+        }
+      }
+    });
+
+    return box;
+  }
+
+  /**
+   * Calculate volume-weighted center from meshes with actual geometry.
+   * This gives more weight to larger meshes (main body) and less to tiny parts (screws).
+   * Returns a center that represents where the visual bulk of the model is.
+   */
+  function calculateWeightedCenter(obj: THREE.Object3D): THREE.Vector3 {
+    let totalVolume = 0;
+    const weightedSum = new THREE.Vector3();
+    obj.updateMatrixWorld(true);
+
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        const posAttr = child.geometry.attributes.position;
+        if (posAttr && posAttr.count > 0) {
+          child.geometry.computeBoundingBox();
+          const box = child.geometry.boundingBox;
+          if (box && !box.isEmpty()) {
+            const size = new THREE.Vector3();
+            const center = new THREE.Vector3();
+            box.getSize(size);
+            box.getCenter(center);
+
+            // Transform center to world space
+            center.applyMatrix4(child.matrixWorld);
+
+            // Use volume as weight (larger meshes contribute more)
+            const volume = Math.max(size.x * size.y * size.z, 0.0001); // Prevent zero
+            weightedSum.addScaledVector(center, volume);
+            totalVolume += volume;
+          }
+        }
+      }
+    });
+
+    if (totalVolume > 0) {
+      weightedSum.divideScalar(totalVolume);
+    }
+    return weightedSum;
   }
 
   /**
@@ -578,14 +744,23 @@ function EditorPageContent() {
     const pathArray = stringToPath(childPath);
     const childMesh = findChildByPath(model, pathArray);
 
+    // Fallback to parent metrics
+    const fallback: FocusTarget = {
+      targetX: parentWorld.x,
+      targetY: parentWorld.y + modelHeight / 2,
+      targetZ: parentWorld.z,
+      boundsSize: modelMaxDimension,
+    };
+
     if (!childMesh) {
       console.warn('[handleFocusObject] Child not found:', childPath);
-      return {
-        targetX: parentWorld.x,
-        targetY: parentWorld.y + modelHeight / 2,
-        targetZ: parentWorld.z,
-        boundsSize: modelMaxDimension,
-      };
+      return fallback;
+    }
+
+    // Check if this child has actual geometry - skip empty transforms
+    if (!hasActualGeometry(childMesh)) {
+      console.warn('[handleFocusObject] Child has no geometry, using parent bounds:', childPath);
+      return fallback;
     }
 
     // Apply child's local transform if modified
@@ -595,10 +770,43 @@ function EditorPageContent() {
       childMesh.position.set(lt.x / 100, lt.y / 100, -lt.z / 100);
     }
 
-    // Compute bounding box of the child mesh
-    const childBox = new THREE.Box3().setFromObject(childMesh);
-    const childCenter = childBox.getCenter(new THREE.Vector3());
+    // Compute bounding box from only visible geometry (excludes empty transforms)
+    const childBox = calculateVisibleBounds(childMesh);
+
+    // Validate the bounding box - check for empty or infinite values
+    if (childBox.isEmpty()) {
+      console.warn(
+        '[handleFocusObject] Child has empty visible bounds, using parent bounds:',
+        childPath
+      );
+      return fallback;
+    }
+
     const childSize = childBox.getSize(new THREE.Vector3());
+
+    // Check for invalid/infinite values
+    if (
+      !isFinite(childSize.x) ||
+      !isFinite(childSize.y) ||
+      !isFinite(childSize.z) ||
+      childSize.length() === 0
+    ) {
+      console.warn('[handleFocusObject] Child has invalid bounds, using parent bounds:', childPath);
+      return fallback;
+    }
+
+    // Use volume-weighted center (same as root object focus)
+    // This focuses on where the bulk of the geometry is, not outlier parts
+    const weightedCenter = calculateWeightedCenter(childMesh);
+
+    // Validate weighted center
+    if (!isFinite(weightedCenter.x) || !isFinite(weightedCenter.y) || !isFinite(weightedCenter.z)) {
+      console.warn(
+        '[handleFocusObject] Child has invalid weighted center, using parent bounds:',
+        childPath
+      );
+      return fallback;
+    }
 
     const maxScale = Math.max(
       object.transform.scaleX,
@@ -606,11 +814,24 @@ function EditorPageContent() {
       object.transform.scaleZ
     );
 
+    // Apply aspect ratio capping for elongated child parts
+    const dims = [childSize.x, childSize.y, childSize.z].sort((a, b) => b - a);
+    const largest = dims[0];
+    const secondLargest = dims[1];
+
+    let effectiveBoundsSize: number;
+    if (largest > secondLargest * 2.5 && secondLargest > 0) {
+      // Cap at 1.5x the second largest dimension
+      effectiveBoundsSize = secondLargest * 1.5;
+    } else {
+      effectiveBoundsSize = Math.max(childSize.x, childSize.y, childSize.z);
+    }
+
     return {
-      targetX: parentWorld.x + childCenter.x * object.transform.scaleX,
-      targetY: parentWorld.y + childCenter.y * object.transform.scaleY,
-      targetZ: parentWorld.z + childCenter.z * object.transform.scaleZ,
-      boundsSize: childSize.length() * maxScale,
+      targetX: parentWorld.x + weightedCenter.x * object.transform.scaleX,
+      targetY: parentWorld.y + weightedCenter.y * object.transform.scaleY,
+      targetZ: parentWorld.z + weightedCenter.z * object.transform.scaleZ,
+      boundsSize: effectiveBoundsSize * maxScale,
     };
   }
 

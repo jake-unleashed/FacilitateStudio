@@ -77,9 +77,11 @@ export const ChildSelectionProvider: React.FC<{ children: React.ReactNode }> = (
 };
 
 /**
- * Hook to access child selection context
+ * Hook to access child selection context.
+ * Returns null when used outside of ChildSelectionProvider.
  */
-export const useChildSelection = () => useContext(ChildSelectionContext);
+export const useChildSelection = (): ChildSelectionContextType | null =>
+  useContext(ChildSelectionContext);
 
 // ============================================================================
 // SelectChildObject Component - For child mesh selection (green outline)
