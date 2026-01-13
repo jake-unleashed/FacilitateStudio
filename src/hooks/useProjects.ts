@@ -1,56 +1,96 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Project, ProjectMetadata } from '../types/project';
 import {
-  LocalStorageProjectPersistence,
-  removeProject,
-  upsertProject,
+  IndexedDBProjectPersistence,
+  createProjectPersistence,
 } from '../persistence/projectPersistence';
 
 /**
- * Hook for managing projects in localStorage.
- * Provides CRUD operations and reactive state updates.
+ * Return type for the useProjects hook.
  */
-export function useProjects() {
+export interface UseProjectsResult {
+  /** All loaded projects */
+  projects: Project[];
+  /** True while projects are being loaded from storage */
+  isLoading: boolean;
+  /** Error message if project operations failed */
+  error: string | null;
+  /** Clear the current error */
+  clearError: () => void;
+  /** Get a project by ID from local state */
+  getProject: (id: string) => Project | undefined;
+  /** Save a project (create or update) */
+  saveProject: (project: Project) => void;
+  /** Delete a project by ID */
+  deleteProject: (id: string) => void;
+  /** Create a new empty project (does not save it) */
+  createProject: (name?: string) => Project;
+  /** Get project metadata for library display */
+  getProjectMetadata: () => ProjectMetadata[];
+}
+
+/**
+ * Hook for managing projects in IndexedDB.
+ * Provides CRUD operations and reactive state updates.
+ * Uses IndexedDB for GB-scale storage (replacing localStorage which has 5-10MB limits).
+ *
+ * @returns Object containing projects state and CRUD operations
+ */
+export function useProjects(): UseProjectsResult {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   /** Error message if project operations fail (can be displayed to user) */
   const [error, setError] = useState<string | null>(null);
-  const persistence = useMemo(() => new LocalStorageProjectPersistence(), []);
+
+  // Use ref to keep persistence instance stable and track if we're mounted
+  const persistenceRef = useRef<IndexedDBProjectPersistence | null>(null);
+  const isMountedRef = useRef(true);
+
+  // Get or create persistence instance
+  const persistence = useMemo(() => {
+    if (!persistenceRef.current) {
+      persistenceRef.current = createProjectPersistence();
+    }
+    return persistenceRef.current;
+  }, []);
 
   /** Clear the current error */
   const clearError = useCallback(() => setError(null), []);
 
-  // Load projects from localStorage on mount
+  // Load projects from IndexedDB on mount
   useEffect(() => {
-    try {
-      const loaded = persistence.loadProjects();
-      setProjects(loaded);
-      setError(null);
-    } catch (error) {
-      console.error('Failed to load projects from localStorage:', error);
-      setError('Failed to load projects. Your browser storage may be corrupted or inaccessible.');
-    } finally {
-      setIsLoading(false);
+    isMountedRef.current = true;
+
+    async function loadProjects() {
+      try {
+        const loaded = await persistence.loadProjects();
+        if (isMountedRef.current) {
+          setProjects(loaded);
+          setError(null);
+        }
+      } catch (err) {
+        console.error('[useProjects] Failed to load projects from IndexedDB:', err);
+        if (isMountedRef.current) {
+          setError(
+            'Failed to load projects. Your browser storage may be corrupted or inaccessible.'
+          );
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
+      }
     }
+
+    loadProjects();
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [persistence]);
 
-  // Persist projects to localStorage whenever they change
-  const persistProjects = useCallback(
-    (updatedProjects: Project[]) => {
-      try {
-        persistence.saveProjects(updatedProjects);
-        setError(null); // Clear any previous errors on successful save
-      } catch (error) {
-        console.error('Failed to save projects to localStorage:', error);
-        setError('Failed to save project. Your browser storage may be full or inaccessible.');
-        throw error;
-      }
-    },
-    [persistence]
-  );
-
   /**
-   * Get a project by ID
+   * Get a project by ID (from local state for sync access)
    */
   const getProject = useCallback(
     (id: string): Project | undefined => {
@@ -60,33 +100,62 @@ export function useProjects() {
   );
 
   /**
-   * Save a project (create or update)
+   * Save a project (create or update).
+   * Updates local state immediately, then persists to IndexedDB.
    */
   const saveProject = useCallback(
     (project: Project): void => {
-      // Use functional setState to avoid depending on projects in the callback,
-      // which would cause this function to be recreated on every save.
+      const now = new Date().toISOString();
+      const updated: Project = {
+        ...project,
+        updatedAt: now,
+        createdAt: project.createdAt || now,
+      };
+
+      // Update local state immediately for responsive UI
       setProjects((currentProjects) => {
-        const updatedProjects = upsertProject(currentProjects, project);
-        persistProjects(updatedProjects);
-        return updatedProjects;
+        const existingIndex = currentProjects.findIndex((p) => p.id === updated.id);
+        if (existingIndex >= 0) {
+          const newProjects = [...currentProjects];
+          newProjects[existingIndex] = updated;
+          return newProjects.sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+        } else {
+          return [updated, ...currentProjects].sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+        }
+      });
+
+      // Persist to IndexedDB (fire and forget with error handling)
+      persistence.saveProject(updated).catch((err) => {
+        console.error('[useProjects] Failed to save project to IndexedDB:', err);
+        if (isMountedRef.current) {
+          setError('Failed to save project. Please try again.');
+        }
       });
     },
-    [persistProjects]
+    [persistence]
   );
 
   /**
-   * Delete a project by ID
+   * Delete a project by ID.
    */
   const deleteProject = useCallback(
     (id: string): void => {
-      setProjects((currentProjects) => {
-        const updatedProjects = removeProject(currentProjects, id);
-        persistProjects(updatedProjects);
-        return updatedProjects;
+      // Update local state immediately
+      setProjects((currentProjects) => currentProjects.filter((p) => p.id !== id));
+
+      // Persist to IndexedDB
+      persistence.deleteProject(id).catch((err) => {
+        console.error('[useProjects] Failed to delete project from IndexedDB:', err);
+        if (isMountedRef.current) {
+          setError('Failed to delete project. Please try again.');
+        }
       });
     },
-    [persistProjects]
+    [persistence]
   );
 
   /**

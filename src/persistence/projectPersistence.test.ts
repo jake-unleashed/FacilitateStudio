@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import 'fake-indexeddb/auto';
 import {
   LocalStorageProjectPersistence,
+  IndexedDBProjectPersistence,
+  createProjectPersistence,
   upsertProject,
   removeProject,
   PROJECTS_STORAGE_KEY,
@@ -328,6 +331,170 @@ describe('projectPersistence', () => {
         const loaded = persistence.loadProjects();
         expect(loaded).toHaveLength(1);
         expect(loaded[0].objects).toHaveLength(100);
+      });
+    });
+  });
+
+  describe('IndexedDBProjectPersistence', () => {
+    let persistence: IndexedDBProjectPersistence;
+
+    beforeEach(() => {
+      persistence = createProjectPersistence();
+    });
+
+    describe('initialization', () => {
+      it('should create persistence instance', () => {
+        expect(persistence).toBeInstanceOf(IndexedDBProjectPersistence);
+      });
+
+      it('should initialize without errors', async () => {
+        await expect(persistence.initialize()).resolves.not.toThrow();
+      });
+    });
+
+    describe('CRUD operations', () => {
+      it('should save and load a project', async () => {
+        const project: Project = {
+          id: 'test-idb-id',
+          name: 'IndexedDB Test Project',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        await persistence.saveProject(project);
+        const loaded = await persistence.getProject('test-idb-id');
+
+        expect(loaded).toBeDefined();
+        expect(loaded?.id).toBe('test-idb-id');
+        expect(loaded?.name).toBe('IndexedDB Test Project');
+      });
+
+      it('should load all projects', async () => {
+        const project1: Project = {
+          id: 'proj-1',
+          name: 'Project 1',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date('2024-01-02').toISOString(),
+        };
+        const project2: Project = {
+          id: 'proj-2',
+          name: 'Project 2',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date('2024-01-01').toISOString(),
+        };
+
+        await persistence.saveProject(project1);
+        await persistence.saveProject(project2);
+
+        const loaded = await persistence.loadProjects();
+        expect(loaded.length).toBeGreaterThanOrEqual(2);
+      });
+
+      it('should delete a project', async () => {
+        const project: Project = {
+          id: 'to-delete',
+          name: 'Will be deleted',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        await persistence.saveProject(project);
+        let loaded = await persistence.getProject('to-delete');
+        expect(loaded).toBeDefined();
+
+        await persistence.deleteProject('to-delete');
+        loaded = await persistence.getProject('to-delete');
+        expect(loaded).toBeUndefined();
+      });
+
+      it('should update existing project', async () => {
+        const project: Project = {
+          id: 'update-test',
+          name: 'Original Name',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        await persistence.saveProject(project);
+
+        const updated: Project = {
+          ...project,
+          name: 'Updated Name',
+        };
+
+        await persistence.saveProject(updated);
+
+        const loaded = await persistence.getProject('update-test');
+        expect(loaded?.name).toBe('Updated Name');
+      });
+    });
+
+    describe('saveProjects (bulk)', () => {
+      it('should replace all projects', async () => {
+        // First save some projects individually
+        await persistence.saveProject({
+          id: 'old-1',
+          name: 'Old 1',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        // Now bulk save different projects
+        const newProjects: Project[] = [
+          {
+            id: 'new-1',
+            name: 'New 1',
+            objects: [],
+            steps: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'new-2',
+            name: 'New 2',
+            objects: [],
+            steps: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ];
+
+        await persistence.saveProjects(newProjects);
+
+        const loaded = await persistence.loadProjects();
+        expect(loaded).toHaveLength(2);
+        expect(loaded.map((p) => p.id)).toContain('new-1');
+        expect(loaded.map((p) => p.id)).toContain('new-2');
+        expect(loaded.map((p) => p.id)).not.toContain('old-1');
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should return undefined for non-existent project', async () => {
+        const loaded = await persistence.getProject('does-not-exist');
+        expect(loaded).toBeUndefined();
+      });
+
+      it('should handle deleting non-existent project', async () => {
+        await expect(persistence.deleteProject('does-not-exist')).resolves.not.toThrow();
+      });
+
+      it('should handle empty projects array', async () => {
+        await persistence.saveProjects([]);
+        const loaded = await persistence.loadProjects();
+        expect(loaded).toEqual([]);
       });
     });
   });
