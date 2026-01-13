@@ -32,6 +32,7 @@ describe('RecentAssetsList', () => {
   // ===========================================================================
 
   const mockOnAddAsset = vi.fn();
+  const mockOnRemoveAsset = vi.fn();
 
   function createMockAsset(id: string, overrides: Partial<AssetMetadata> = {}): AssetMetadata {
     return {
@@ -256,7 +257,9 @@ describe('RecentAssetsList', () => {
       render(<RecentAssetsList assets={assets} onAddAsset={mockOnAddAsset} />);
 
       const button = screen.getByRole('button', { name: /add test to scene/i });
-      expect(button).toHaveAttribute('type', 'button');
+      // The card uses role="button" and tabindex for keyboard accessibility
+      expect(button).toHaveAttribute('role', 'button');
+      expect(button).toHaveAttribute('tabindex', '0');
     });
   });
 
@@ -332,14 +335,15 @@ describe('RecentAssetsList', () => {
 
       const button = screen.getByRole('button', { name: /add chair to scene/i });
 
-      // Initially enabled
-      expect(button).not.toBeDisabled();
+      // Initially enabled (focusable)
+      expect(button).toHaveAttribute('tabindex', '0');
 
       // Click the asset
       await user.click(button);
 
-      // Button should now be disabled
-      expect(button).toBeDisabled();
+      // Button should now be non-interactive (tabindex=-1 and cursor-default)
+      expect(button).toHaveAttribute('tabindex', '-1');
+      expect(button).toHaveClass('cursor-default');
     });
 
     it('updates aria-label when showing feedback', async () => {
@@ -382,17 +386,17 @@ describe('RecentAssetsList', () => {
 
       // Verify feedback is showing
       expect(screen.getByText('Added to scene!')).toBeInTheDocument();
-      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('tabindex', '-1');
 
       // Advance time past the feedback duration
       await act(async () => {
         vi.advanceTimersByTime(ADDED_FEEDBACK_DURATION_MS + 100);
       });
 
-      // Feedback should be reset - button should now be enabled and show the asset name
+      // Feedback should be reset - button should now be interactive and show the asset name
       expect(screen.queryByText('Added to scene!')).not.toBeInTheDocument();
       expect(screen.getByText('chair')).toBeInTheDocument();
-      expect(button).not.toBeDisabled();
+      expect(button).toHaveAttribute('tabindex', '0');
     });
 
     it('only shows feedback on the clicked asset', async () => {
@@ -409,14 +413,14 @@ describe('RecentAssetsList', () => {
       const tableButton = screen.getByRole('button', { name: /add table to scene/i });
       await user.click(tableButton);
 
-      // Table button should be disabled and show feedback
-      expect(tableButton).toBeDisabled();
+      // Table button should be non-interactive and show feedback
+      expect(tableButton).toHaveAttribute('tabindex', '-1');
 
-      // Chair and lamp buttons should still be enabled
+      // Chair and lamp buttons should still be interactive
       const chairButton = screen.getByRole('button', { name: /add chair to scene/i });
       const lampButton = screen.getByRole('button', { name: /add lamp to scene/i });
-      expect(chairButton).not.toBeDisabled();
-      expect(lampButton).not.toBeDisabled();
+      expect(chairButton).toHaveAttribute('tabindex', '0');
+      expect(lampButton).toHaveAttribute('tabindex', '0');
 
       // Only one "Added to scene!" should be visible
       expect(screen.getAllByText('Added to scene!')).toHaveLength(1);
@@ -435,8 +439,8 @@ describe('RecentAssetsList', () => {
       const chairButton = screen.getByRole('button', { name: /add chair to scene/i });
       await user.click(chairButton);
 
-      // Chair should show feedback
-      expect(chairButton).toBeDisabled();
+      // Chair should show feedback (non-interactive)
+      expect(chairButton).toHaveAttribute('tabindex', '-1');
 
       // Advance time partially
       act(() => {
@@ -448,8 +452,8 @@ describe('RecentAssetsList', () => {
       await user.click(tableButton);
 
       // Now table should show feedback and chair should be back to normal
-      expect(tableButton).toBeDisabled();
-      expect(chairButton).not.toBeDisabled();
+      expect(tableButton).toHaveAttribute('tabindex', '-1');
+      expect(chairButton).toHaveAttribute('tabindex', '0');
 
       // Still only one "Added to scene!" visible
       expect(screen.getAllByText('Added to scene!')).toHaveLength(1);
@@ -495,6 +499,280 @@ describe('RecentAssetsList', () => {
     it('exports the feedback duration constant', () => {
       // Verify the constant is exported and has the expected value
       expect(ADDED_FEEDBACK_DURATION_MS).toBe(2500);
+    });
+  });
+
+  // ===========================================================================
+  // Remove Asset Menu
+  // ===========================================================================
+
+  describe('remove asset menu', () => {
+    it('shows ellipsis button on hover when onRemoveAsset is provided', () => {
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // The ellipsis button should exist but be hidden (opacity-0)
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      expect(optionsButton).toBeInTheDocument();
+      expect(optionsButton).toHaveClass('opacity-0');
+    });
+
+    it('does not show ellipsis button when onRemoveAsset is not provided', () => {
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      // The ellipsis button should not be present
+      expect(screen.queryByRole('button', { name: /options for chair/i })).not.toBeInTheDocument();
+    });
+
+    it('opens dropdown menu when ellipsis button is clicked', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Click the ellipsis button
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+
+      // Dropdown menu should appear with "Remove" option
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /remove/i })).toBeInTheDocument();
+    });
+
+    it('calls onRemoveAsset with asset ID when Remove is clicked', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('asset-123', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Open the menu
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+
+      // Click "Remove"
+      const removeButton = screen.getByRole('menuitem', { name: /remove/i });
+      await user.click(removeButton);
+
+      // onRemoveAsset should be called with the asset ID
+      expect(mockOnRemoveAsset).toHaveBeenCalledTimes(1);
+      expect(mockOnRemoveAsset).toHaveBeenCalledWith('asset-123');
+    });
+
+    it('closes dropdown menu after clicking Remove', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Open the menu
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+
+      // Click "Remove"
+      const removeButton = screen.getByRole('menuitem', { name: /remove/i });
+      await user.click(removeButton);
+
+      // Menu should be closed
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('does not trigger onAddAsset when clicking ellipsis button', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Click the ellipsis button
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+
+      // onAddAsset should NOT have been called
+      expect(mockOnAddAsset).not.toHaveBeenCalled();
+    });
+
+    it('does not trigger onAddAsset when clicking Remove', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Open menu and click Remove
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+      const removeButton = screen.getByRole('menuitem', { name: /remove/i });
+      await user.click(removeButton);
+
+      // onAddAsset should NOT have been called
+      expect(mockOnAddAsset).not.toHaveBeenCalled();
+    });
+
+    it('closes dropdown when clicking outside', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <div>
+          <div data-testid="outside">Outside element</div>
+          <RecentAssetsList
+            assets={[asset]}
+            onAddAsset={mockOnAddAsset}
+            onRemoveAsset={mockOnRemoveAsset}
+          />
+        </div>
+      );
+
+      // Open the menu
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+
+      // Menu should be open
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+
+      // Click outside
+      const outside = screen.getByTestId('outside');
+      await user.click(outside);
+
+      // Menu should be closed
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('hides ellipsis button when asset is in "added" state', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Click the card to add the asset (triggers "Added to scene!" state)
+      const card = screen.getByRole('button', { name: /add chair to scene/i });
+      await user.click(card);
+
+      // The ellipsis button should not be visible while in added state
+      expect(screen.queryByRole('button', { name: /options for chair/i })).not.toBeInTheDocument();
+    });
+
+    it('has proper aria attributes on dropdown elements', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Check the ellipsis button has proper aria attributes
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      expect(optionsButton).toHaveAttribute('aria-haspopup', 'menu');
+      expect(optionsButton).toHaveAttribute('aria-expanded', 'false');
+
+      // Open the menu
+      await user.click(optionsButton);
+
+      // Button should indicate menu is expanded
+      expect(optionsButton).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('closes dropdown when pressing Escape key', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(
+        <RecentAssetsList
+          assets={[asset]}
+          onAddAsset={mockOnAddAsset}
+          onRemoveAsset={mockOnRemoveAsset}
+        />
+      );
+
+      // Open the menu
+      const optionsButton = screen.getByRole('button', { name: /options for chair/i });
+      await user.click(optionsButton);
+
+      // Menu should be open
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+
+      // Press Escape
+      await user.keyboard('{Escape}');
+
+      // Menu should be closed
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('can add asset using keyboard (Enter key)', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      const card = screen.getByRole('button', { name: /add chair to scene/i });
+
+      // Focus the card and press Enter
+      card.focus();
+      await user.keyboard('{Enter}');
+
+      expect(mockOnAddAsset).toHaveBeenCalledWith(asset);
+    });
+
+    it('can add asset using keyboard (Space key)', async () => {
+      const user = userEvent.setup();
+      const asset = createMockAsset('1', { name: 'chair.obj' });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      const card = screen.getByRole('button', { name: /add chair to scene/i });
+
+      // Focus the card and press Space
+      card.focus();
+      await user.keyboard(' ');
+
+      expect(mockOnAddAsset).toHaveBeenCalledWith(asset);
     });
   });
 });

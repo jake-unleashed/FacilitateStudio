@@ -98,6 +98,7 @@ interface LeftSidebarProps {
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
+  onRemoveAsset?: (assetId: string) => void;
 }
 
 interface NavItemProps {
@@ -662,6 +663,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   uploadProgress,
   recentAssets = [],
   onAddRecentAsset,
+  onRemoveAsset,
 }) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -925,6 +927,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                   <RecentAssetsList
                     assets={recentAssets}
                     onAddAsset={onAddRecentAsset}
+                    onRemoveAsset={onRemoveAsset}
                     emptyMessage="No recent assets"
                   />
                 ) : (

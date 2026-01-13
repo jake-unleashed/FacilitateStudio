@@ -213,6 +213,7 @@ function EditorPageContent() {
     recentAssets,
     uploadFile,
     addRecentAssetToScene,
+    removeAsset,
     lastError: uploadLastError,
     clearError: clearUploadError,
   } = useModelUpload();
@@ -773,6 +774,19 @@ function EditorPageContent() {
     [objects, addRecentAssetToScene, executeCommand, handleSelectObject, handleFocusObject]
   );
 
+  // Handle removing asset from recent assets
+  const handleRemoveAsset = useCallback(
+    async (assetId: string) => {
+      await removeAsset(assetId);
+      showPopup({
+        type: 'success',
+        title: 'Asset Removed',
+        message: 'The asset has been removed from your recent uploads.',
+      });
+    },
+    [removeAsset, showPopup]
+  );
+
   const handlePopulateTestSteps = useCallback(() => {
     beginBatch();
 
@@ -1211,6 +1225,7 @@ function EditorPageContent() {
         uploadProgress={uploadProgress}
         recentAssets={recentAssets}
         onAddRecentAsset={handleAddRecentAsset}
+        onRemoveAsset={handleRemoveAsset}
       />
 
       {selectedObject && (

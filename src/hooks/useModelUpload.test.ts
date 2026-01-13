@@ -15,6 +15,7 @@ vi.mock('../utils/modelAssetStore', () => ({
   getAsset: vi.fn(),
   getRecentAssets: vi.fn().mockResolvedValue([]),
   updateAssetMetadata: vi.fn(),
+  deleteAsset: vi.fn().mockResolvedValue(undefined),
   migrateLegacyAssets: vi.fn().mockResolvedValue(0),
   hasLegacyAssets: vi.fn().mockReturnValue(false),
   blobToArrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
@@ -34,6 +35,7 @@ import {
   saveAsset,
   getAsset,
   getRecentAssets,
+  deleteAsset,
   hasLegacyAssets,
   migrateLegacyAssets,
 } from '../utils/modelAssetStore';
@@ -739,6 +741,120 @@ describe('useModelUpload', () => {
       vi.advanceTimersByTime(2500);
 
       // No errors should occur (timeout should be cleaned up)
+    });
+  });
+
+  // ===========================================================================
+  // removeAsset
+  // ===========================================================================
+
+  describe('removeAsset', () => {
+    it('calls deleteAsset with the asset ID', async () => {
+      const { result } = renderHook(() => useModelUpload());
+
+      await act(async () => {
+        await result.current.removeAsset('asset-123');
+      });
+
+      expect(deleteAsset).toHaveBeenCalledWith('asset-123');
+    });
+
+    it('refreshes recent assets after removing', async () => {
+      const { result } = renderHook(() => useModelUpload());
+
+      // Clear the initial call from initialization
+      vi.mocked(getRecentAssets).mockClear();
+
+      await act(async () => {
+        await result.current.removeAsset('asset-123');
+      });
+
+      expect(getRecentAssets).toHaveBeenCalledTimes(1);
+    });
+
+    it('handles errors gracefully', async () => {
+      vi.mocked(deleteAsset).mockRejectedValueOnce(new Error('Delete failed'));
+
+      const { result } = renderHook(() => useModelUpload());
+
+      // Should not throw
+      await expect(
+        act(async () => {
+          await result.current.removeAsset('asset-123');
+        })
+      ).resolves.not.toThrow();
+    });
+  });
+
+  // ===========================================================================
+  // uploadFile - failed processing cleanup
+  // ===========================================================================
+
+  describe('uploadFile - failed processing cleanup', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it('deletes asset when processing fails', async () => {
+      const metadata = createMockMetadata('asset-to-cleanup');
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
+        blob: new Blob(['test']),
+        metadata,
+      });
+      // Simulate processing failure
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockRejectedValue(
+        new Error('Invalid model format')
+      );
+
+      const { result } = renderHook(() => useModelUpload());
+
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('invalid-model.obj'), []);
+      });
+
+      // deleteAsset should have been called to clean up the stored asset
+      expect(deleteAsset).toHaveBeenCalledWith('asset-to-cleanup');
+    });
+
+    it('does not delete asset when processing succeeds', async () => {
+      const metadata = createMockMetadata('asset-success');
+      vi.mocked(saveAsset).mockResolvedValue(metadata);
+      vi.mocked(getAsset).mockResolvedValue({
+        blob: new Blob(['test']),
+        metadata,
+      });
+      vi.mocked(loadAndPreprocessModelFromArrayBuffer).mockResolvedValue(
+        createMockPreprocessedModel()
+      );
+
+      const { result } = renderHook(() => useModelUpload());
+
+      // Clear any previous calls from initialization
+      vi.mocked(deleteAsset).mockClear();
+
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('valid-model.obj'), []);
+      });
+
+      // deleteAsset should NOT have been called
+      expect(deleteAsset).not.toHaveBeenCalled();
+    });
+
+    it('does not delete asset when storage fails (asset was never stored)', async () => {
+      vi.mocked(saveAsset).mockRejectedValue(new Error('Storage quota exceeded'));
+
+      const { result } = renderHook(() => useModelUpload());
+
+      // Clear any previous calls
+      vi.mocked(deleteAsset).mockClear();
+
+      await act(async () => {
+        await result.current.uploadFile(createMockFile('model.obj'), []);
+      });
+
+      // deleteAsset should NOT have been called since save failed
+      expect(deleteAsset).not.toHaveBeenCalled();
     });
   });
 });

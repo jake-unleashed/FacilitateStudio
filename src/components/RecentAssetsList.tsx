@@ -8,7 +8,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Clock, Package, CheckCircle2 } from 'lucide-react';
+import { Clock, Package, CheckCircle2, MoreHorizontal, Trash2 } from 'lucide-react';
 import { AssetMetadata } from '../types/model';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
 
@@ -24,6 +24,8 @@ interface RecentAssetsListProps {
   assets: AssetMetadata[];
   /** Called when an asset is clicked */
   onAddAsset: (asset: AssetMetadata) => void;
+  /** Called when an asset is removed */
+  onRemoveAsset?: (assetId: string) => void;
   /** Message to show when list is empty */
   emptyMessage?: string;
 }
@@ -31,6 +33,8 @@ interface RecentAssetsListProps {
 interface AssetCardProps {
   asset: AssetMetadata;
   onAdd: () => void;
+  /** Called when the asset is removed */
+  onRemove?: () => void;
   /** Whether this asset was just added to the scene */
   isAdded?: boolean;
 }
@@ -73,6 +77,7 @@ export function stripFileExtension(filename: string): string {
 export const RecentAssetsList: React.FC<RecentAssetsListProps> = ({
   assets,
   onAddAsset,
+  onRemoveAsset,
   emptyMessage = 'No recent assets',
 }) => {
   // Track which asset was just added (for visual feedback)
@@ -145,9 +150,115 @@ export const RecentAssetsList: React.FC<RecentAssetsListProps> = ({
           key={asset.id}
           asset={asset}
           onAdd={() => handleAddAsset(asset)}
+          onRemove={onRemoveAsset ? () => onRemoveAsset(asset.id) : undefined}
           isAdded={addedAssetId === asset.id}
         />
       ))}
+    </div>
+  );
+};
+
+// =============================================================================
+// Asset Card Sub-Component
+// =============================================================================
+
+// =============================================================================
+// Asset Options Menu Sub-Component
+// =============================================================================
+
+interface AssetOptionsMenuProps {
+  /** Display name of the asset (for accessibility) */
+  displayName: string;
+  /** Called when remove is clicked */
+  onRemove: () => void;
+}
+
+/**
+ * AssetOptionsMenu - Dropdown menu for asset actions.
+ *
+ * Features:
+ * - Appears on card hover (via CSS group-hover)
+ * - Click outside to close
+ * - Escape key to close
+ * - Proper ARIA attributes for accessibility
+ */
+const AssetOptionsMenu: React.FC<AssetOptionsMenuProps> = ({ displayName, onRemove }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // Close menu when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        // Return focus to the trigger button
+        buttonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscapeKey);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [isOpen]);
+
+  const handleToggleMenu = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen((prev) => !prev);
+  }, []);
+
+  const handleRemoveClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      onRemove();
+    },
+    [onRemove]
+  );
+
+  return (
+    <div ref={menuRef} className="absolute right-2 top-2">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={handleToggleMenu}
+        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-slate-400 opacity-0 shadow-sm transition-all hover:bg-white hover:text-slate-600 hover:shadow-md group-hover:opacity-100"
+        aria-label={`Options for ${displayName}`}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-10 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleRemoveClick}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
+          >
+            <Trash2 size={14} />
+            Remove
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -163,31 +274,59 @@ export const RecentAssetsList: React.FC<RecentAssetsListProps> = ({
  * - Model icon (Package icon as placeholder, or checkmark when added)
  * - Model name (without file extension), or "Added to scene!" when added
  * - Relative timestamp (e.g., "5m ago", "2h ago")
+ * - Options menu on hover with remove action
  */
-const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, isAdded = false }) => {
+const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded = false }) => {
   const displayName = stripFileExtension(asset.name);
   const relativeDate = formatRelativeDate(asset.uploadDate);
 
+  /** Handle keyboard activation of the card */
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!isAdded && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        onAdd();
+      }
+    },
+    [isAdded, onAdd]
+  );
+
+  /** Handle click on the card */
+  const handleClick = useCallback(() => {
+    if (!isAdded) {
+      onAdd();
+    }
+  }, [isAdded, onAdd]);
+
+  // Compute CSS classes for the card
+  const cardClasses = isAdded
+    ? 'cursor-default border-green-200 bg-gradient-to-br from-green-50 to-green-100/50'
+    : 'border-white/50 bg-white/50 hover:bg-white hover:shadow-md';
+
+  const iconClasses = isAdded
+    ? 'bg-green-500 text-white'
+    : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-500';
+
+  const nameClasses = isAdded ? 'text-green-700' : 'text-slate-800 group-hover:text-slate-900';
+
+  const timestampClasses = isAdded ? 'text-green-600' : 'text-slate-400';
+
   return (
-    <button
-      onClick={onAdd}
-      type="button"
-      className={`group w-full rounded-[20px] border p-4 text-left shadow-sm transition-all ${
-        isAdded
-          ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-100/50'
-          : 'border-white/50 bg-white/50 hover:bg-white hover:shadow-md'
-      }`}
+    <div
+      onClick={handleClick}
+      role="button"
+      tabIndex={isAdded ? -1 : 0}
+      onKeyDown={handleKeyDown}
+      className={`group relative w-full cursor-pointer rounded-[20px] border p-4 text-left shadow-sm transition-all ${cardClasses}`}
       aria-label={isAdded ? `${displayName} added to scene` : `Add ${displayName} to scene`}
-      disabled={isAdded}
     >
+      {/* Options Menu (only shown when onRemove is provided and not in added state) */}
+      {onRemove && !isAdded && <AssetOptionsMenu displayName={displayName} onRemove={onRemove} />}
+
       <div className="flex items-center gap-3">
         {/* Icon */}
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] shadow-sm ${
-            isAdded
-              ? 'bg-green-500 text-white'
-              : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-500'
-          }`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] shadow-sm ${iconClasses}`}
         >
           {isAdded ? (
             <CheckCircle2 size={18} aria-hidden="true" />
@@ -199,20 +338,12 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, isAdded = false }) 
         {/* Content */}
         <div className="min-w-0 flex-1">
           {/* Model Name or "Added to scene!" */}
-          <p
-            className={`truncate text-sm font-semibold leading-snug ${
-              isAdded ? 'text-green-700' : 'text-slate-800 group-hover:text-slate-900'
-            }`}
-          >
+          <p className={`truncate text-sm font-semibold leading-snug ${nameClasses}`}>
             {isAdded ? 'Added to scene!' : displayName}
           </p>
 
           {/* Timestamp (or asset name when showing "Added") */}
-          <div
-            className={`mt-1 flex items-center gap-1.5 text-xs ${
-              isAdded ? 'text-green-600' : 'text-slate-400'
-            }`}
-          >
+          <div className={`mt-1 flex items-center gap-1.5 text-xs ${timestampClasses}`}>
             {isAdded ? (
               <span>{displayName}</span>
             ) : (
@@ -224,6 +355,6 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, isAdded = false }) 
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 };

@@ -24,6 +24,7 @@ import {
   getAsset,
   getRecentAssets,
   updateAssetMetadata,
+  deleteAsset,
   migrateLegacyAssets,
   hasLegacyAssets,
   blobToArrayBuffer,
@@ -64,6 +65,8 @@ interface UseModelUploadReturn {
     asset: AssetMetadata,
     existingObjects: SceneObject[]
   ) => Promise<UploadResult | null>;
+  /** Remove an asset from storage */
+  removeAsset: (assetId: string) => Promise<void>;
   /** Refresh the recent assets list */
   refreshRecentAssets: () => Promise<void>;
   /** Whether an upload is in progress */
@@ -467,6 +470,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
         if (result) {
           await refreshRecentAssets();
+        } else {
+          // Processing failed - clean up the stored asset so it doesn't appear in recent list
+          await deleteAsset(metadata.id);
         }
 
         return result;
@@ -508,6 +514,22 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   );
 
   // ---------------------------------------------------------------------------
+  // Remove Asset
+  // ---------------------------------------------------------------------------
+
+  const removeAsset = useCallback(
+    async (assetId: string): Promise<void> => {
+      try {
+        await deleteAsset(assetId);
+        await refreshRecentAssets();
+      } catch (error) {
+        console.error('[useModelUpload] Failed to remove asset:', error);
+      }
+    },
+    [refreshRecentAssets]
+  );
+
+  // ---------------------------------------------------------------------------
   // Derived State
   // ---------------------------------------------------------------------------
 
@@ -521,6 +543,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
     recentAssets,
     uploadFile,
     addRecentAssetToScene,
+    removeAsset,
     refreshRecentAssets,
     isUploading,
     resetProgress,
