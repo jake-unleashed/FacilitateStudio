@@ -8,7 +8,7 @@ import {
   findChildByPathString,
 } from '../../utils/childTransformUtils';
 import { calculateCameraPosition } from '../../utils/cameraPositionCalculator';
-import { ObjectOutline } from './ObjectOutline';
+import type { PreviewOutlineTarget } from './types';
 
 interface PreviewMoveItemStepProps {
   step: SimStep;
@@ -22,6 +22,11 @@ interface PreviewMoveItemStepProps {
   onAnimationStart?: () => void;
   /** Callback when object position changes during animation */
   onPositionUpdate?: (position: { x: number; y: number; z: number }, childPath?: string) => void;
+  /**
+   * Callback to control which object/child is outlined in preview mode.
+   * Used to drive postprocessing silhouette outlines without coupling to editor selection state.
+   */
+  onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
 }
 
 /**
@@ -37,6 +42,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   shouldAnimate = false,
   onAnimationStart,
   onPositionUpdate,
+  onPreviewOutlineTargetChange,
 }) => {
   const { camera } = useThree();
   const [isAnimating, setIsAnimating] = useState(false);
@@ -332,42 +338,39 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     }
   }, [isValidStep, targetObject, onComplete]);
 
-  // Don't render if invalid
-  if (!isValidStep || !targetObject) {
-    return null;
-  }
-
   // Render outline around target object - only show after camera settles, and before object is clicked
   // Hide outline immediately when clicked, before animation starts
-  const shouldShowOutline = showOutline && !shouldAnimate && !isAnimating;
+  const shouldShowOutline = isValidStep && showOutline && !shouldAnimate && !isAnimating;
 
-  const outlinePosition = step.startPosition ??
-    implicitStartPosition ?? {
-      x: targetObject.transform.x,
-      y: targetObject.transform.y,
-      z: targetObject.transform.z,
+  // Publish outline target to the canvas so postprocessing outline can be driven without selection state.
+  useEffect(() => {
+    if (!onPreviewOutlineTargetChange) return;
+    if (!step.targetObjectId || !isValidStep) {
+      onPreviewOutlineTargetChange(null);
+      return;
+    }
+
+    if (shouldShowOutline) {
+      onPreviewOutlineTargetChange({
+        objectId: step.targetObjectId,
+        childPath: step.targetChildPath ?? null,
+      });
+    } else {
+      onPreviewOutlineTargetChange(null);
+    }
+
+    return () => {
+      onPreviewOutlineTargetChange(null);
     };
+  }, [
+    onPreviewOutlineTargetChange,
+    isValidStep,
+    shouldShowOutline,
+    step.targetObjectId,
+    step.targetChildPath,
+  ]);
 
-  return (
-    <>
-      {/* Object outline - only shown after camera settles, hidden once object is clicked */}
-      {shouldShowOutline && (
-        <ObjectOutline
-          position={outlinePosition}
-          scale={{
-            x: targetObject.transform.scaleX,
-            y: targetObject.transform.scaleY,
-            z: targetObject.transform.scaleZ,
-          }}
-          rotation={{
-            x: targetObject.transform.rotationX,
-            y: targetObject.transform.rotationY,
-            z: targetObject.transform.rotationZ,
-          }}
-          color={targetObject.properties.color || '#3b82f6'}
-          visible={shouldShowOutline}
-        />
-      )}
-    </>
-  );
+  // No in-canvas geometry outline here: preview outlines are now driven via postprocessing
+  // selection outlines in MainCanvas (silhouette-based, works for uploaded models).
+  return null;
 };

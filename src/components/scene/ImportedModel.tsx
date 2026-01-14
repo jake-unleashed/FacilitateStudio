@@ -129,6 +129,11 @@ interface ImportedModelProps {
   /** Path of the selected child mesh (if any) - format: "path.to.child" */
   selectedChildPath?: string | null;
   /**
+   * Path of the child mesh to outline (if any) - format: "path.to.child".
+   * Used by preview mode to highlight a target child without coupling to editor selection state.
+   */
+  outlinedChildPath?: string | null;
+  /**
    * Called when the parent object is clicked.
    * - pendingChildPath: child to select if interaction is a click (not drag)
    * - dragChildPath: child to move if interaction is a drag (if not provided, moves root)
@@ -173,6 +178,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   obj,
   isSelected,
   selectedChildPath,
+  outlinedChildPath,
   onPointerDown,
   onChildPointerDown,
   onDoubleClick,
@@ -202,6 +208,9 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
 
   // Check if a specific child is selected
   const hasChildSelected = selectedChildPath !== null && selectedChildPath !== undefined;
+
+  // Check if a child should be outlined (preview target)
+  const hasOutlinedChild = outlinedChildPath !== null && outlinedChildPath !== undefined;
 
   // Load model from shared cache when asset ID changes
   useEffect(() => {
@@ -921,6 +930,14 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     return entry?.mesh ?? null;
   }, [hasChildSelected, selectedChildPath, childPathToMesh, model]);
 
+  // Get the outlined child mesh (preview target) for outline rendering
+  // NOTE: This hook MUST be called before any early returns to satisfy React's rules of hooks
+  const outlinedChildMesh = useMemo(() => {
+    if (!hasOutlinedChild || !outlinedChildPath || !model) return null;
+    const entry = childPathToMesh.get(outlinedChildPath);
+    return entry?.mesh ?? null;
+  }, [hasOutlinedChild, outlinedChildPath, childPathToMesh, model]);
+
   // Render error state
   if (error) {
     return (
@@ -961,8 +978,11 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
 
         {/* Post-processing outline for selected child mesh */}
         <SelectObject
-          object={selectedChildMesh}
-          enabled={hasChildSelected && selectedChildMesh !== null}
+          object={outlinedChildMesh ?? selectedChildMesh}
+          enabled={
+            (hasOutlinedChild && outlinedChildMesh !== null) ||
+            (hasChildSelected && selectedChildMesh !== null)
+          }
         />
       </group>
     </group>

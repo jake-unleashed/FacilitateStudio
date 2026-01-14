@@ -2,6 +2,7 @@ import React from 'react';
 import { PreviewMoveItemStep } from './PreviewMoveItemStep';
 import { SimStep, SceneObject } from '../../types';
 import CameraControlsImpl from 'camera-controls';
+import type { PreviewOutlineTarget } from './types';
 
 interface PreviewMoveItemStepRendererProps {
   step: SimStep;
@@ -11,6 +12,7 @@ interface PreviewMoveItemStepRendererProps {
   shouldAnimate?: boolean;
   onPositionUpdate?: (position: { x: number; y: number; z: number }, childPath?: string) => void;
   onComplete?: () => void;
+  onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
 }
 
 /**
@@ -25,6 +27,7 @@ export const PreviewMoveItemStepRenderer: React.FC<PreviewMoveItemStepRendererPr
   shouldAnimate = false,
   onPositionUpdate,
   onComplete,
+  onPreviewOutlineTargetChange,
 }) => {
   return (
     <PreviewMoveItemStep
@@ -39,6 +42,7 @@ export const PreviewMoveItemStepRenderer: React.FC<PreviewMoveItemStepRendererPr
           onPositionUpdate(position, childPath);
         }
       }}
+      onPreviewOutlineTargetChange={onPreviewOutlineTargetChange}
     />
   );
 };

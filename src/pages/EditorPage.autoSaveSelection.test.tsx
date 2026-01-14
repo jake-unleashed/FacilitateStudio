@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -78,10 +78,14 @@ vi.mock('../components/MainCanvas', () => {
   }) => {
     const { objects, selectedObjectId, onSelectObject, onUpdateObject, onCanvasReady } = props;
     const first = objects[0];
+    const hasNotifiedCanvasReadyRef = useRef(false);
 
     useEffect(() => {
       // Ensure autosave path that captures thumbnails is exercised.
-      onCanvasReady?.(document.createElement('canvas'));
+      if (!hasNotifiedCanvasReadyRef.current) {
+        hasNotifiedCanvasReadyRef.current = true;
+        onCanvasReady?.(document.createElement('canvas'));
+      }
     }, [onCanvasReady]);
 
     return (

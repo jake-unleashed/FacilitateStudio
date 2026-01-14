@@ -47,6 +47,17 @@ const PARENT_OUTLINE_COLOR = 0x3b82f6;
  */
 const CHILD_OUTLINE_COLOR = 0x10b981;
 
+/**
+ * Preview outline color - always blue (matches UX expectations in preview mode).
+ */
+const PREVIEW_OUTLINE_COLOR = 0x3b82f6;
+
+/**
+ * Preview outline pulse speed (attention-grabbing).
+ * Higher = faster pulse.
+ */
+const PREVIEW_PULSE_SPEED = 0.65;
+
 // ============================================================================
 // Child Selection Context - Separate from parent selection
 // ============================================================================
@@ -181,6 +192,34 @@ export const ChildOutlineEffect: React.FC = () => {
   );
 };
 
+/**
+ * Preview child outline effect (blue + pulsing).
+ * Renders only when there are children selected for outlining.
+ */
+export const PreviewChildOutlineEffect: React.FC = () => {
+  const ctx = useContext(ChildSelectionContext);
+
+  if (!ctx || ctx.selectedChildren.length === 0) {
+    return null;
+  }
+
+  return (
+    <EffectComposer multisampling={4} autoClear={false}>
+      <Outline
+        selection={ctx.selectedChildren}
+        blur
+        edgeStrength={9}
+        pulseSpeed={PREVIEW_PULSE_SPEED}
+        visibleEdgeColor={PREVIEW_OUTLINE_COLOR}
+        hiddenEdgeColor={PREVIEW_OUTLINE_COLOR}
+        width={1024}
+        xRay={true}
+        blendFunction={BlendFunction.SCREEN}
+      />
+    </EffectComposer>
+  );
+};
+
 // ============================================================================
 // SelectionOutlineEffect Component - Blue outline for parents
 // ============================================================================
@@ -215,6 +254,37 @@ export const SelectionOutlineEffect: React.FC = () => {
         // xRay={true} ensures outlines are visible even when depth buffer has artifacts
         // from other scene elements (like the Grid). Without this, outlines can disappear
         // when objects are positioned at certain coordinates.
+        xRay={true}
+        blendFunction={BlendFunction.SCREEN}
+      />
+    </EffectComposer>
+  );
+};
+
+/**
+ * Preview parent outline effect (blue + pulsing).
+ * Must be placed inside Selection context.
+ *
+ * Mirrors SelectionOutlineEffect behavior: when a child outline is active, we do not render
+ * a parent outline to avoid multiple active outline effects.
+ */
+export const PreviewSelectionOutlineEffect: React.FC = () => {
+  const childCtx = useContext(ChildSelectionContext);
+  const hasChildSelection = childCtx && childCtx.selectedChildren.length > 0;
+
+  if (hasChildSelection) {
+    return null;
+  }
+
+  return (
+    <EffectComposer multisampling={4} autoClear={false}>
+      <Outline
+        blur
+        edgeStrength={9}
+        pulseSpeed={PREVIEW_PULSE_SPEED}
+        visibleEdgeColor={PREVIEW_OUTLINE_COLOR}
+        hiddenEdgeColor={PREVIEW_OUTLINE_COLOR}
+        width={1024}
         xRay={true}
         blendFunction={BlendFunction.SCREEN}
       />

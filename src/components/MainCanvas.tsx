@@ -14,12 +14,15 @@ import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
 import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
 import { PreviewMoveItemStepRenderer } from './preview/PreviewMoveItemStepRenderer';
+import type { PreviewOutlineTarget } from './preview/types';
 import { ImportedModel } from './scene/ImportedModel';
 import {
   ChildSelectionProvider,
-  ChildOutlineEffect,
   Select,
+  ChildOutlineEffect,
+  PreviewChildOutlineEffect,
   SelectionOutlineEffect,
+  PreviewSelectionOutlineEffect,
 } from './scene/SelectionOutline';
 import { Selection } from '@react-three/postprocessing';
 import { TransformGizmo } from './scene/transformGizmo';
@@ -159,6 +162,8 @@ interface SceneContentProps {
   ) => void;
   onPreviewStepComplete?: () => void;
   shouldAnimateMoveItem?: boolean;
+  previewOutlineTarget?: PreviewOutlineTarget | null;
+  onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
 }
 
 const SceneContent: React.FC<SceneContentProps> = ({
@@ -179,6 +184,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
   onPreviewPositionUpdate,
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
+  previewOutlineTarget = null,
+  onPreviewOutlineTargetChange,
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
@@ -192,6 +199,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const selectedChildPath = parsedSelection?.childPath ?? null;
 
   const selectedObject = objects.find((obj) => obj.id === selectedParentId) || null;
+
+  // Preview outline target parsing (kept separate from selection state)
+  const previewOutlineParentId = previewOutlineTarget?.objectId ?? null;
+  const previewOutlineChildPath = previewOutlineTarget?.childPath ?? null;
 
   // Drag state management
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -771,6 +782,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
           shouldAnimate={shouldAnimateMoveItem}
           onPositionUpdate={onPreviewPositionUpdate}
           onComplete={onPreviewStepComplete}
+          onPreviewOutlineTargetChange={onPreviewOutlineTargetChange}
         />
       )}
 
@@ -830,7 +842,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
                   <Select
                     key={obj.id}
                     enabled={
-                      selectedParentId === obj.id &&
+                      ((!previewMode && selectedParentId === obj.id) ||
+                        (previewMode &&
+                          previewOutlineParentId === obj.id &&
+                          // If we're outlining a child, avoid also outlining the parent.
+                          previewOutlineChildPath === null)) &&
                       // For imported models, only outline parent when no child is selected
                       // (child selection uses emissive highlighting instead)
                       !(obj.properties.modelAssetId && selectedChildPath)
@@ -841,6 +857,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
                         obj={obj}
                         isSelected={selectedParentId === obj.id}
                         selectedChildPath={selectedParentId === obj.id ? selectedChildPath : null}
+                        outlinedChildPath={
+                          previewMode && previewOutlineParentId === obj.id
+                            ? previewOutlineChildPath
+                            : null
+                        }
                         onPointerDown={handleObjectPointerDown}
                         onChildPointerDown={handleChildPointerDown}
                         onDoubleClick={handleDoubleClick}
@@ -934,12 +955,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
             )}
           </group>
 
-          {/* Post-processing outline effect for parent objects (blue) */}
-          <SelectionOutlineEffect />
+          {/* Post-processing outline effect for parent objects */}
+          {previewMode ? <PreviewSelectionOutlineEffect /> : <SelectionOutlineEffect />}
         </Selection>
 
-        {/* Child outline effect (green) - MUST be outside Selection context */}
-        <ChildOutlineEffect />
+        {/* Child outline effect - MUST be outside Selection context */}
+        {previewMode ? <PreviewChildOutlineEffect /> : <ChildOutlineEffect />}
       </ChildSelectionProvider>
 
       {/* Transform handles for selected object (height) */}
@@ -1104,6 +1125,9 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
 }) => {
   // Performance monitoring state
   const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
+  const [previewOutlineTarget, setPreviewOutlineTarget] = useState<PreviewOutlineTarget | null>(
+    null
+  );
   // Track if we've notified about canvas being ready
   const hasNotifiedCanvasRef = useRef(false);
 
@@ -1163,6 +1187,8 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onPreviewPositionUpdate={onPreviewPositionUpdate}
             onPreviewStepComplete={onPreviewStepComplete}
             shouldAnimateMoveItem={shouldAnimateMoveItem}
+            previewOutlineTarget={previewOutlineTarget}
+            onPreviewOutlineTargetChange={setPreviewOutlineTarget}
           />
 
           {/* Performance monitor (scene component - collects stats) */}
