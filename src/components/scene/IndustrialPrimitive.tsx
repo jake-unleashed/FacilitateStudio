@@ -40,6 +40,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   isActualReference = false,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
   const color = obj.properties.color || '#3b82f6';
 
   // Memoize position array to prevent unnecessary re-renders
@@ -105,6 +106,12 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   useEffect(() => {
     if (groupRef.current) {
       groupRef.current.userData.objectId = obj.id;
+      // Used by preview occlusion raycasts to associate intersections to a SceneObject
+      groupRef.current.userData.sceneObjectId = obj.id;
+    }
+    if (meshRef.current) {
+      meshRef.current.userData.sceneObjectId = obj.id;
+      meshRef.current.userData.childPath = null;
     }
   }, [obj.id]);
 
@@ -120,7 +127,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
       onPointerLeave={handlePointerLeave}
     >
       {/* eslint-disable-next-line react/no-unknown-property */}
-      <mesh geometry={sharedBoxGeometry}>
+      <mesh ref={meshRef} geometry={sharedBoxGeometry}>
         <meshStandardMaterial
           color={color}
           roughness={0.2}

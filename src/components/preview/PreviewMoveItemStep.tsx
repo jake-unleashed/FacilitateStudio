@@ -7,7 +7,11 @@ import {
   calculateChildWorldPosition,
   findChildByPathString,
 } from '../../utils/childTransformUtils';
-import { calculateCameraPosition } from '../../utils/cameraPositionCalculator';
+import {
+  calculatePreviewMoveItemBaseFraming,
+  generatePreviewCameraCandidates,
+} from '../../utils/previewCameraCalculator';
+import { pickBestPreviewCameraCandidateByRaycast } from '../../utils/previewCameraOcclusion';
 import type { PreviewOutlineTarget } from './types';
 
 interface PreviewMoveItemStepProps {
@@ -44,7 +48,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   onPositionUpdate,
   onPreviewOutlineTargetChange,
 }) => {
-  const { camera } = useThree();
+  const { camera, scene, invalidate } = useThree();
   const [isAnimating, setIsAnimating] = useState(false);
   const animationStartTime = useRef<number>(0);
   const animationStartWorldPosRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -53,8 +57,22 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   const previousStepIdRef = useRef<string | null>(null);
   const isPositioningRef = useRef(false); // Track if we're currently positioning camera
   const targetCameraPositionRef = useRef<THREE.Vector3 | null>(null); // Store target position for checking completion
+  const targetCameraTargetRef = useRef<THREE.Vector3 | null>(null); // Store target lookAt target for checking completion
   const cameraSettledTimeRef = useRef<number | null>(null); // Track when camera finished moving
+  const settleStartTimeRef = useRef<number | null>(null); // Track when we first became "close enough"
+  const tmpTargetVecRef = useRef(new THREE.Vector3()); // Avoid allocations in frame loop
   const [showOutline, setShowOutline] = useState(false); // Control outline visibility (after camera settles)
+  const isCalculatingCameraRef = useRef(false); // Prevent re-entrant async calculations
+
+  // Premium-feel tuning for camera settling:
+  // - Use tighter thresholds so we don't cut off damping early
+  // - Require stability for a short duration so the stop feels smooth
+  const POSITION_EPSILON = 0.02;
+  const TARGET_EPSILON = 0.02;
+  const SETTLE_STABLE_MS = 180;
+  // Outline timing: keep it quick after the camera settles to avoid “dead air”.
+  const OUTLINE_SHOW_DELAY_MS = 150;
+  const RAYCAST_SAMPLE_COUNT = 12;
 
   // Find target object
   const targetObject = useMemo(() => {
@@ -112,9 +130,12 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     hasPositionedCamera.current = false;
     previousStepIdRef.current = step.id;
     cameraSettledTimeRef.current = null;
+    settleStartTimeRef.current = null;
     setShowOutline(false); // Hide outline until camera settles
     isPositioningRef.current = false;
     targetCameraPositionRef.current = null;
+    targetCameraTargetRef.current = null;
+    isCalculatingCameraRef.current = false;
   }, [step.id]);
 
   // Keep controls enabled during camera positioning transition and update camera controls
@@ -123,37 +144,64 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
       // Always update camera controls during positioning to ensure smooth transition continues
       cameraControlsRef.current.update(delta);
 
-      if (targetCameraPositionRef.current) {
-        // Check if camera has reached target (rough check - if distance is small)
-        const currentPos = camera.position;
-        const distance = currentPos.distanceTo(targetCameraPositionRef.current);
+      const targetPos = targetCameraPositionRef.current;
+      const targetTarget = targetCameraTargetRef.current;
+      if (targetPos && targetTarget) {
+        // Check both camera position and orbit target so we don't cut damping early.
+        const posDistance = camera.position.distanceTo(targetPos);
+        const currentTarget = cameraControlsRef.current.getTarget(tmpTargetVecRef.current);
+        const targetDistance = currentTarget.distanceTo(targetTarget);
 
-        if (distance < 0.1) {
-          // Camera has reached target
-          isPositioningRef.current = false;
-          if (isPositioningCameraRef) {
-            isPositioningCameraRef.current = false;
+        const isCloseEnough = posDistance < POSITION_EPSILON && targetDistance < TARGET_EPSILON;
+
+        if (isCloseEnough) {
+          if (settleStartTimeRef.current === null) {
+            settleStartTimeRef.current = Date.now();
           }
-          targetCameraPositionRef.current = null;
 
-          // Mark when camera settled (for delay before showing outline)
-          if (cameraSettledTimeRef.current === null) {
-            cameraSettledTimeRef.current = Date.now();
+          const stableMs = Date.now() - settleStartTimeRef.current;
+          if (stableMs >= SETTLE_STABLE_MS) {
+            // Camera has smoothly settled
+            isPositioningRef.current = false;
+            if (isPositioningCameraRef) {
+              isPositioningCameraRef.current = false;
+            }
+            targetCameraPositionRef.current = null;
+            targetCameraTargetRef.current = null;
+            settleStartTimeRef.current = null;
+
+            // Mark when camera settled (for delay before showing outline)
+            if (cameraSettledTimeRef.current === null) {
+              cameraSettledTimeRef.current = Date.now();
+            }
+          } else {
+            // Keep positioning flag set during the settle window
+            if (isPositioningCameraRef) {
+              isPositioningCameraRef.current = true;
+            }
           }
         } else {
-          // Keep positioning flag set so MainCanvas allows controls to be enabled
+          // Not close enough yet; reset stability timer
+          settleStartTimeRef.current = null;
           if (isPositioningCameraRef) {
             isPositioningCameraRef.current = true;
           }
         }
+      } else {
+        // If we don't have a target to compare against, don't leave positioning mode early.
+        if (isPositioningCameraRef) {
+          isPositioningCameraRef.current = true;
+        }
       }
     }
 
-    // Show outline after camera has settled and a brief pause (500ms)
+    // Show outline shortly after camera has settled (avoid “dead air”)
     if (cameraSettledTimeRef.current !== null && !showOutline) {
       const timeSinceSettled = Date.now() - cameraSettledTimeRef.current;
-      if (timeSinceSettled >= 500) {
+      if (timeSinceSettled >= OUTLINE_SHOW_DELAY_MS) {
         setShowOutline(true);
+        // Ensure a frame is rendered even if the canvas is in demand mode.
+        invalidate();
       }
     }
   });
@@ -195,54 +243,88 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
         };
       const endPos = step.endPosition;
 
-      // Get current camera position and target to try to maintain angle
-      const currentCameraPos = camera.position.clone();
-      const currentCameraTarget = cameraControlsRef.current
-        ? cameraControlsRef.current.getTarget(new THREE.Vector3())
-        : undefined;
-
-      const cameraPos = calculateCameraPosition(
-        startPos,
-        endPos,
-        targetObject,
-        objects,
-        camera as THREE.PerspectiveCamera,
-        currentCameraPos,
-        currentCameraTarget
-      );
-
-      // Set camera position with smooth transition
-      const currentControls = cameraControlsRef.current;
-      if (currentControls) {
-        // Store target position for checking completion
-        targetCameraPositionRef.current = new THREE.Vector3(
-          cameraPos.position[0],
-          cameraPos.position[1],
-          cameraPos.position[2]
-        );
-
-        // Set positioning flag so MainCanvas allows controls to be enabled
-        isPositioningRef.current = true;
-        if (isPositioningCameraRef) {
-          isPositioningCameraRef.current = true;
-        }
-
-        // Use setLookAt with smooth transition
-        currentControls.setLookAt(
-          cameraPos.position[0],
-          cameraPos.position[1],
-          cameraPos.position[2],
-          cameraPos.target[0],
-          cameraPos.target[1],
-          cameraPos.target[2],
-          true // Smooth transition
-        );
-
-        // Update camera controls immediately to start the transition
-        currentControls.update(delta);
+      // Kick off async calculation once; apply results when ready.
+      if (isCalculatingCameraRef.current) {
+        return;
       }
-
+      isCalculatingCameraRef.current = true;
       hasPositionedCamera.current = true;
+
+      const currentControls = cameraControlsRef.current;
+      if (!currentControls) return;
+
+      void (async () => {
+        try {
+          const base = await calculatePreviewMoveItemBaseFraming({
+            startPos,
+            endPos,
+            targetObject,
+            targetChildPath: step.targetChildPath,
+            camera: camera as THREE.PerspectiveCamera,
+          });
+
+          const candidates = generatePreviewCameraCandidates({
+            target: base.target,
+            distance: base.distance,
+            defaultAzimuth: base.defaultAzimuth,
+            sampleCount: RAYCAST_SAMPLE_COUNT,
+          });
+
+          const bestCandidate = pickBestPreviewCameraCandidateByRaycast({
+            candidates,
+            scene,
+            targetObjectId: step.targetObjectId!,
+            targetChildPath: step.targetChildPath,
+            baseTarget: base.target,
+            startTarget: base.startFocusTarget,
+            endTarget: base.endFocusTarget,
+            boundsSize: base.boundsSize,
+          });
+
+          const chosenPosition = bestCandidate?.position ?? base.defaultPosition;
+          const cameraPos = {
+            position: chosenPosition,
+            target: base.target,
+          };
+
+          // Store target position for checking completion
+          targetCameraPositionRef.current = new THREE.Vector3(
+            cameraPos.position[0],
+            cameraPos.position[1],
+            cameraPos.position[2]
+          );
+          targetCameraTargetRef.current = new THREE.Vector3(
+            cameraPos.target[0],
+            cameraPos.target[1],
+            cameraPos.target[2]
+          );
+          settleStartTimeRef.current = null;
+
+          // Set positioning flag so MainCanvas allows controls to be enabled
+          isPositioningRef.current = true;
+          if (isPositioningCameraRef) {
+            isPositioningCameraRef.current = true;
+          }
+
+          // Use setLookAt with smooth transition
+          currentControls.setLookAt(
+            cameraPos.position[0],
+            cameraPos.position[1],
+            cameraPos.position[2],
+            cameraPos.target[0],
+            cameraPos.target[1],
+            cameraPos.target[2],
+            true
+          );
+
+          // Start the transition immediately
+          currentControls.update(delta);
+        } catch (error) {
+          console.error('[Camera] Error positioning preview camera:', error);
+        } finally {
+          isCalculatingCameraRef.current = false;
+        }
+      })();
     } catch (error) {
       // Error handling - log and mark as positioned to prevent infinite retries
       console.error('[Camera] Error positioning camera:', error);
@@ -347,6 +429,8 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     if (!onPreviewOutlineTargetChange) return;
     if (!step.targetObjectId || !isValidStep) {
       onPreviewOutlineTargetChange(null);
+      // Ensure outline state clears immediately on screen.
+      invalidate();
       return;
     }
 
@@ -355,12 +439,15 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
         objectId: step.targetObjectId,
         childPath: step.targetChildPath ?? null,
       });
+      invalidate();
     } else {
       onPreviewOutlineTargetChange(null);
+      invalidate();
     }
 
     return () => {
       onPreviewOutlineTargetChange(null);
+      invalidate();
     };
   }, [
     onPreviewOutlineTargetChange,
@@ -368,6 +455,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     shouldShowOutline,
     step.targetObjectId,
     step.targetChildPath,
+    invalidate,
   ]);
 
   // No in-canvas geometry outline here: preview outlines are now driven via postprocessing

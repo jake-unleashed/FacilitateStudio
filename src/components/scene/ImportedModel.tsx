@@ -251,6 +251,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   useEffect(() => {
     if (outerGroupRef.current && outerGroupRef.current.userData) {
       outerGroupRef.current.userData.objectId = obj.id;
+      // Used by preview occlusion raycasts to associate intersections to a SceneObject
+      outerGroupRef.current.userData.sceneObjectId = obj.id;
     }
   }, [obj.id]);
 
@@ -300,6 +302,34 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     }
     return map;
   }, [model, obj.children]);
+
+  // Tag cloned model meshes with sceneObjectId and a best-effort childPath string.
+  // This enables preview-mode occlusion raycasts to distinguish:
+  // - the target child mesh (e.g. seat) vs other parts of the same model (e.g. door)
+  // so we can rotate the camera to an actually-visible viewpoint.
+  useEffect(() => {
+    if (!model) return;
+
+    // First, tag ALL meshes with sceneObjectId and default childPath=null.
+    model.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        node.userData.sceneObjectId = obj.id;
+        if (node.userData.childPath === undefined) {
+          node.userData.childPath = null;
+        }
+      }
+    });
+
+    // Then, for known children, override childPath for all meshes in that subtree.
+    for (const [pathStr, { mesh }] of childPathToMesh.entries()) {
+      mesh.traverse((node) => {
+        if (node instanceof THREE.Mesh) {
+          node.userData.sceneObjectId = obj.id;
+          node.userData.childPath = pathStr;
+        }
+      });
+    }
+  }, [model, obj.id, childPathToMesh]);
 
   // Find which child (if any) a clicked mesh belongs to
   // Returns the DEEPEST matching child (most specific) to support nested hierarchies
@@ -1006,6 +1036,7 @@ export const ImportedModel = React.memo(ImportedModelInner, (prevProps, nextProp
     prevProps.obj.children === nextProps.obj.children &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.selectedChildPath === nextProps.selectedChildPath &&
+    prevProps.outlinedChildPath === nextProps.outlinedChildPath &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.isHovered === nextProps.isHovered &&
     prevProps.isGhost === nextProps.isGhost &&

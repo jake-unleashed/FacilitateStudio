@@ -8,7 +8,7 @@ import {
   pathToString,
 } from '../types';
 import { DEFAULT_CAMERA_POSITION, GROUND_PLANE_EXTENT } from '../constants';
-import { Canvas, useFrame, ThreeEvent } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, ThreeEvent } from '@react-three/fiber';
 import { CameraControls, Environment, Grid, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
@@ -189,6 +189,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
+  const { invalidate } = useThree();
 
   // Ref to track latest endPosition during drag (avoids race condition with state updates)
   const latestEndPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -203,6 +204,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
   // Preview outline target parsing (kept separate from selection state)
   const previewOutlineParentId = previewOutlineTarget?.objectId ?? null;
   const previewOutlineChildPath = previewOutlineTarget?.childPath ?? null;
+
+  // Force a render frame when preview outline target changes
+  // This ensures the <Select enabled> prop update triggers a visible frame
+  // without requiring user interaction (mouse move, etc.)
+  useEffect(() => {
+    if (previewMode) {
+      invalidate();
+    }
+  }, [previewMode, previewOutlineTarget, invalidate]);
 
   // Drag state management
   const [dragState, setDragState] = useState<DragState | null>(null);
