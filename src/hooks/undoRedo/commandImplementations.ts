@@ -195,6 +195,10 @@ function executeUpdateStep(
 ): CommandExecutionResult {
   const stepIndex = currentState.steps.findIndex((step) => step.id === command.stepId);
   if (stepIndex === -1) {
+    console.error('[executeUpdateStep] Step not found:', {
+      stepId: command.stepId,
+      availableStepIds: currentState.steps.map((s) => s.id),
+    });
     return {
       newState: currentState,
       success: false,
@@ -202,8 +206,17 @@ function executeUpdateStep(
     };
   }
 
+  const oldStep = currentState.steps[stepIndex];
   const newSteps = [...currentState.steps];
   newSteps[stepIndex] = command.newState;
+
+  console.log('[executeUpdateStep] Executing step update:', {
+    stepId: command.stepId,
+    oldEndPos: oldStep.endPosition,
+    newEndPos: command.newState.endPosition,
+    oldStep: oldStep,
+    newStep: command.newState,
+  });
 
   return {
     newState: {

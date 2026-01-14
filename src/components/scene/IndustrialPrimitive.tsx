@@ -23,6 +23,8 @@ export interface IndustrialPrimitiveProps {
   onHoverStart: () => void;
   onHoverEnd: () => void;
   isGhost?: boolean;
+  /** If true, this is the actual reference object during recording (very transparent). If false but isGhost=true, it's the draggable ghost. */
+  isActualReference?: boolean;
 }
 
 const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
@@ -35,6 +37,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   onHoverStart,
   onHoverEnd,
   isGhost = false,
+  isActualReference = false,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const color = obj.properties.color || '#3b82f6';
@@ -127,7 +130,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
           // eslint-disable-next-line react/no-unknown-property
           emissiveIntensity={emissiveIntensity}
           transparent={isGhost}
-          opacity={isGhost ? 0.45 : 1.0}
+          opacity={isActualReference ? 0.2 : isGhost ? 0.45 : 1.0}
         />
       </mesh>
     </group>
@@ -152,6 +155,8 @@ export const IndustrialPrimitive = memo(IndustrialPrimitiveInner, (prevProps, ne
     prevProps.obj.properties.visible === nextProps.obj.properties.visible &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isDragging === nextProps.isDragging &&
-    prevProps.isHovered === nextProps.isHovered
+    prevProps.isHovered === nextProps.isHovered &&
+    prevProps.isGhost === nextProps.isGhost &&
+    prevProps.isActualReference === nextProps.isActualReference
   );
 });

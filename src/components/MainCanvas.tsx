@@ -27,6 +27,7 @@ import { FixedContactShadows, ContactShadowDebugger } from './scene/FixedContact
 import { IndustrialPrimitive } from './scene/IndustrialPrimitive';
 import { DragHandler, CursorManager, DragState } from './scene/DragHandler';
 import { KeyboardNavigator } from './scene/KeyboardNavigator';
+import { applyChildWorldPosition, calculateChildWorldPosition } from '../utils/childTransformUtils';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,10 +146,17 @@ interface SceneContentProps {
   onDragEnd?: () => void;
   recordingPositionForStepId?: string | null;
   steps?: SimStep[];
+  latestRecordingEndPositionRef?: React.MutableRefObject<{
+    stepId: string;
+    endPosition: { x: number; y: number; z: number } | null;
+  } | null>;
   previewMode?: boolean;
   previewStep?: SimStep | null;
   onPreviewObjectClick?: (objectId: string) => void;
-  onPreviewPositionUpdate?: (position: { x: number; y: number; z: number }) => void;
+  onPreviewPositionUpdate?: (
+    position: { x: number; y: number; z: number },
+    childPath?: string
+  ) => void;
   onPreviewStepComplete?: () => void;
   shouldAnimateMoveItem?: boolean;
 }
@@ -164,6 +172,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
   onDragEnd,
   recordingPositionForStepId,
   steps = [],
+  latestRecordingEndPositionRef,
   previewMode = false,
   previewStep = null,
   onPreviewObjectClick,
@@ -173,6 +182,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
+
+  // Ref to track latest endPosition during drag (avoids race condition with state updates)
+  const latestEndPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
 
   // Parse the selection ID to separate parent and child selection
   const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
@@ -249,16 +261,88 @@ const SceneContent: React.FC<SceneContentProps> = ({
     return objects.find((obj) => obj.id === targetObjectId) || null;
   }, [targetObjectId, objects]);
 
-  // Get ghost object position (uses endPosition from step) and actual object position (start position)
+  // Memoize endPosition to avoid unnecessary ghost object recreations
+  // Extract the position values as primitives to minimize dependency changes
+  const endPosX = recordingStep?.endPosition?.x;
+  const endPosY = recordingStep?.endPosition?.y;
+  const endPosZ = recordingStep?.endPosition?.z;
+  const startPosX = recordingStep?.startPosition?.x;
+  const startPosY = recordingStep?.startPosition?.y;
+  const startPosZ = recordingStep?.startPosition?.z;
+
+  // Update local ref with latest endPosition from state (for use during drag)
+  useEffect(() => {
+    if (recordingStep?.endPosition) {
+      latestEndPositionRef.current = recordingStep.endPosition;
+    } else {
+      latestEndPositionRef.current = null;
+    }
+  }, [recordingStep?.endPosition]);
+
+  // Get ghost object position - starts at startPosition, updates as user drags it
+  // For child targets: ghost object is positioned at the child's world position
+  // For parent targets: ghost object is positioned at the parent's position
   const ghostObject = useMemo(() => {
     if (!targetObject || !recordingStep) return null;
-    // Ghost uses endPosition from step if available, otherwise uses startPosition
-    const startPos = recordingStep.startPosition || {
-      x: targetObject.transform.x,
-      y: targetObject.transform.y,
-      z: targetObject.transform.z,
-    };
-    const ghostPos = recordingStep.endPosition || startPos;
+
+    // Calculate start position based on whether target is child or parent
+    let startPos: { x: number; y: number; z: number };
+
+    if (recordingStep.targetChildPath) {
+      // Target is a child - use child's world start position
+      // If startPosition is set, use it (it should be the child's world position)
+      // Otherwise calculate it from the parent's current transform
+      if (startPosX !== undefined && startPosY !== undefined && startPosZ !== undefined) {
+        startPos = { x: startPosX, y: startPosY, z: startPosZ };
+      } else {
+        // Calculate child's world position from parent's current transform
+        const childWorldPos = calculateChildWorldPosition(
+          targetObject,
+          recordingStep.targetChildPath
+        );
+        startPos = childWorldPos || {
+          x: targetObject.transform.x,
+          y: targetObject.transform.y,
+          z: targetObject.transform.z,
+        };
+      }
+    } else {
+      // Target is parent - use parent's start position
+      startPos = {
+        x: startPosX ?? targetObject.transform.x,
+        y: startPosY ?? targetObject.transform.y,
+        z: startPosZ ?? targetObject.transform.z,
+      };
+    }
+
+    // Use ref value from EditorPage if available (latest during drag, updated synchronously),
+    // otherwise fall back to state value or local ref
+    // This prevents "snap back" during drag when state update hasn't propagated yet
+    const editorRefPos =
+      latestRecordingEndPositionRef?.current?.stepId === recordingStep.id
+        ? latestRecordingEndPositionRef.current.endPosition
+        : null;
+    const localRefPos = latestEndPositionRef.current;
+    const statePos =
+      endPosX !== undefined || endPosY !== undefined || endPosZ !== undefined
+        ? { x: endPosX ?? startPos.x, y: endPosY ?? startPos.y, z: endPosZ ?? startPos.z }
+        : null;
+
+    const ghostPos = editorRefPos || localRefPos || statePos || startPos;
+
+    if (recordingStep.targetChildPath) {
+      // Child-target recording should move ONLY the child (via its localTransform),
+      // not the entire parent object. We achieve this by updating the child's localTransform
+      // to place the child at the desired world position (ghostPos).
+      const updated = applyChildWorldPosition(
+        targetObject,
+        recordingStep.targetChildPath,
+        ghostPos
+      );
+      return updated ?? targetObject;
+    }
+
+    // For parent targets, use ghost position directly
     return {
       ...targetObject,
       transform: {
@@ -268,25 +352,56 @@ const SceneContent: React.FC<SceneContentProps> = ({
         z: ghostPos.z,
       },
     };
-  }, [targetObject, recordingStep]);
+  }, [
+    targetObject,
+    recordingStep,
+    // Use primitive values for position to minimize object recreations
+    endPosX,
+    endPosY,
+    endPosZ,
+    startPosX,
+    startPosY,
+    startPosZ,
+    latestRecordingEndPositionRef,
+    latestEndPositionRef,
+  ]);
 
   const actualObject = useMemo(() => {
     if (!targetObject || !recordingStep) return null;
-    // Actual object uses start position (locked in place), or current position if no startPosition saved
-    const startPos = recordingStep.startPosition || {
-      x: targetObject.transform.x,
-      y: targetObject.transform.y,
-      z: targetObject.transform.z,
-    };
-    return {
-      ...targetObject,
-      transform: {
-        ...targetObject.transform,
-        x: startPos.x,
-        y: startPos.y,
-        z: startPos.z,
-      },
-    };
+
+    if (recordingStep.targetChildPath) {
+      // Child-target recording should keep the parent fixed and place ONLY the child at the
+      // recorded start position (world space) by adjusting localTransform.
+      const startPos = recordingStep.startPosition ??
+        calculateChildWorldPosition(targetObject, recordingStep.targetChildPath) ?? {
+          x: targetObject.transform.x,
+          y: targetObject.transform.y,
+          z: targetObject.transform.z,
+        };
+
+      const updated = applyChildWorldPosition(
+        targetObject,
+        recordingStep.targetChildPath,
+        startPos
+      );
+      return updated ?? targetObject;
+    } else {
+      // Target is parent - use start position directly
+      const startPos = recordingStep.startPosition || {
+        x: targetObject.transform.x,
+        y: targetObject.transform.y,
+        z: targetObject.transform.z,
+      };
+      return {
+        ...targetObject,
+        transform: {
+          ...targetObject.transform,
+          x: startPos.x,
+          y: startPos.y,
+          z: startPos.z,
+        },
+      };
+    }
   }, [targetObject, recordingStep]);
 
   // Handle pointer down on object - start potential drag
@@ -311,11 +426,15 @@ const SceneContent: React.FC<SceneContentProps> = ({
       }
 
       // During recording, only allow dragging the ghost object (target object)
-      if (recordingPositionForStepId) {
+      // For child targets, we need to check both object ID and child path
+      if (recordingPositionForStepId && recordingStep) {
         if (obj.id !== targetObjectId) {
           // Disable dragging for non-target objects during recording
           return;
         }
+        // If target is a child, we should only allow dragging when that child is selected
+        // The drag will update the parent object's transform, which affects the child
+        // This is handled by the normal drag logic below
       }
 
       // Determine if dragging is allowed using the "selection before drag" rule
@@ -381,13 +500,35 @@ const SceneContent: React.FC<SceneContentProps> = ({
       }
 
       // Default: set up drag for root object
+      // During recording, if this is the ghost object, use its current position from recordingStep
+      let dragObject = obj;
+      let initialX = obj.transform.x;
+      let initialZ = obj.transform.z;
+
+      if (recordingPositionForStepId && recordingStep && obj.id === targetObjectId) {
+        // This is the ghost object - use its current position from step's endPosition or startPosition
+        const startPos = recordingStep.startPosition || {
+          x: targetObject?.transform.x || 0,
+          y: targetObject?.transform.y || 0,
+          z: targetObject?.transform.z || 0,
+        };
+        const currentPos = recordingStep.endPosition || startPos;
+        // Use ghost object's current position for drag initialization
+        initialX = currentPos.x;
+        initialZ = currentPos.z;
+        // Use the ghost object itself (which has the correct current transform)
+        if (ghostObject) {
+          dragObject = ghostObject;
+        }
+      }
+
       setDragState({
         objectId: obj.id,
-        object: obj,
+        object: dragObject,
         pendingChildPath: pendingChildPath ?? null,
         groundPlaneY,
-        initialObjectX: obj.transform.x,
-        initialObjectZ: obj.transform.z,
+        initialObjectX: initialX,
+        initialObjectZ: initialZ,
         initialGrabX: clickPoint.x,
         initialGrabZ: clickPoint.z,
         hasMoved: false,
@@ -398,6 +539,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
     [
       recordingPositionForStepId,
       targetObjectId,
+      recordingStep,
+      targetObject,
+      ghostObject,
       previewMode,
       onPreviewObjectClick,
       selectedParentId,
@@ -720,7 +864,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
                   </Select>
                 )
             )}
-            {/* Render actual object at start position during recording (non-draggable) */}
+            {/* Render actual object at start position during recording (non-draggable, very transparent reference) */}
             {recordingPositionForStepId &&
               actualObject &&
               actualObject.properties.visible &&
@@ -735,6 +879,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
                   isHovered={false}
                   onHoverStart={() => {}}
                   onHoverEnd={() => {}}
+                  isGhost={true}
+                  isActualReference={true}
                 />
               ) : (
                 <IndustrialPrimitive
@@ -747,6 +893,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
                   isHovered={false}
                   onHoverStart={() => {}}
                   onHoverEnd={() => {}}
+                  isGhost={true}
+                  isActualReference={true}
                 />
               ))}
             {/* Render ghost object during recording (draggable) */}
@@ -767,6 +915,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
                     onHoverStart={() => setHoveredObjectId(ghostObject.id)}
                     onHoverEnd={() => setHoveredObjectId(null)}
                     isGhost={true}
+                    highlightOnlyChild={!!recordingStep?.targetChildPath}
                   />
                 ) : (
                   <IndustrialPrimitive
@@ -794,16 +943,19 @@ const SceneContent: React.FC<SceneContentProps> = ({
       </ChildSelectionProvider>
 
       {/* Transform handles for selected object (height) */}
-      {selectedObject && !previewMode && !recordingPositionForStepId && (
-        <TransformGizmo
-          object={selectedObject}
-          selectedChildPath={selectedChildPath}
-          onUpdateObject={onUpdateObject}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          isDragging={dragState?.hasMoved ?? false}
-        />
-      )}
+      {/* During recording, show gizmo for ghost object. Otherwise show for selected object */}
+      {!previewMode &&
+        ((recordingPositionForStepId && ghostObject && selectedParentId === ghostObject.id) ||
+          (!recordingPositionForStepId && selectedObject)) && (
+          <TransformGizmo
+            object={recordingPositionForStepId && ghostObject ? ghostObject : selectedObject!}
+            selectedChildPath={selectedChildPath}
+            onUpdateObject={onUpdateObject}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            isDragging={dragState?.hasMoved ?? false}
+          />
+        )}
 
       {/* Premium CameraControls - tuned for beginners */}
       <CameraControls
@@ -907,6 +1059,11 @@ interface MainCanvasProps {
   recordingPositionForStepId?: string | null;
   /** Steps array for finding recording step */
   steps?: SimStep[];
+  /** Ref to latest endPosition during recording (updated synchronously to avoid race conditions) */
+  latestRecordingEndPositionRef?: React.MutableRefObject<{
+    stepId: string;
+    endPosition: { x: number; y: number; z: number } | null;
+  } | null>;
   /** Enable preview mode (disables camera controls, enables preview interactions) */
   previewMode?: boolean;
   /** Current preview step (used for rendering preview-step UI like move-item) */
@@ -914,7 +1071,10 @@ interface MainCanvasProps {
   /** Callback when object is clicked in preview mode */
   onPreviewObjectClick?: (objectId: string) => void;
   /** Callback when preview move-item step updates object position (during animation) */
-  onPreviewPositionUpdate?: (position: { x: number; y: number; z: number }) => void;
+  onPreviewPositionUpdate?: (
+    position: { x: number; y: number; z: number },
+    childPath?: string
+  ) => void;
   /** Callback when preview move-item step finishes */
   onPreviewStepComplete?: () => void;
   /** Whether move-item animation should start (triggered after clicking target) */
@@ -934,6 +1094,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onDragEnd,
   recordingPositionForStepId,
   steps = [],
+  latestRecordingEndPositionRef,
   previewMode = false,
   previewStep = null,
   onPreviewObjectClick,
@@ -995,6 +1156,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onDragEnd={onDragEnd}
             recordingPositionForStepId={recordingPositionForStepId}
             steps={steps}
+            latestRecordingEndPositionRef={latestRecordingEndPositionRef}
             previewMode={previewMode}
             previewStep={previewStep}
             onPreviewObjectClick={onPreviewObjectClick}

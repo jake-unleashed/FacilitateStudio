@@ -308,7 +308,6 @@ describe('RecentAssetsList', () => {
     });
 
     it('shows "Added to scene!" feedback when asset is clicked', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
@@ -319,7 +318,9 @@ describe('RecentAssetsList', () => {
 
       // Click the asset
       const button = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // Should now show "Added to scene!" feedback
       expect(screen.getByText('Added to scene!')).toBeInTheDocument();
@@ -328,7 +329,6 @@ describe('RecentAssetsList', () => {
     });
 
     it('disables the button while showing feedback', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
@@ -339,7 +339,9 @@ describe('RecentAssetsList', () => {
       expect(button).toHaveAttribute('tabindex', '0');
 
       // Click the asset
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // Button should now be non-interactive (tabindex=-1 and cursor-default)
       expect(button).toHaveAttribute('tabindex', '-1');
@@ -347,42 +349,45 @@ describe('RecentAssetsList', () => {
     });
 
     it('updates aria-label when showing feedback', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
 
       // Click the asset
       const button = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // Aria-label should update to indicate it was added
       expect(screen.getByRole('button', { name: /chair added to scene/i })).toBeInTheDocument();
     });
 
     it('shows green styling when in feedback state', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
 
       // Click the asset
       const button = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // Button should have green styling (border-green-200 class)
       expect(button).toHaveClass('border-green-200');
     });
 
     it('resets feedback after timeout duration', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
 
       // Click the asset
       const button = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // Verify feedback is showing
       expect(screen.getByText('Added to scene!')).toBeInTheDocument();
@@ -400,7 +405,6 @@ describe('RecentAssetsList', () => {
     });
 
     it('only shows feedback on the clicked asset', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const assets = [
         createMockAsset('1', { name: 'chair.obj' }),
         createMockAsset('2', { name: 'table.obj' }),
@@ -411,7 +415,9 @@ describe('RecentAssetsList', () => {
 
       // Click the second asset (table)
       const tableButton = screen.getByRole('button', { name: /add table to scene/i });
-      await user.click(tableButton);
+      await act(async () => {
+        tableButton.click();
+      });
 
       // Table button should be non-interactive and show feedback
       expect(tableButton).toHaveAttribute('tabindex', '-1');
@@ -427,7 +433,6 @@ describe('RecentAssetsList', () => {
     });
 
     it('switches feedback when clicking different asset before timeout', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const assets = [
         createMockAsset('1', { name: 'chair.obj' }),
         createMockAsset('2', { name: 'table.obj' }),
@@ -437,7 +442,9 @@ describe('RecentAssetsList', () => {
 
       // Click the chair
       const chairButton = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(chairButton);
+      await act(async () => {
+        chairButton.click();
+      });
 
       // Chair should show feedback (non-interactive)
       expect(chairButton).toHaveAttribute('tabindex', '-1');
@@ -449,7 +456,9 @@ describe('RecentAssetsList', () => {
 
       // Click the table
       const tableButton = screen.getByRole('button', { name: /add table to scene/i });
-      await user.click(tableButton);
+      await act(async () => {
+        tableButton.click();
+      });
 
       // Now table should show feedback and chair should be back to normal
       expect(tableButton).toHaveAttribute('tabindex', '-1');
@@ -460,13 +469,14 @@ describe('RecentAssetsList', () => {
     });
 
     it('calls onAddAsset immediately (not delayed)', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
 
       const button = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // onAddAsset should be called immediately, not after timeout
       expect(mockOnAddAsset).toHaveBeenCalledTimes(1);
@@ -474,14 +484,15 @@ describe('RecentAssetsList', () => {
     });
 
     it('cleans up timeout on unmount', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const asset = createMockAsset('1', { name: 'chair.obj' });
 
       const { unmount } = render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
 
       // Click the asset
       const button = screen.getByRole('button', { name: /add chair to scene/i });
-      await user.click(button);
+      await act(async () => {
+        button.click();
+      });
 
       // Unmount before timeout completes
       unmount();

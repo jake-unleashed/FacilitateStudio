@@ -147,6 +147,10 @@ interface ImportedModelProps {
   onHoverStart: () => void;
   onHoverEnd: () => void;
   isGhost?: boolean;
+  /** If true, this is the actual reference object during recording (very transparent). If false but isGhost=true, it's the draggable ghost. */
+  isActualReference?: boolean;
+  /** If true and selectedChildPath is set, render only the target child with normal opacity, make rest very transparent */
+  highlightOnlyChild?: boolean;
 }
 
 // =============================================================================
@@ -177,6 +181,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   onHoverStart,
   onHoverEnd,
   isGhost = false,
+  isActualReference = false,
+  highlightOnlyChild = false,
 }) => {
   // Note: _isDragging is available for future use but currently unused
   const outerGroupRef = useRef<THREE.Group>(null);
@@ -186,7 +192,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   const [modelHeight, setModelHeight] = useState<number>(0);
   // Start at opacity 1 - models should be visible immediately
   // Fade-in animation will temporarily reduce opacity if enabled
-  const [opacity, setOpacity] = useState(1);
+  // If isGhost is true, use ghost opacity (0.45 for draggable ghost, 0.2 for actual reference)
+  const [opacity, setOpacity] = useState(isActualReference ? 0.2 : isGhost ? 0.45 : 1);
 
   // Track which child mesh is currently hovered (for visual feedback when parent is selected)
   const [hoveredChildPath, setHoveredChildPath] = useState<string | null>(null);
@@ -207,8 +214,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    // Reset opacity for new model load
-    setOpacity(0);
+    // Reset opacity for new model load (respect isGhost prop)
+    setOpacity(isGhost ? 0.45 : 0);
 
     getOrLoadModel(modelAssetId)
       .then(({ model: loadedModel, metrics }) => {
@@ -229,7 +236,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [modelAssetId]);
+  }, [modelAssetId, isGhost, isActualReference]);
 
   // Set userData.objectId on outer group for scene traversal (used by TransformGizmo)
   useEffect(() => {
@@ -639,12 +646,40 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     }
   }, [loading, error, model]);
 
+  // Precompute the set of meshes belonging to the selected child subtree.
+  // This avoids an O(N^2) search during material traversal when highlighting a single child.
+  const targetChildMeshSet = useMemo(() => {
+    if (!highlightOnlyChild || !hasChildSelected || !selectedChildPath) return null;
+
+    const set = new WeakSet<THREE.Object3D>();
+    for (const [pathStr, entry] of childPathToMesh.entries()) {
+      if (pathStr === selectedChildPath || pathStr.startsWith(selectedChildPath + '.')) {
+        set.add(entry.mesh);
+      }
+    }
+    return set;
+  }, [highlightOnlyChild, hasChildSelected, selectedChildPath, childPathToMesh]);
+
   // Apply opacity to model materials - runs for ALL opacity values including 1
+  // If isGhost is true, override opacity based on ghost type (0.2 for actual reference, 0.45 for draggable ghost)
+  // If highlightOnlyChild is true and selectedChildPath is set, only the target child gets normal ghost opacity
   useEffect(() => {
     if (!model) return;
 
+    // Determine final opacity: if isActualReference use 0.2, if isGhost use 0.45, otherwise use state opacity
+    const ghostOpacity = isActualReference ? 0.2 : isGhost ? 0.45 : opacity;
+    const dimmedOpacity = 0.05; // Very transparent for non-target parts
+
     model.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh && child.material) {
+        const isTargetChildMesh = targetChildMeshSet ? targetChildMeshSet.has(child) : true;
+
+        // When highlighting only a child, dim everything that is NOT part of the selected subtree.
+        const finalOpacity =
+          highlightOnlyChild && hasChildSelected && targetChildMeshSet && !isTargetChildMesh
+            ? dimmedOpacity
+            : ghostOpacity;
+
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach((mat) => {
           if (
@@ -654,16 +689,24 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
             mat instanceof THREE.MeshLambertMaterial
           ) {
             // When opacity is 1, disable transparency for better rendering
-            const isTransparent = opacity < 1;
+            const isTransparent = finalOpacity < 1;
             mat.transparent = isTransparent;
-            mat.opacity = opacity;
+            mat.opacity = finalOpacity;
             // Ensure Three.js knows to update the material
             mat.needsUpdate = true;
           }
         });
       }
     });
-  }, [model, opacity]);
+  }, [
+    model,
+    opacity,
+    isGhost,
+    isActualReference,
+    highlightOnlyChild,
+    hasChildSelected,
+    targetChildMeshSet,
+  ]);
 
   // Apply child transforms when they change
   // Uses center-based rotation (around visual center) and base-centered scaling (around bottom-center)
@@ -803,6 +846,8 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
         // First, apply subtle parent selection to entire model
         model.traverse((child: THREE.Object3D) => {
           if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            // For actual objects during recording (isGhost=true), use lower opacity
+            // For draggable ghost objects, use normal ghost color
             const highlightColor = isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR;
             child.material.emissive.set(highlightColor).multiplyScalar(SELECTION_INTENSITY);
           }
@@ -943,7 +988,9 @@ export const ImportedModel = React.memo(ImportedModelInner, (prevProps, nextProp
     prevProps.selectedChildPath === nextProps.selectedChildPath &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.isHovered === nextProps.isHovered &&
-    prevProps.isGhost === nextProps.isGhost
+    prevProps.isGhost === nextProps.isGhost &&
+    prevProps.isActualReference === nextProps.isActualReference &&
+    prevProps.highlightOnlyChild === nextProps.highlightOnlyChild
   );
 });
 

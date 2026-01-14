@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { useProjects } from '../hooks/useProjects';
 import { SceneObject, SimStep } from '../types';
+import { applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
 
 /**
@@ -25,12 +26,6 @@ export function PreviewPage() {
   } | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [previewObjects, setPreviewObjects] = useState<SceneObject[]>([]);
-  const [animatedObjectId, setAnimatedObjectId] = useState<string | null>(null);
-  const [animatedPosition, setAnimatedPosition] = useState<{
-    x: number;
-    y: number;
-    z: number;
-  } | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [currentPreviewStep, setCurrentPreviewStep] = useState<SimStep | null>(null);
   const [shouldAnimateMoveItem, setShouldAnimateMoveItem] = useState(false);
@@ -74,50 +69,39 @@ export function PreviewPage() {
 
   // Handle object position updates during animation
   const handlePositionUpdate = useCallback(
-    (objectId: string, position: { x: number; y: number; z: number }) => {
-      setAnimatedObjectId(objectId);
-      setAnimatedPosition(position);
-
+    (objectId: string, position: { x: number; y: number; z: number }, childPath?: string) => {
       // Update the preview objects array with the animated position
-      setPreviewObjects((prev) =>
-        prev.map((obj) =>
-          obj.id === objectId
-            ? {
-                ...obj,
-                transform: {
-                  ...obj.transform,
-                  x: position.x,
-                  y: position.y,
-                  z: position.z,
-                },
-              }
-            : obj
-        )
-      );
+      setPreviewObjects((prev) => {
+        const obj = prev.find((o) => o.id === objectId);
+        if (!obj) return prev;
+
+        if (childPath) {
+          // Target is a child - update parent object to achieve child world position
+          const updated = applyChildWorldPosition(obj, childPath, position);
+          if (updated) {
+            return prev.map((o) => (o.id === objectId ? updated : o));
+          }
+        } else {
+          // Target is parent - update parent transform directly
+          return prev.map((o) =>
+            o.id === objectId
+              ? {
+                  ...o,
+                  transform: {
+                    ...o.transform,
+                    x: position.x,
+                    y: position.y,
+                    z: position.z,
+                  },
+                }
+              : o
+          );
+        }
+        return prev;
+      });
     },
     []
   );
-
-  // Apply animated positions to preview objects
-  const effectiveObjects = useMemo(() => {
-    if (!animatedObjectId || !animatedPosition) {
-      return previewObjects;
-    }
-
-    return previewObjects.map((obj) =>
-      obj.id === animatedObjectId
-        ? {
-            ...obj,
-            transform: {
-              ...obj.transform,
-              x: animatedPosition.x,
-              y: animatedPosition.y,
-              z: animatedPosition.z,
-            },
-          }
-        : obj
-    );
-  }, [previewObjects, animatedObjectId, animatedPosition]);
 
   // Handle preview completion
   const handlePreviewComplete = useCallback(() => {
@@ -127,8 +111,6 @@ export function PreviewPage() {
   // Reset animation state when step changes
   useEffect(() => {
     setShouldAnimateMoveItem(false);
-    setAnimatedObjectId(null);
-    setAnimatedPosition(null);
   }, [currentPreviewStep?.id]);
 
   // Handle exit
@@ -174,7 +156,7 @@ export function PreviewPage() {
     <div className="relative h-screen w-full overflow-hidden bg-black">
       {/* 3D Canvas */}
       <MainCanvas
-        objects={effectiveObjects}
+        objects={previewObjects}
         selectedObjectId={null}
         onSelectObject={() => {}} // No selection in preview
         onUpdateObject={() => {}} // No updates in preview
@@ -189,9 +171,12 @@ export function PreviewPage() {
           }
         }}
         shouldAnimateMoveItem={shouldAnimateMoveItem}
-        onPreviewPositionUpdate={(position: { x: number; y: number; z: number }) => {
+        onPreviewPositionUpdate={(
+          position: { x: number; y: number; z: number },
+          childPath?: string
+        ) => {
           if (currentPreviewStep?.targetObjectId) {
-            handlePositionUpdate(currentPreviewStep.targetObjectId, position);
+            handlePositionUpdate(currentPreviewStep.targetObjectId, position, childPath);
           }
         }}
         onPreviewStepComplete={() => {
@@ -205,7 +190,7 @@ export function PreviewPage() {
       {/* Step Executor Overlay */}
       <PreviewStepExecutor
         steps={project.steps}
-        objects={effectiveObjects}
+        objects={previewObjects}
         onComplete={handlePreviewComplete}
         onExit={handleExit}
         onSetCurrentPreviewStep={setCurrentPreviewStep}

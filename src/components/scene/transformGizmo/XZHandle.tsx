@@ -36,6 +36,27 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
   const [isDragging, setIsDragging] = useState(false);
   const dragStateRef = useRef<XZDragState | null>(null);
 
+  // Use refs to avoid recreating useEffect when object/child changes during drag
+  // This prevents the "jumpiness" caused by event listener teardown/setup mid-drag
+  const objectRef = useRef(object);
+  const selectedChildRef = useRef(selectedChild);
+  const selectedChildPathRef = useRef(selectedChildPath);
+  const onUpdateObjectRef = useRef(onUpdateObject);
+
+  // Keep refs in sync with props
+  useEffect(() => {
+    objectRef.current = object;
+  }, [object]);
+  useEffect(() => {
+    selectedChildRef.current = selectedChild;
+  }, [selectedChild]);
+  useEffect(() => {
+    selectedChildPathRef.current = selectedChildPath;
+  }, [selectedChildPath]);
+  useEffect(() => {
+    onUpdateObjectRef.current = onUpdateObject;
+  }, [onUpdateObject]);
+
   const tooltip = useTooltip('Drag to move on ground', isDragging);
 
   // Pre-allocated Three.js objects for raycasting (performance optimization)
@@ -154,7 +175,13 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
 
       if (!state.hasMoved) return;
 
-      if (selectedChild && selectedChildPath) {
+      // Use refs to get current values (avoids stale closures during drag)
+      const currentObject = objectRef.current;
+      const currentSelectedChild = selectedChildRef.current;
+      const currentSelectedChildPath = selectedChildPathRef.current;
+      const currentOnUpdateObject = onUpdateObjectRef.current;
+
+      if (currentSelectedChild && currentSelectedChildPath) {
         // Child movement: account for effective world scale
         const effectiveScaleX = state.childWorldScaleX || 1;
         const effectiveScaleZ = state.childWorldScaleZ || 1;
@@ -165,8 +192,8 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
         // Note: Child positions are local to parent, so we don't clamp them to grid boundary
         // The parent's position determines if the child is within grid bounds
 
-        const updatedChildren = object.children?.map((child) => {
-          if (pathToString(child.path) === selectedChildPath) {
+        const updatedChildren = currentObject.children?.map((child) => {
+          if (pathToString(child.path) === currentSelectedChildPath) {
             return {
               ...child,
               localTransform: { ...child.localTransform, x: rawX, z: rawZ },
@@ -175,7 +202,7 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
           return child;
         });
 
-        onUpdateObject({ ...object, children: updatedChildren });
+        currentOnUpdateObject({ ...currentObject, children: updatedChildren });
       } else {
         // Parent movement - clamp to grid boundary
         const rawX = state.initialObjectX + deltaX * INTERNAL_TO_WORLD;
@@ -183,9 +210,9 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
         const newX = clamp(rawX, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
         const newZ = clamp(rawZ, -XZ_BOUNDARY_INTERNAL, XZ_BOUNDARY_INTERNAL);
 
-        onUpdateObject({
-          ...object,
-          transform: { ...object.transform, x: newX, z: newZ },
+        currentOnUpdateObject({
+          ...currentObject,
+          transform: { ...currentObject.transform, x: newX, z: newZ },
         });
       }
     };
@@ -212,10 +239,8 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
     };
   }, [
     isDragging,
-    object,
-    selectedChild,
-    selectedChildPath,
-    onUpdateObject,
+    // Removed object, selectedChild, selectedChildPath, onUpdateObject from deps
+    // Using refs instead to avoid recreating listeners during drag
     onDragEnd,
     tooltip,
     raycastToGround,

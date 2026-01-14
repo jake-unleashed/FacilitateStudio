@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SceneObject, SimStep } from '../../types';
 import { PreviewInfoCard } from './PreviewInfoCard';
+import { findChildByPathString } from '../../utils/childTransformUtils';
 
 interface PreviewStepExecutorProps {
   steps: SimStep[];
@@ -69,10 +70,18 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
       }
 
       if (step.type === 'move-item') {
-        const hasRequiredFields =
-          !!step.targetObjectId && !!step.startPosition && !!step.endPosition;
-        const targetObjectExists = objects.some((obj) => obj.id === step.targetObjectId);
-        return hasRequiredFields && targetObjectExists;
+        // For move-item steps, we only need targetObjectId and endPosition.
+        // startPosition is implicit (object's position when step begins), but is still supported.
+        if (!step.targetObjectId || !step.endPosition) return false;
+
+        const targetObject = objects.find((obj) => obj.id === step.targetObjectId);
+        if (!targetObject) return false;
+
+        if (step.targetChildPath) {
+          return !!findChildByPathString(targetObject, step.targetChildPath);
+        }
+
+        return true;
       }
 
       return false;

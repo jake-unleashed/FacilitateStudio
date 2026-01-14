@@ -12,7 +12,8 @@ import {
   CheckCircle,
   Trash2,
 } from 'lucide-react';
-import { StepType, SimStep, SceneObject } from '../types';
+import { StepType, SimStep, SceneObject, parseSelectionId } from '../types';
+import { calculateChildWorldPosition, findChildByPathString } from '../utils/childTransformUtils';
 import { OBJECT_ICONS } from '../constants';
 
 interface StepCardProps {
@@ -146,7 +147,11 @@ export const StepCard: React.FC<StepCardProps> = ({
   );
   // Move Item specific state
   const [targetObjectId, setTargetObjectId] = useState(step.targetObjectId || '');
+  const [targetChildPath, setTargetChildPath] = useState(step.targetChildPath || '');
   const [endPosition, setEndPosition] = useState(step.endPosition);
+
+  // Track if endPosition was just updated from props to prevent auto-save interference
+  const endPositionJustUpdatedFromPropsRef = useRef(false);
 
   // Edit state for inline editing
   const [editingField, setEditingField] = useState<'heading' | 'bodyText' | 'buttonText' | null>(
@@ -173,7 +178,15 @@ export const StepCard: React.FC<StepCardProps> = ({
     setCardColor(step.cardColor || 'blue');
     // Always sync from step prop - it's the source of truth
     setTargetObjectId(step.targetObjectId || '');
-    setEndPosition(step.endPosition);
+    setTargetChildPath(step.targetChildPath || '');
+
+    // Check if endPosition changed from props (e.g., after recording)
+    if (JSON.stringify(step.endPosition) !== JSON.stringify(endPosition)) {
+      setEndPosition(step.endPosition);
+      // Mark that endPosition was just updated from props
+      // This prevents the auto-save effect from immediately overwriting it
+      endPositionJustUpdatedFromPropsRef.current = true;
+    }
   }, [
     step.id,
     step.title,
@@ -183,7 +196,9 @@ export const StepCard: React.FC<StepCardProps> = ({
     step.buttonText,
     step.cardColor,
     step.targetObjectId,
+    step.targetChildPath,
     step.endPosition,
+    endPosition,
   ]);
 
   // Helper function to create updated step object
@@ -199,8 +214,9 @@ export const StepCard: React.FC<StepCardProps> = ({
         bodyText: bodyText || undefined,
         buttonText: buttonText || undefined,
         cardColor: cardColor,
-        // Use local state for targetObjectId to ensure we have the latest value
+        // Use local state for targetObjectId and targetChildPath to ensure we have the latest values
         targetObjectId: targetObjectId || undefined,
+        targetChildPath: targetChildPath || undefined,
         startPosition: step.startPosition || undefined,
         endPosition: endPosition || undefined,
       };
@@ -219,6 +235,7 @@ export const StepCard: React.FC<StepCardProps> = ({
       buttonText,
       cardColor,
       targetObjectId,
+      targetChildPath,
       endPosition,
     ]
   );
@@ -230,7 +247,8 @@ export const StepCard: React.FC<StepCardProps> = ({
   const debouncedButtonText = useDebounce(buttonText, AUTO_SAVE_DELAY);
 
   // Debounced values for move-item fields
-  const debouncedTargetObjectId = useDebounce(targetObjectId, AUTO_SAVE_DELAY);
+  // Note: targetObjectId and targetChildPath are NOT debounced because they should update immediately
+  // when explicitly set (via "Use Selected Object" button). Only endPosition is debounced.
   const debouncedEndPosition = useDebounce(endPosition, AUTO_SAVE_DELAY);
 
   // Auto-save when debounced values change
@@ -243,8 +261,22 @@ export const StepCard: React.FC<StepCardProps> = ({
       debouncedBodyText !== (step.bodyText || '') ||
       debouncedButtonText !== (step.buttonText || '') ||
       cardColor !== (step.cardColor || 'blue') ||
-      debouncedTargetObjectId !== (step.targetObjectId || '') ||
+      targetObjectId !== (step.targetObjectId || '') ||
+      targetChildPath !== (step.targetChildPath || '') ||
       JSON.stringify(debouncedEndPosition) !== JSON.stringify(step.endPosition);
+
+    // If endPosition was just updated from props, skip this auto-save cycle
+    // to prevent overwriting the value that was just set externally (e.g., from recording)
+    if (endPositionJustUpdatedFromPropsRef.current) {
+      endPositionJustUpdatedFromPropsRef.current = false;
+      return;
+    }
+
+    // If we're currently recording, skip auto-save entirely to prevent interference
+    // The recording system manages endPosition updates directly
+    if (isRecordingPosition) {
+      return;
+    }
 
     if (hasChanged) {
       onUpdate(
@@ -253,7 +285,8 @@ export const StepCard: React.FC<StepCardProps> = ({
           heading: debouncedHeading || undefined,
           bodyText: debouncedBodyText || undefined,
           buttonText: debouncedButtonText || undefined,
-          targetObjectId: debouncedTargetObjectId || undefined,
+          targetObjectId: targetObjectId || undefined,
+          targetChildPath: targetChildPath || undefined,
           endPosition: debouncedEndPosition,
         })
       );
@@ -266,11 +299,13 @@ export const StepCard: React.FC<StepCardProps> = ({
     debouncedBodyText,
     debouncedButtonText,
     cardColor,
-    debouncedTargetObjectId,
+    targetObjectId,
+    targetChildPath,
     debouncedEndPosition,
     step.id,
     createUpdatedStep,
     onUpdate,
+    isRecordingPosition,
   ]);
 
   // Auto-save on blur for immediate feedback
@@ -370,23 +405,51 @@ export const StepCard: React.FC<StepCardProps> = ({
   // Handle using selected object
   const handleUseSelectedObject = useCallback(() => {
     if (selectedObjectId) {
-      const selectedObject = objects.find((obj) => obj.id === selectedObjectId);
-      if (selectedObject) {
-        // Update local state immediately for instant UI feedback
-        setTargetObjectId(selectedObjectId);
-        // Auto-save start position when target object is assigned
-        const startPosition = {
+      // Parse selection ID to extract object ID and optional child path
+      const parsed = parseSelectionId(selectedObjectId);
+      if (!parsed) return;
+
+      const selectedObject = objects.find((obj) => obj.id === parsed.objectId);
+      if (!selectedObject) return;
+
+      // Calculate start position
+      let startPosition: { x: number; y: number; z: number };
+      let childPath: string | undefined;
+
+      if (parsed.childPath) {
+        // Child mesh is selected - calculate its world position
+        const childWorldPos = calculateChildWorldPosition(selectedObject, parsed.childPath);
+        if (childWorldPos) {
+          startPosition = childWorldPos;
+          childPath = parsed.childPath;
+        } else {
+          // Child not found, fall back to parent
+          startPosition = {
+            x: selectedObject.transform.x,
+            y: selectedObject.transform.y,
+            z: selectedObject.transform.z,
+          };
+        }
+      } else {
+        // Parent object is selected
+        startPosition = {
           x: selectedObject.transform.x,
           y: selectedObject.transform.y,
           z: selectedObject.transform.z,
         };
-        // Update the step with the new target object ID and start position
-        const updatedStep: SimStep = createUpdatedStep({
-          targetObjectId: selectedObjectId,
-          startPosition: startPosition,
-        });
-        onUpdate(updatedStep);
       }
+
+      // Update local state immediately for instant UI feedback
+      setTargetObjectId(parsed.objectId);
+      setTargetChildPath(childPath || '');
+
+      // Update the step with the new target object ID, child path, and start position
+      const updatedStep: SimStep = createUpdatedStep({
+        targetObjectId: parsed.objectId,
+        targetChildPath: childPath,
+        startPosition: startPosition,
+      });
+      onUpdate(updatedStep);
     }
   }, [selectedObjectId, objects, createUpdatedStep, onUpdate]);
 
@@ -406,8 +469,10 @@ export const StepCard: React.FC<StepCardProps> = ({
   // Handle removing target object
   const handleRemoveTargetObject = useCallback(() => {
     setTargetObjectId('');
+    setTargetChildPath('');
     const updatedStep: SimStep = createUpdatedStep({
       targetObjectId: undefined,
+      targetChildPath: undefined,
       startPosition: undefined,
       endPosition: undefined,
     });
@@ -461,9 +526,14 @@ export const StepCard: React.FC<StepCardProps> = ({
 
   // Find target object for move-item step (use local state for immediate updates, fallback to step prop)
   const effectiveTargetObjectId = targetObjectId || step.targetObjectId;
+  const effectiveTargetChildPath = targetChildPath || step.targetChildPath;
   const targetObject = effectiveTargetObjectId
     ? objects.find((obj) => obj.id === effectiveTargetObjectId)
     : null;
+  const targetChild =
+    targetObject && effectiveTargetChildPath
+      ? findChildByPathString(targetObject, effectiveTargetChildPath)
+      : null;
   const hasSelectedObject = selectedObjectId !== null && selectedObjectId !== undefined;
   const canUseSelectedObject = hasSelectedObject && selectedObjectId !== effectiveTargetObjectId;
 
@@ -841,6 +911,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                     })()}
                     <span className="flex-1 text-xs font-medium text-slate-700">
                       {targetObject.name}
+                      {targetChild && ` / ${targetChild.name}`}
                     </span>
                     <button
                       onClick={(e) => {
@@ -884,6 +955,11 @@ export const StepCard: React.FC<StepCardProps> = ({
               {!targetObject && effectiveTargetObjectId && (
                 <p className="mt-2 text-xs text-rose-600">
                   Object not found. It may have been deleted.
+                </p>
+              )}
+              {targetObject && effectiveTargetChildPath && !targetChild && (
+                <p className="mt-2 text-xs text-rose-600">
+                  Child mesh not found. It may have been deleted.
                 </p>
               )}
             </div>

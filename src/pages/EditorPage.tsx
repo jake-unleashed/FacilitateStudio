@@ -34,6 +34,11 @@ import { PopupProvider, usePopup } from '../contexts/PopupContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { findChildByPath } from '../utils/modelLoaders';
+import {
+  calculateChildWorldPosition,
+  applyChildWorldPosition,
+  findChildByPathString,
+} from '../utils/childTransformUtils';
 import { getOrLoadModel } from '../utils/modelCache';
 import * as THREE from 'three';
 import { AssetMetadata } from '../types/model';
@@ -116,6 +121,12 @@ function EditorPageContent() {
     redoStackSize,
   } = useUndoRedo(initialEditorState, { maxHistory: 50, enableKeyboardShortcuts: true });
 
+  // Ref to track latest endPosition during drag (updated synchronously to avoid race conditions)
+  const latestRecordingEndPositionRef = useRef<{
+    stepId: string;
+    endPosition: { x: number; y: number; z: number } | null;
+  } | null>(null);
+
   // Store stack sizes in refs for real-time access (needed for testing)
   const undoStackSizeRef = useRef(undoStackSize);
   const redoStackSizeRef = useRef(redoStackSize);
@@ -126,8 +137,11 @@ function EditorPageContent() {
   }, [undoStackSize, redoStackSize]);
 
   // Sync undo/redo state changes back to local state
+  // Sync undoRedoState to local state
+  // CRITICAL: Only depend on undoRedoState to avoid infinite loops
+  // The individual state values (objects, steps, simulationTitle) are outputs, not inputs
+  // We check for reference equality to avoid unnecessary updates
   useEffect(() => {
-    // Only update if the state actually changed (to avoid infinite loops)
     if (
       undoRedoState.objects !== objects ||
       undoRedoState.steps !== steps ||
@@ -137,7 +151,8 @@ function EditorPageContent() {
       setSteps(undoRedoState.steps);
       setSimulationTitle(undoRedoState.simulationTitle);
     }
-  }, [undoRedoState, objects, steps, simulationTitle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoRedoState]);
 
   // Expose test hooks for automated testing (development only)
   useEffect(() => {
@@ -847,27 +862,62 @@ function EditorPageContent() {
       // don't update the actual object position - only update the step's end position
       // The actual object should remain at its start position
       if (recordingPositionForStepId) {
-        const recordingStep = steps.find((s) => s.id === recordingPositionForStepId);
+        // Read from undoRedoState.steps to get the most up-to-date step
+        const recordingStep =
+          undoRedoState.steps.find((s) => s.id === recordingPositionForStepId) ||
+          steps.find((s) => s.id === recordingPositionForStepId);
         if (recordingStep && recordingStep.targetObjectId === updated.id) {
-          // Only update the step's end position, not the actual object
-          const updatedStep: SimStep = {
-            ...recordingStep,
-            endPosition: {
+          // Calculate end position based on whether target is a child or parent
+          let endPosition: { x: number; y: number; z: number };
+
+          if (recordingStep.targetChildPath) {
+            // Target is a child mesh
+            // The ghost object's transform represents the parent position needed to place the child at the desired world position
+            // So we need to calculate what the child's world position would be with this parent transform
+            const childWorldPos = calculateChildWorldPosition(
+              updated,
+              recordingStep.targetChildPath
+            );
+            if (childWorldPos) {
+              endPosition = childWorldPos;
+            } else {
+              // Child not found, fall back to parent position
+              console.warn(
+                '[handleUpdateObject] Child not found for path:',
+                recordingStep.targetChildPath
+              );
+              endPosition = {
+                x: updated.transform.x,
+                y: updated.transform.y,
+                z: updated.transform.z,
+              };
+            }
+          } else {
+            // Target is parent object - use the updated transform directly
+            // This is the ghost object's current position from the drag
+            endPosition = {
               x: updated.transform.x,
               y: updated.transform.y,
               z: updated.transform.z,
-            },
-          };
-          const previousStep = steps.find((s) => s.id === recordingStep.id);
-          if (previousStep) {
-            const stepCommand = createUpdateStepCommandHelper(
-              updatedStep.id,
-              previousStep,
-              updatedStep,
-              `Update step end position: ${updatedStep.title || 'Untitled'}`
-            );
-            executeCommand(stepCommand);
+            };
           }
+
+          // Update ref synchronously FIRST for immediate access (prevents race conditions)
+          latestRecordingEndPositionRef.current = {
+            stepId: recordingStep.id,
+            endPosition,
+          };
+
+          // Update state for real-time visual feedback during drag
+          // This allows the ghost object to update smoothly as the user drags
+          // The command system will capture the final position when recording stops
+          setUndoRedoState((prevState) => ({
+            ...prevState,
+            steps: prevState.steps.map((s) =>
+              s.id === recordingStep.id ? { ...s, endPosition } : s
+            ),
+          }));
+
           // Don't update the actual object - return early
           return;
         }
@@ -882,7 +932,14 @@ function EditorPageContent() {
       );
       executeCommand(command);
     },
-    [objects, executeCommand, recordingPositionForStepId, steps]
+    [
+      objects,
+      executeCommand,
+      recordingPositionForStepId,
+      steps,
+      undoRedoState.steps,
+      setUndoRedoState,
+    ]
   );
 
   const handleDeleteObject = useCallback(
@@ -1131,8 +1188,12 @@ function EditorPageContent() {
     const firstStartPositions: Record<string, { x: number; y: number; z: number }> = {};
     testSteps.forEach((step) => {
       if (step.type === 'move-item' && step.targetObjectId && step.startPosition) {
-        if (!firstStartPositions[step.targetObjectId]) {
-          firstStartPositions[step.targetObjectId] = step.startPosition;
+        // Use a unique key that includes child path if present
+        const positionKey = step.targetChildPath
+          ? `${step.targetObjectId}/${step.targetChildPath}`
+          : step.targetObjectId;
+        if (!firstStartPositions[positionKey]) {
+          firstStartPositions[positionKey] = step.startPosition;
         }
       }
     });
@@ -1312,51 +1373,215 @@ function EditorPageContent() {
   const handleStartRecordingPosition = useCallback(
     (stepId: string) => {
       setRecordingPositionForStepId(stepId);
-      beginBatch();
+
+      // Clear the ref when starting a new recording session
+      latestRecordingEndPositionRef.current = null;
+
+      // Auto-select the target object so the transform gizmo appears immediately
+      // Read from undoRedoState.steps to get the most up-to-date step
+      const recordingStep =
+        undoRedoState.steps.find((s) => s.id === stepId) || steps.find((s) => s.id === stepId);
+      if (recordingStep?.targetObjectId) {
+        // Clear endPosition when starting a new recording session so ghost starts at startPosition
+        // Store the initial step state AFTER clearing (this is what we'll compare against when stopping)
+        let initialStepForCommand = { ...recordingStep };
+
+        // Start batch FIRST so the initial state is captured before we clear endPosition
+        // This ensures the batch system has the correct initial state
+        beginBatch();
+
+        if (recordingStep.endPosition) {
+          // Clear endPosition and store the cleared version as initial state
+          initialStepForCommand = { ...recordingStep, endPosition: undefined };
+
+          // Clear endPosition via a command so it's part of the batch
+          // This ensures the batch system tracks the state change correctly
+          const clearedStep: SimStep = {
+            ...recordingStep,
+            endPosition: undefined,
+          };
+
+          const clearCommand = createUpdateStepCommandHelper(
+            clearedStep.id,
+            recordingStep, // previousState: with endPosition
+            clearedStep, // newState: no endPosition
+            `Clear end position for recording: ${clearedStep.title || 'Untitled'}`
+          );
+          executeCommand(clearCommand);
+        }
+
+        // Store the initial step state for undo command creation (after clearing endPosition)
+        // This is what we'll use as previousState when creating the final command
+        recordingInitialStepRef.current = initialStepForCommand;
+
+        // If target is a child, create compound selection ID
+        if (recordingStep.targetChildPath) {
+          handleSelectObject(`${recordingStep.targetObjectId}/${recordingStep.targetChildPath}`);
+        } else {
+          handleSelectObject(recordingStep.targetObjectId);
+        }
+      }
     },
-    [beginBatch]
+    [beginBatch, steps, handleSelectObject, undoRedoState.steps, executeCommand]
+    // Note: createUpdateStepCommandHelper is a stable outer scope function, not a dependency
   );
 
+  // Track the initial step state when recording starts (for creating undo command)
+  const recordingInitialStepRef = useRef<SimStep | null>(null);
+
   const handleStopRecordingPosition = useCallback(() => {
+    // Create a command for the step's endPosition change so it's part of the batch
+    if (recordingPositionForStepId && recordingInitialStepRef.current) {
+      // Get the latest endPosition from the ref (updated synchronously during drag)
+      // This is the most reliable source since it's updated immediately during drag
+      const latestEndPos =
+        latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
+          ? latestRecordingEndPositionRef.current.endPosition
+          : null;
+
+      // Read from undoRedoState.steps directly (most up-to-date) instead of local steps state
+      // The local steps state is synced via useEffect which is async, so it might be stale
+      const currentStep = undoRedoState.steps.find((s) => s.id === recordingPositionForStepId);
+
+      if (currentStep && recordingInitialStepRef.current) {
+        // CRITICAL: Always prioritize ref value (latestEndPos) - it's updated synchronously during drag
+        // The ref is the source of truth. If it exists, the user definitely dragged the object.
+        // currentStep.endPosition might be stale due to async state updates.
+        // IMPORTANT: If latestEndPos exists, we MUST use it - the user dragged the object
+        const endPosToSave = latestEndPos || currentStep.endPosition;
+
+        // Note: We intentionally avoid per-interaction debug logging here in production.
+
+        // CRITICAL: If latestEndPos exists, we MUST save it - the user dragged the object
+        // Always create command if we have an endPosition to save
+        // The ref value (latestEndPos) is the source of truth - if it exists, user dragged the object
+        // We MUST create the command to persist the endPosition in the undo/redo system
+        // The command will update from the initial state (no endPosition) to the final state (with endPosition)
+        if (endPosToSave) {
+          // CRITICAL: Always use endPosToSave (prioritizing latestEndPos from ref)
+          // Create updated step with the endPosition - create a completely new object to avoid reference issues
+          // IMPORTANT: Spread ALL properties from currentStep to ensure we don't lose any step data
+          const updatedStep: SimStep = {
+            ...currentStep,
+            endPosition: {
+              x: endPosToSave.x,
+              y: endPosToSave.y,
+              z: endPosToSave.z,
+            }, // Always create a new object to avoid reference issues
+          };
+
+          // If endPosition is missing, something is inconsistent; bail out safely.
+          if (!updatedStep.endPosition) return;
+
+          // CRITICAL: The command's previousState must be the state from when recording STARTED
+          // (after clearing endPosition). The newState is the state with the endPosition.
+          // When the command executes during batching, it will update the step in the state.
+          // Even though we've already updated the state via setUndoRedoState, the command ensures
+          // the change is persisted in the undo/redo system and won't be lost.
+
+          // CRITICAL: Ensure updatedStep has ALL properties from currentStep, not just endPosition
+          // This prevents losing other step properties when the command executes
+          const stepCommand = createUpdateStepCommandHelper(
+            updatedStep.id,
+            recordingInitialStepRef.current, // previousState: no endPosition (after clearing at start)
+            updatedStep, // newState: with endPosition (from drag) - MUST have endPosition set
+            `Set end position: ${updatedStep.title || 'Untitled'}`
+          );
+
+          // Execute the command - this will update the state during batching
+          // The batch system will then commit it when endBatch() is called
+          executeCommand(stepCommand);
+        } else {
+          // No endPosition recorded; nothing to persist.
+        }
+      } else {
+        // Missing currentStep or initial ref; nothing to persist.
+      }
+      recordingInitialStepRef.current = null;
+    }
+
+    // Clear the ref when recording stops
+    latestRecordingEndPositionRef.current = null;
+
     // Restore the actual object to its start position if it was moved during recording
+    // Read from undoRedoState.steps to get the most up-to-date step (after command execution)
+    // NOTE: The state might be stale here due to async updates, but the command should have
+    // updated currentStateRef.current which will be used when the batch commits
     if (recordingPositionForStepId) {
-      const recordingStep = steps.find((s) => s.id === recordingPositionForStepId);
+      const recordingStep =
+        undoRedoState.steps.find((s) => s.id === recordingPositionForStepId) ||
+        steps.find((s) => s.id === recordingPositionForStepId);
       if (recordingStep?.targetObjectId && recordingStep.startPosition) {
         const targetObject = objects.find((obj) => obj.id === recordingStep.targetObjectId);
         if (targetObject) {
-          // Check if object is not at start position and restore it
-          const isAtStartPosition =
-            targetObject.transform.x === recordingStep.startPosition.x &&
-            targetObject.transform.y === recordingStep.startPosition.y &&
-            targetObject.transform.z === recordingStep.startPosition.z;
+          if (recordingStep.targetChildPath) {
+            // Target is a child mesh - restore child's world position
+            const currentChildWorldPos = calculateChildWorldPosition(
+              targetObject,
+              recordingStep.targetChildPath
+            );
+            const isAtStartPosition =
+              currentChildWorldPos &&
+              currentChildWorldPos.x === recordingStep.startPosition.x &&
+              currentChildWorldPos.y === recordingStep.startPosition.y &&
+              currentChildWorldPos.z === recordingStep.startPosition.z;
 
-          if (!isAtStartPosition) {
-            const restoredObject: SceneObject = {
-              ...targetObject,
-              transform: {
-                ...targetObject.transform,
-                x: recordingStep.startPosition.x,
-                y: recordingStep.startPosition.y,
-                z: recordingStep.startPosition.z,
-              },
-            };
-            const previousObject = objects.find((obj) => obj.id === restoredObject.id);
-            if (previousObject) {
-              const command = createUpdateObjectCommandHelper(
-                restoredObject.id,
-                previousObject,
-                restoredObject,
-                `Restore ${restoredObject.name} to start position`
+            if (!isAtStartPosition) {
+              const restoredObject = applyChildWorldPosition(
+                targetObject,
+                recordingStep.targetChildPath,
+                recordingStep.startPosition
               );
-              executeCommand(command);
+              if (restoredObject) {
+                const previousObject = objects.find((obj) => obj.id === restoredObject.id);
+                if (previousObject) {
+                  const command = createUpdateObjectCommandHelper(
+                    restoredObject.id,
+                    previousObject,
+                    restoredObject,
+                    `Restore ${targetObject.name} / ${findChildByPathString(targetObject, recordingStep.targetChildPath)?.name || 'child'} to start position`
+                  );
+                  executeCommand(command);
+                }
+              }
+            }
+          } else {
+            // Target is parent object - restore parent transform
+            const isAtStartPosition =
+              targetObject.transform.x === recordingStep.startPosition.x &&
+              targetObject.transform.y === recordingStep.startPosition.y &&
+              targetObject.transform.z === recordingStep.startPosition.z;
+
+            if (!isAtStartPosition) {
+              const restoredObject: SceneObject = {
+                ...targetObject,
+                transform: {
+                  ...targetObject.transform,
+                  x: recordingStep.startPosition.x,
+                  y: recordingStep.startPosition.y,
+                  z: recordingStep.startPosition.z,
+                },
+              };
+              const previousObject = objects.find((obj) => obj.id === restoredObject.id);
+              if (previousObject) {
+                const command = createUpdateObjectCommandHelper(
+                  restoredObject.id,
+                  previousObject,
+                  restoredObject,
+                  `Restore ${restoredObject.name} to start position`
+                );
+                executeCommand(command);
+              }
             }
           }
         }
       }
     }
+    // CRITICAL: Clear recording state BEFORE ending batch to ensure batch commits correctly
     setRecordingPositionForStepId(null);
+    // End batch AFTER clearing state - this ensures the batch command has the correct final state
     endBatch();
-  }, [endBatch, recordingPositionForStepId, steps, objects, executeCommand]);
+  }, [endBatch, recordingPositionForStepId, undoRedoState.steps, steps, objects, executeCommand]);
 
   // ============================================================================
   // Memoized Derived State
@@ -1410,6 +1635,7 @@ function EditorPageContent() {
         onDragEnd={endBatch}
         recordingPositionForStepId={recordingPositionForStepId}
         steps={steps}
+        latestRecordingEndPositionRef={latestRecordingEndPositionRef}
       />
 
       {/* Floating UI Layer */}

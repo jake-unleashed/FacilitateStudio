@@ -3,6 +3,10 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import CameraControlsImpl from 'camera-controls';
 import { SimStep, SceneObject } from '../../types';
+import {
+  calculateChildWorldPosition,
+  findChildByPathString,
+} from '../../utils/childTransformUtils';
 import { calculateCameraPosition } from '../../utils/cameraPositionCalculator';
 import { ObjectOutline } from './ObjectOutline';
 
@@ -17,7 +21,7 @@ interface PreviewMoveItemStepProps {
   /** Callback when animation starts */
   onAnimationStart?: () => void;
   /** Callback when object position changes during animation */
-  onPositionUpdate?: (position: { x: number; y: number; z: number }) => void;
+  onPositionUpdate?: (position: { x: number; y: number; z: number }, childPath?: string) => void;
 }
 
 /**
@@ -37,6 +41,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   const { camera } = useThree();
   const [isAnimating, setIsAnimating] = useState(false);
   const animationStartTime = useRef<number>(0);
+  const animationStartWorldPosRef = useRef<{ x: number; y: number; z: number } | null>(null);
   const hasPositionedCamera = useRef(false);
   const hasStartedAnimation = useRef(false);
   const previousStepIdRef = useRef<string | null>(null);
@@ -51,16 +56,49 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     return objects.find((obj) => obj.id === step.targetObjectId) || null;
   }, [step.targetObjectId, objects]);
 
+  // Find target child if applicable
+  const targetChild = useMemo(() => {
+    if (!targetObject || !step.targetChildPath) return null;
+    return findChildByPathString(targetObject, step.targetChildPath);
+  }, [targetObject, step.targetChildPath]);
+
+  /**
+   * Implicit start position:
+   * - If step.startPosition is provided, use it (backwards compatible)
+   * - Otherwise, use the object's current position at the moment the step runs
+   *   (for child targets: use the child's world position)
+   */
+  const implicitStartPosition = useMemo(() => {
+    if (!targetObject) return null;
+
+    if (step.targetChildPath) {
+      return (
+        calculateChildWorldPosition(targetObject, step.targetChildPath) ?? {
+          x: targetObject.transform.x,
+          y: targetObject.transform.y,
+          z: targetObject.transform.z,
+        }
+      );
+    }
+
+    return {
+      x: targetObject.transform.x,
+      y: targetObject.transform.y,
+      z: targetObject.transform.z,
+    };
+  }, [targetObject, step.targetChildPath]);
+
   // Validate step has required data
   const isValidStep = useMemo(() => {
-    return (
-      step.type === 'move-item' &&
-      step.targetObjectId &&
-      step.startPosition &&
-      step.endPosition &&
-      targetObject
-    );
-  }, [step, targetObject]);
+    if (step.type !== 'move-item' || !step.targetObjectId || !step.endPosition || !targetObject) {
+      return false;
+    }
+    // If targetChildPath is specified, validate that child exists
+    if (step.targetChildPath && !targetChild) {
+      return false;
+    }
+    return true;
+  }, [step, targetObject, targetChild]);
 
   // Track step changes and reset camera positioning flag
   useEffect(() => {
@@ -131,7 +169,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     if (!cameraControlsRef.current) {
       return;
     }
-    if (!step.startPosition || !step.endPosition) {
+    if (!step.endPosition) {
       return;
     }
 
@@ -143,7 +181,12 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     }
 
     try {
-      const startPos = step.startPosition;
+      const startPos = step.startPosition ??
+        implicitStartPosition ?? {
+          x: targetObject.transform.x,
+          y: targetObject.transform.y,
+          z: targetObject.transform.z,
+        };
       const endPos = step.endPosition;
 
       // Get current camera position and target to try to maintain angle
@@ -213,21 +256,32 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
       hasStartedAnimation.current = true;
       setIsAnimating(true);
       animationStartTime.current = Date.now();
+      // Freeze the start position at animation start so it doesn't drift if the object updates during animation.
+      animationStartWorldPosRef.current = step.startPosition ?? implicitStartPosition;
       if (onAnimationStart) {
         onAnimationStart();
       }
     }
-  }, [shouldAnimate, isAnimating, isValidStep, step.endPosition, onAnimationStart]);
+  }, [
+    shouldAnimate,
+    isAnimating,
+    isValidStep,
+    step.endPosition,
+    step.startPosition,
+    implicitStartPosition,
+    onAnimationStart,
+  ]);
 
   // Reset animation state when step changes
   useEffect(() => {
     hasStartedAnimation.current = false;
     setIsAnimating(false);
+    animationStartWorldPosRef.current = null;
   }, [step.id]);
 
   // Animate object movement
   useFrame(() => {
-    if (!isAnimating || !step.startPosition || !step.endPosition) return;
+    if (!isAnimating || !step.endPosition || !targetObject) return;
 
     const duration = 2000; // 2 seconds
     const elapsed = Date.now() - animationStartTime.current;
@@ -237,18 +291,28 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     const easedProgress =
       progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
+    const start = animationStartWorldPosRef.current ??
+      step.startPosition ??
+      implicitStartPosition ?? {
+        x: targetObject.transform.x,
+        y: targetObject.transform.y,
+        z: targetObject.transform.z,
+      };
+    const end = step.endPosition;
+
     // Interpolate position
-    const start = step.startPosition!;
-    const end = step.endPosition!;
-    const currentPos = {
+    const currentWorldPos = {
       x: start.x + (end.x - start.x) * easedProgress,
       y: start.y + (end.y - start.y) * easedProgress,
       z: start.z + (end.z - start.z) * easedProgress,
     };
 
-    // Notify parent of position update
+    // If target is a child, we need to update the parent object's transform
+    // to achieve the desired child world position
+    // For preview, we notify the parent of the world position
+    // The parent (PreviewPage) will handle updating the actual object transform
     if (onPositionUpdate) {
-      onPositionUpdate(currentPos);
+      onPositionUpdate(currentWorldPos, step.targetChildPath);
     }
 
     // When animation completes
@@ -277,12 +341,19 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   // Hide outline immediately when clicked, before animation starts
   const shouldShowOutline = showOutline && !shouldAnimate && !isAnimating;
 
+  const outlinePosition = step.startPosition ??
+    implicitStartPosition ?? {
+      x: targetObject.transform.x,
+      y: targetObject.transform.y,
+      z: targetObject.transform.z,
+    };
+
   return (
     <>
       {/* Object outline - only shown after camera settles, hidden once object is clicked */}
       {shouldShowOutline && (
         <ObjectOutline
-          position={step.startPosition || { x: 0, y: 0, z: 0 }}
+          position={outlinePosition}
           scale={{
             x: targetObject.transform.scaleX,
             y: targetObject.transform.scaleY,

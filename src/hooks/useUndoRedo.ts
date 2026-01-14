@@ -28,9 +28,9 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
   const [undoStack, setUndoStack] = useState<UndoRedoCommand[]>([]);
   const [redoStack, setRedoStack] = useState<UndoRedoCommand[]>([]);
 
-  // Batching state
+  // Batching state - uses depth counter to support nested begin/endBatch calls
   const batchCommandsRef = useRef<UndoRedoCommand[]>([]);
-  const isBatchingRef = useRef(false);
+  const batchDepthRef = useRef(0); // 0 = not batching, >0 = batching depth
   const batchInitialStateRef = useRef<EditorState | null>(null);
 
   // Update current state when initialState changes (e.g., project loaded)
@@ -41,7 +41,7 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
     setUndoStack([]);
     setRedoStack([]);
     batchCommandsRef.current = [];
-    isBatchingRef.current = false;
+    batchDepthRef.current = 0;
     batchInitialStateRef.current = null;
   }, [initialState]);
 
@@ -55,12 +55,6 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
    */
   const execute = useCallback(
     (command: UndoRedoCommand) => {
-      console.log(
-        '[CMD] Execute:',
-        command.type,
-        isBatchingRef.current ? '(batched)' : '(immediate)'
-      );
-
       // Use ref to get latest state (avoids stale closures during batching)
       const state = currentStateRef.current;
       const result = executeCommand(command, state);
@@ -72,9 +66,8 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
       // Update ref immediately
       currentStateRef.current = result.newState;
 
-      // If we're batching, add to batch instead of executing immediately
-      if (isBatchingRef.current) {
-        console.log('[CMD] Added to batch. Batch size now:', batchCommandsRef.current.length + 1);
+      // If we're batching (depth > 0), add to batch instead of executing immediately
+      if (batchDepthRef.current > 0) {
         batchCommandsRef.current.push(command);
         // Update state immediately for real-time feedback
         setCurrentState(result.newState);
@@ -82,10 +75,6 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
       }
 
       // Execute the command
-      console.log(
-        '[CMD] Adding to undo stack immediately (not batching). Stack size will be:',
-        undoStack.length + 1
-      );
       setCurrentState(result.newState);
 
       // Add to undo stack
@@ -100,7 +89,7 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
 
       return true;
     },
-    [maxHistory, undoStack.length]
+    [maxHistory]
   );
 
   /**
@@ -157,47 +146,46 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
    * Begins a batch operation. All commands executed until endBatch() is called
    * will be grouped into a single undo entry.
    *
-   * Safety: If a batch is already in progress (stale batch from a missed endBatch call),
-   * we force-close it and discard the orphaned commands to prevent corruption.
+   * Supports nested batches: multiple beginBatch calls will increment depth,
+   * and the batch is only committed when depth returns to 0.
    */
   const beginBatch = useCallback(() => {
-    console.log('[BATCH] BEGIN - Stack size:', undoStack.length);
-    if (isBatchingRef.current) {
-      // Force-end the stale batch before starting a new one
-      // This can happen if endBatch was missed due to race conditions (e.g., quick drag-release)
-      console.warn('[BATCH] Force-ending stale batch before starting new one');
-      console.log('[BATCH] Stale batch had', batchCommandsRef.current.length, 'commands');
-      // Discard the stale batch commands (they're orphaned and would cause incorrect undo entries)
+    batchDepthRef.current += 1;
+
+    // Only initialize batch state on first (outermost) begin
+    if (batchDepthRef.current === 1) {
       batchCommandsRef.current = [];
-      batchInitialStateRef.current = null;
+      // Store the initial state when batch starts
+      batchInitialStateRef.current = currentStateRef.current;
     }
-    isBatchingRef.current = true;
-    batchCommandsRef.current = [];
-    // Store the initial state when batch starts
-    batchInitialStateRef.current = currentStateRef.current;
-  }, [undoStack.length]);
+  }, []);
 
   /**
    * Ends a batch operation and commits all batched commands as a single undo entry.
    * Optimizes multiple updates to the same object into a single command.
+   *
+   * Supports nested batches: decrements depth and only commits when depth reaches 0.
    */
   const endBatch = useCallback(() => {
-    if (!isBatchingRef.current) {
+    if (batchDepthRef.current <= 0) {
       // Silently return if no batch is in progress (duplicate endBatch calls)
-      console.log('[BATCH] END called but no batch in progress (duplicate call)');
+      return;
+    }
+
+    batchDepthRef.current -= 1;
+
+    // Only commit when we return to depth 0 (outermost endBatch)
+    if (batchDepthRef.current > 0) {
       return;
     }
 
     const commands = batchCommandsRef.current;
     const batchInitialState = batchInitialStateRef.current;
-    console.log('[BATCH] END - Commands received:', commands.length);
-    isBatchingRef.current = false;
     batchCommandsRef.current = [];
     batchInitialStateRef.current = null;
 
     // If no commands were batched, do nothing
     if (commands.length === 0 || !batchInitialState) {
-      console.log('[BATCH] END - No commands or no initial state, returning');
       return;
     }
 
@@ -213,6 +201,7 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
     >();
 
     // Group UpdateObjectCommand instances by object ID
+    // UpdateStepCommand instances are added as-is (not optimized)
     for (const command of commands) {
       if (command.type === 'updateObject') {
         const updateCmd = command as UpdateObjectCommand;
@@ -228,7 +217,7 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
           });
         }
       } else {
-        // Non-update commands are added as-is
+        // Non-update commands (including UpdateStepCommand) are added as-is
         optimizedCommands.push(command);
       }
     }
@@ -266,19 +255,12 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
         previousState: initialObject, // Use initial state from when batch started
         newState: finalObject, // Use actual final state
       };
-      console.log(`[BATCH] Optimized command for object ${objectId}:`, {
-        previousPos: `(${initialObject.transform.x.toFixed(1)}, ${initialObject.transform.z.toFixed(1)})`,
-        newPos: `(${finalObject.transform.x.toFixed(1)}, ${finalObject.transform.z.toFixed(1)})`,
-      });
       optimizedCommands.push(optimizedCommand);
     }
-
-    console.log('[BATCH] Optimized to:', optimizedCommands.length, 'commands');
 
     // If only one command after optimization, add it to undo stack directly
     // (state is already updated during batching, so we don't need to execute again)
     if (optimizedCommands.length === 0) {
-      console.log('[BATCH] No optimized commands after filtering');
       return;
     }
 
@@ -286,8 +268,6 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
       // State is already updated (we updated it during batching for visual feedback)
       // Just add the optimized command to the undo stack
       const command = optimizedCommands[0];
-      console.log('[BATCH] Adding single optimized command to undo stack');
-      console.log('[BATCH] Final stack size will be:', undoStack.length + 1);
       setUndoStack((prev) => {
         const newStack = [command, ...prev];
         return newStack.slice(0, maxHistory);
@@ -298,20 +278,20 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
 
     // Multiple commands - create a batch command and add to undo stack
     // (state is already updated, so we don't need to execute)
-    console.log('[BATCH] Creating batch command with', optimizedCommands.length, 'commands');
     const batchCommand = createBatchCommand(optimizedCommands, 'Batch operation');
     setUndoStack((prev) => {
       const newStack = [batchCommand, ...prev];
       return newStack.slice(0, maxHistory);
     });
     setRedoStack([]);
-  }, [maxHistory, undoStack.length]);
+  }, [maxHistory]);
 
   /**
    * Cancels the current batch operation without committing.
+   * Resets batch depth to 0 regardless of nesting level.
    */
   const cancelBatch = useCallback(() => {
-    if (!isBatchingRef.current) {
+    if (batchDepthRef.current <= 0) {
       return;
     }
 
@@ -326,8 +306,9 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
     }
 
     setCurrentState(state);
-    isBatchingRef.current = false;
+    batchDepthRef.current = 0;
     batchCommandsRef.current = [];
+    batchInitialStateRef.current = null;
   }, [currentState]);
 
   /**
@@ -337,7 +318,8 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
     setUndoStack([]);
     setRedoStack([]);
     batchCommandsRef.current = [];
-    isBatchingRef.current = false;
+    batchDepthRef.current = 0;
+    batchInitialStateRef.current = null;
   }, []);
 
   // Keyboard shortcuts
@@ -397,7 +379,8 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
     // State queries
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
-    isBatching: isBatchingRef.current,
+    isBatching: batchDepthRef.current > 0,
+    batchDepth: batchDepthRef.current,
 
     // Stack sizes (for testing)
     undoStackSize: undoStack.length,

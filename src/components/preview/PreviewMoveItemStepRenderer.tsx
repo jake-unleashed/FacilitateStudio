@@ -9,7 +9,7 @@ interface PreviewMoveItemStepRendererProps {
   cameraControlsRef: React.RefObject<CameraControlsImpl>;
   isPositioningCameraRef?: React.MutableRefObject<boolean>;
   shouldAnimate?: boolean;
-  onPositionUpdate?: (position: { x: number; y: number; z: number }) => void;
+  onPositionUpdate?: (position: { x: number; y: number; z: number }, childPath?: string) => void;
   onComplete?: () => void;
 }
 
@@ -34,7 +34,11 @@ export const PreviewMoveItemStepRenderer: React.FC<PreviewMoveItemStepRendererPr
       isPositioningCameraRef={isPositioningCameraRef}
       onComplete={onComplete || (() => {})}
       shouldAnimate={shouldAnimate}
-      onPositionUpdate={onPositionUpdate}
+      onPositionUpdate={(position, childPath) => {
+        if (onPositionUpdate) {
+          onPositionUpdate(position, childPath);
+        }
+      }}
     />
   );
 };

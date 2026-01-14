@@ -35,6 +35,15 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
   const [isDragging, setIsDragging] = useState(false);
   const dragStateRef = useRef<HeightDragState | null>(null);
 
+  // Use refs to avoid recreating useEffect when callbacks change during drag
+  // This prevents the "jumpiness" caused by event listener teardown/setup mid-drag
+  const onChangeRef = useRef(onChange);
+
+  // Keep refs in sync with props
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   const tooltip = useTooltip('Drag up/down to adjust height', isDragging);
 
   /**
@@ -146,7 +155,8 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
         effectiveHeightMin,
         HEIGHT_MAX
       );
-      onChange(newValue);
+      // Use ref to get current callback (avoids stale closure during drag)
+      onChangeRef.current(newValue);
     };
 
     const handlePointerUp = () => {
@@ -169,7 +179,13 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isDragging, onChange, onDragEnd, tooltip, isChild]);
+  }, [
+    isDragging,
+    // Removed onChange from deps - using ref instead to avoid recreating listeners during drag
+    onDragEnd,
+    tooltip,
+    isChild,
+  ]);
 
   return (
     <div className="relative">

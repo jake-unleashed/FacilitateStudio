@@ -139,7 +139,9 @@ HTMLCanvasElement.prototype.getContext = function (
     return mockWebGLContext as unknown as WebGLRenderingContext;
   }
   // Use Function.prototype.call with explicit typing to avoid overload mismatch
-  return (originalGetContext as (contextId: string, options?: unknown) => RenderingContext | null).call(this, contextId, options);
+  return (
+    originalGetContext as (contextId: string, options?: unknown) => RenderingContext | null
+  ).call(this, contextId, options);
 } as typeof HTMLCanvasElement.prototype.getContext;
 
 // Mock matchMedia

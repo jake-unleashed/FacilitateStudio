@@ -92,6 +92,8 @@ export interface SimStep {
   cardColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
   /** For move-item steps: ID of the object to move */
   targetObjectId?: string;
+  /** For move-item steps: child path of the target (if moving a child mesh, not the parent) */
+  targetChildPath?: string;
   /** For move-item steps: starting position of the object */
   startPosition?: { x: number; y: number; z: number };
   /** For move-item steps: target/end position of the object */
