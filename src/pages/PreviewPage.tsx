@@ -4,7 +4,7 @@ import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { useProjects } from '../hooks/useProjects';
 import { SceneObject, SimStep } from '../types';
-import { applyChildWorldPosition } from '../utils/childTransformUtils';
+import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
 
 /**
@@ -67,37 +67,57 @@ export function PreviewPage() {
     setControlsReady(true);
   }, []);
 
-  // Handle object position updates during animation
-  const handlePositionUpdate = useCallback(
-    (objectId: string, position: { x: number; y: number; z: number }, childPath?: string) => {
-      // Update the preview objects array with the animated position
+  // Handle object transform updates during animation
+  const handleTransformUpdate = useCallback(
+    (
+      objectId: string,
+      update: {
+        position: { x: number; y: number; z: number };
+        rotation: { x: number; y: number; z: number };
+        scale: { x: number; y: number; z: number };
+      },
+      childPath?: string
+    ) => {
       setPreviewObjects((prev) => {
         const obj = prev.find((o) => o.id === objectId);
         if (!obj) return prev;
 
         if (childPath) {
-          // Target is a child - update parent object to achieve child world position
-          const updated = applyChildWorldPosition(obj, childPath, position);
-          if (updated) {
-            return prev.map((o) => (o.id === objectId ? updated : o));
-          }
-        } else {
-          // Target is parent - update parent transform directly
-          return prev.map((o) =>
-            o.id === objectId
-              ? {
-                  ...o,
-                  transform: {
-                    ...o.transform,
-                    x: position.x,
-                    y: position.y,
-                    z: position.z,
-                  },
-                }
-              : o
-          );
+          // Child target: position is world-space (child), rotation/scale are local (child).
+          const updatedForPos = applyChildWorldPosition(obj, childPath, update.position) ?? obj;
+          const updatedForRotScale =
+            applyChildLocalTransform(updatedForPos, childPath, {
+              rotationX: update.rotation.x,
+              rotationY: update.rotation.y,
+              rotationZ: update.rotation.z,
+              scaleX: update.scale.x,
+              scaleY: update.scale.y,
+              scaleZ: update.scale.z,
+            }) ?? updatedForPos;
+
+          return prev.map((o) => (o.id === objectId ? updatedForRotScale : o));
         }
-        return prev;
+
+        // Parent target: position/rotation/scale are local (parent transform).
+        return prev.map((o) =>
+          o.id === objectId
+            ? {
+                ...o,
+                transform: {
+                  ...o.transform,
+                  x: update.position.x,
+                  y: update.position.y,
+                  z: update.position.z,
+                  rotationX: update.rotation.x,
+                  rotationY: update.rotation.y,
+                  rotationZ: update.rotation.z,
+                  scaleX: update.scale.x,
+                  scaleY: update.scale.y,
+                  scaleZ: update.scale.z,
+                },
+              }
+            : o
+        );
       });
     },
     []
@@ -171,12 +191,9 @@ export function PreviewPage() {
           }
         }}
         shouldAnimateMoveItem={shouldAnimateMoveItem}
-        onPreviewPositionUpdate={(
-          position: { x: number; y: number; z: number },
-          childPath?: string
-        ) => {
+        onPreviewTransformUpdate={(update, childPath?: string) => {
           if (currentPreviewStep?.targetObjectId) {
-            handlePositionUpdate(currentPreviewStep.targetObjectId, position, childPath);
+            handleTransformUpdate(currentPreviewStep.targetObjectId, update, childPath);
           }
         }}
         onPreviewStepComplete={() => {

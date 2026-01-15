@@ -30,7 +30,12 @@ import { FixedContactShadows, ContactShadowDebugger } from './scene/FixedContact
 import { IndustrialPrimitive } from './scene/IndustrialPrimitive';
 import { DragHandler, CursorManager, DragState } from './scene/DragHandler';
 import { KeyboardNavigator } from './scene/KeyboardNavigator';
-import { applyChildWorldPosition, calculateChildWorldPosition } from '../utils/childTransformUtils';
+import {
+  applyChildLocalTransform,
+  applyChildWorldPosition,
+  calculateChildWorldPosition,
+  findChildByPathString,
+} from '../utils/childTransformUtils';
 
 // Check if we're in development mode (Vite provides this)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -152,12 +157,18 @@ interface SceneContentProps {
   latestRecordingEndPositionRef?: React.MutableRefObject<{
     stepId: string;
     endPosition: { x: number; y: number; z: number } | null;
+    endRotation?: { x: number; y: number; z: number };
+    endScale?: { x: number; y: number; z: number };
   } | null>;
   previewMode?: boolean;
   previewStep?: SimStep | null;
   onPreviewObjectClick?: (objectId: string) => void;
-  onPreviewPositionUpdate?: (
-    position: { x: number; y: number; z: number },
+  onPreviewTransformUpdate?: (
+    update: {
+      position: { x: number; y: number; z: number };
+      rotation: { x: number; y: number; z: number };
+      scale: { x: number; y: number; z: number };
+    },
     childPath?: string
   ) => void;
   onPreviewStepComplete?: () => void;
@@ -181,7 +192,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
   previewMode = false,
   previewStep = null,
   onPreviewObjectClick,
-  onPreviewPositionUpdate,
+  onPreviewTransformUpdate,
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
   previewOutlineTarget = null,
@@ -193,6 +204,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
   // Ref to track latest endPosition during drag (avoids race condition with state updates)
   const latestEndPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const latestEndRotationRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const latestEndScaleRef = useRef<{ x: number; y: number; z: number } | null>(null);
 
   // Parse the selection ID to separate parent and child selection
   const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
@@ -290,6 +303,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const startPosX = recordingStep?.startPosition?.x;
   const startPosY = recordingStep?.startPosition?.y;
   const startPosZ = recordingStep?.startPosition?.z;
+  const endRotX = recordingStep?.endRotation?.x;
+  const endRotY = recordingStep?.endRotation?.y;
+  const endRotZ = recordingStep?.endRotation?.z;
+  const endScaleX = recordingStep?.endScale?.x;
+  const endScaleY = recordingStep?.endScale?.y;
+  const endScaleZ = recordingStep?.endScale?.z;
 
   // Update local ref with latest endPosition from state (for use during drag)
   useEffect(() => {
@@ -299,6 +318,22 @@ const SceneContent: React.FC<SceneContentProps> = ({
       latestEndPositionRef.current = null;
     }
   }, [recordingStep?.endPosition]);
+
+  useEffect(() => {
+    if (recordingStep?.endRotation) {
+      latestEndRotationRef.current = recordingStep.endRotation;
+    } else {
+      latestEndRotationRef.current = null;
+    }
+  }, [recordingStep?.endRotation]);
+
+  useEffect(() => {
+    if (recordingStep?.endScale) {
+      latestEndScaleRef.current = recordingStep.endScale;
+    } else {
+      latestEndScaleRef.current = null;
+    }
+  }, [recordingStep?.endScale]);
 
   // Get ghost object position - starts at startPosition, updates as user drags it
   // For child targets: ghost object is positioned at the child's world position
@@ -351,16 +386,79 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
     const ghostPos = editorRefPos || localRefPos || statePos || startPos;
 
+    const baseChild = recordingStep.targetChildPath
+      ? findChildByPathString(targetObject, recordingStep.targetChildPath)
+      : null;
+    const defaultRot = baseChild
+      ? {
+          x: baseChild.localTransform.rotationX,
+          y: baseChild.localTransform.rotationY,
+          z: baseChild.localTransform.rotationZ,
+        }
+      : {
+          x: targetObject.transform.rotationX,
+          y: targetObject.transform.rotationY,
+          z: targetObject.transform.rotationZ,
+        };
+    const defaultScale = baseChild
+      ? {
+          x: baseChild.localTransform.scaleX,
+          y: baseChild.localTransform.scaleY,
+          z: baseChild.localTransform.scaleZ,
+        }
+      : {
+          x: targetObject.transform.scaleX,
+          y: targetObject.transform.scaleY,
+          z: targetObject.transform.scaleZ,
+        };
+
+    const editorRefRot =
+      latestRecordingEndPositionRef?.current?.stepId === recordingStep.id
+        ? (latestRecordingEndPositionRef.current.endRotation ?? null)
+        : null;
+    const localRefRot = latestEndRotationRef.current;
+    const stateRot =
+      endRotX !== undefined || endRotY !== undefined || endRotZ !== undefined
+        ? { x: endRotX ?? defaultRot.x, y: endRotY ?? defaultRot.y, z: endRotZ ?? defaultRot.z }
+        : null;
+    const ghostRot = editorRefRot || localRefRot || stateRot || defaultRot;
+
+    const editorRefScale =
+      latestRecordingEndPositionRef?.current?.stepId === recordingStep.id
+        ? (latestRecordingEndPositionRef.current.endScale ?? null)
+        : null;
+    const localRefScale = latestEndScaleRef.current;
+    const stateScale =
+      endScaleX !== undefined || endScaleY !== undefined || endScaleZ !== undefined
+        ? {
+            x: endScaleX ?? defaultScale.x,
+            y: endScaleY ?? defaultScale.y,
+            z: endScaleZ ?? defaultScale.z,
+          }
+        : null;
+    const ghostScale = editorRefScale || localRefScale || stateScale || defaultScale;
+
     if (recordingStep.targetChildPath) {
       // Child-target recording should move ONLY the child (via its localTransform),
       // not the entire parent object. We achieve this by updating the child's localTransform
       // to place the child at the desired world position (ghostPos).
-      const updated = applyChildWorldPosition(
+      const updatedForPos = applyChildWorldPosition(
         targetObject,
         recordingStep.targetChildPath,
         ghostPos
       );
-      return updated ?? targetObject;
+      const updatedForRotScale =
+        recordingStep.endRotation || recordingStep.endScale
+          ? applyChildLocalTransform(updatedForPos ?? targetObject, recordingStep.targetChildPath, {
+              rotationX: ghostRot.x,
+              rotationY: ghostRot.y,
+              rotationZ: ghostRot.z,
+              scaleX: ghostScale.x,
+              scaleY: ghostScale.y,
+              scaleZ: ghostScale.z,
+            })
+          : updatedForPos;
+      return updatedForRotScale ?? updatedForPos ?? targetObject;
     }
 
     // For parent targets, use ghost position directly
@@ -371,6 +469,12 @@ const SceneContent: React.FC<SceneContentProps> = ({
         x: ghostPos.x,
         y: ghostPos.y,
         z: ghostPos.z,
+        rotationX: ghostRot.x,
+        rotationY: ghostRot.y,
+        rotationZ: ghostRot.z,
+        scaleX: ghostScale.x,
+        scaleY: ghostScale.y,
+        scaleZ: ghostScale.z,
       },
     };
   }, [
@@ -383,8 +487,16 @@ const SceneContent: React.FC<SceneContentProps> = ({
     startPosX,
     startPosY,
     startPosZ,
+    endRotX,
+    endRotY,
+    endRotZ,
+    endScaleX,
+    endScaleY,
+    endScaleZ,
     latestRecordingEndPositionRef,
     latestEndPositionRef,
+    latestEndRotationRef,
+    latestEndScaleRef,
   ]);
 
   const actualObject = useMemo(() => {
@@ -790,7 +902,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
           cameraControlsRef={controlsRef}
           isPositioningCameraRef={isPositioningCameraRef}
           shouldAnimate={shouldAnimateMoveItem}
-          onPositionUpdate={onPreviewPositionUpdate}
+          onTransformUpdate={onPreviewTransformUpdate}
           onComplete={onPreviewStepComplete}
           onPreviewOutlineTargetChange={onPreviewOutlineTargetChange}
         />
@@ -1094,6 +1206,8 @@ interface MainCanvasProps {
   latestRecordingEndPositionRef?: React.MutableRefObject<{
     stepId: string;
     endPosition: { x: number; y: number; z: number } | null;
+    endRotation?: { x: number; y: number; z: number };
+    endScale?: { x: number; y: number; z: number };
   } | null>;
   /** Enable preview mode (disables camera controls, enables preview interactions) */
   previewMode?: boolean;
@@ -1101,9 +1215,13 @@ interface MainCanvasProps {
   previewStep?: SimStep | null;
   /** Callback when object is clicked in preview mode */
   onPreviewObjectClick?: (objectId: string) => void;
-  /** Callback when preview move-item step updates object position (during animation) */
-  onPreviewPositionUpdate?: (
-    position: { x: number; y: number; z: number },
+  /** Callback when preview move-item step updates object transform (during animation) */
+  onPreviewTransformUpdate?: (
+    update: {
+      position: { x: number; y: number; z: number };
+      rotation: { x: number; y: number; z: number };
+      scale: { x: number; y: number; z: number };
+    },
     childPath?: string
   ) => void;
   /** Callback when preview move-item step finishes */
@@ -1129,7 +1247,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   previewMode = false,
   previewStep = null,
   onPreviewObjectClick,
-  onPreviewPositionUpdate,
+  onPreviewTransformUpdate,
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
 }) => {
@@ -1194,7 +1312,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             previewMode={previewMode}
             previewStep={previewStep}
             onPreviewObjectClick={onPreviewObjectClick}
-            onPreviewPositionUpdate={onPreviewPositionUpdate}
+            onPreviewTransformUpdate={onPreviewTransformUpdate}
             onPreviewStepComplete={onPreviewStepComplete}
             shouldAnimateMoveItem={shouldAnimateMoveItem}
             previewOutlineTarget={previewOutlineTarget}

@@ -88,6 +88,7 @@ interface LeftSidebarProps {
   /** Focus camera on object (with optional child path for child-level focus) */
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onAddStep?: (step: Omit<SimStep, 'id'>) => void;
+  onInsertStep?: (index: number, step?: Omit<SimStep, 'id'>) => void;
   onUpdateStep?: (step: SimStep) => void;
   onDeleteStep?: (stepId: string) => void;
   onReorderSteps?: (previousOrder: string[], newOrder: string[]) => void;
@@ -550,7 +551,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
 
     if (isOpen) {
       return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1" data-step-id={step.id}>
           {/* Static slot label - stays in place */}
           <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Step {stepNumber}
@@ -576,7 +577,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
     }
 
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-step-id={step.id}>
         {/* Static slot label - stays in place */}
         <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
           Step {stepNumber}
@@ -640,6 +641,65 @@ const SortableStepItem = memo<SortableStepItemProps>(
 );
 SortableStepItem.displayName = 'SortableStepItem';
 
+const EMPTY_NEW_STEP: Omit<SimStep, 'id'> = {
+  title: '',
+  description: '',
+  completed: false,
+  type: null,
+};
+
+function isNewEmptyStep(step: SimStep | undefined): step is SimStep {
+  if (!step) return false;
+  return step.title === '' && step.type === null && step.description === '';
+}
+
+// ============================================================================
+// Insert Divider (between steps)
+// ============================================================================
+
+interface InsertStepDividerProps {
+  insertIndex: number;
+  onInsertStep?: (index: number, step?: Omit<SimStep, 'id'>) => void;
+  /**
+   * Vertical offset relative to the gap anchor point. Use this to fine-tune
+   * centering between two step cards without affecting layout.
+   */
+  offsetYClassName?: string;
+}
+
+const InsertStepDivider = memo<InsertStepDividerProps>(
+  ({ insertIndex, onInsertStep, offsetYClassName = 'top-2' }) => {
+    if (!onInsertStep) return null;
+
+    return (
+      // Zero-height overlay anchor so we don't increase spacing between cards.
+      <div className="relative h-0">
+        <div className={`absolute inset-x-0 ${offsetYClassName} group z-10`}>
+          {/* Subtle line that fades in on hover */}
+          <div className="pointer-events-none absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-slate-200/70 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+
+          <div className="flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => onInsertStep(insertIndex, EMPTY_NEW_STEP)}
+              data-testid={`insert-step-${insertIndex}`}
+              className="pointer-events-auto flex h-7 items-center justify-center gap-1 rounded-full border border-slate-200/70 bg-white/60 px-2.5 text-xs font-semibold text-slate-600 opacity-0 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-blue-300/80 hover:bg-white hover:text-blue-600 hover:shadow-md group-hover:opacity-100"
+              title={insertIndex === 0 ? 'Insert step at top' : 'Insert step'}
+              aria-label={insertIndex === 0 ? 'Insert step at top' : 'Insert step'}
+            >
+              <Plus size={14} />
+              <span className="sr-only">
+                {insertIndex === 0 ? 'Insert step at top' : 'Insert step'}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+);
+InsertStepDivider.displayName = 'InsertStepDivider';
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -653,6 +713,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   selectedObjectId,
   onFocusObject,
   onAddStep,
+  onInsertStep,
   onUpdateStep,
   onDeleteStep,
   onReorderSteps,
@@ -675,7 +736,15 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Ref to track previous step count for detecting newly added steps
-  const prevStepCountRef = useRef<number>(steps.length);
+  const prevStepIdsRef = useRef<string[]>(steps.map((s) => s.id));
+
+  const scrollStepIntoView = useCallback((stepId: string) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const el = container.querySelector(`[data-step-id="${CSS.escape(stepId)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  }, []);
 
   // Auto-scroll to selected object when selection changes
   useEffect(() => {
@@ -727,13 +796,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
 
   const handleAddStepClick = useCallback(() => {
     if (onAddStep) {
-      const newStep: Omit<SimStep, 'id'> = {
-        title: '',
-        description: '',
-        completed: false,
-        type: null,
-      };
-      onAddStep(newStep);
+      onAddStep(EMPTY_NEW_STEP);
     }
   }, [onAddStep]);
 
@@ -748,27 +811,20 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
 
   // Auto-open newly created steps and scroll to them
   useEffect(() => {
-    const prevCount = prevStepCountRef.current;
-    const currentCount = steps.length;
+    const prevIds = prevStepIdsRef.current;
+    const currentIds = steps.map((s) => s.id);
 
-    // Detect if a new step was added (count increased)
-    if (currentCount > prevCount && currentCount > 0) {
-      const lastStep = steps[currentCount - 1];
-      // Check if it's a newly created empty step (default values)
-      if (lastStep.title === '' && lastStep.type === null && lastStep.description === '') {
+    // Detect if a new step was added (IDs increased)
+    if (currentIds.length > prevIds.length) {
+      const newStep = steps.find((s) => !prevIds.includes(s.id));
+
+      if (isNewEmptyStep(newStep)) {
         // Auto-open the newly created step
-        setOpenedStepId(lastStep.id);
+        setOpenedStepId(newStep.id);
 
-        // Scroll to the newly created step after a short delay to allow DOM update
+        // Scroll the newly created step into view after a short delay to allow DOM update
         setTimeout(() => {
-          const container = scrollContainerRef.current;
-          if (container) {
-            // Scroll to the bottom where the new step will be
-            container.scrollTo({
-              top: container.scrollHeight,
-              behavior: 'smooth',
-            });
-          }
+          scrollStepIntoView(newStep.id);
         }, 150);
       }
     }
@@ -778,9 +834,9 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
       setOpenedStepId(null);
     }
 
-    // Update the ref with current count
-    prevStepCountRef.current = currentCount;
-  }, [steps, openedStepId]);
+    // Update the ref with current IDs
+    prevStepIdsRef.current = currentIds;
+  }, [steps, openedStepId, scrollStepIntoView]);
 
   const handleStepClick = useCallback(
     (stepId: string) => {
@@ -957,33 +1013,51 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                 }}
               >
                 <SortableContext items={stepIds} strategy={rectSortingStrategy}>
-                  <div className="space-y-4">
-                    {steps.map((step, index) => (
-                      <SortableStepItem
-                        key={step.id}
-                        step={step}
-                        stepNumber={index + 1}
-                        isOpen={step.id === openedStepId}
-                        onUpdate={onUpdateStep || (() => {})}
-                        onMinimize={handleMinimizeStep}
-                        onStepClick={handleStepClick}
-                        selectedObjectId={selectedObjectId}
-                        objects={objects}
-                        onStartRecording={
-                          onStartRecordingPosition
-                            ? () => onStartRecordingPosition(step.id)
-                            : undefined
-                        }
-                        onStopRecording={
-                          onStopRecordingPosition
-                            ? () => onStopRecordingPosition(step.id)
-                            : undefined
-                        }
-                        isRecordingPosition={recordingPositionForStepId === step.id}
-                        onFocusObject={onFocusObject}
-                        onDeleteStep={onDeleteStep}
-                      />
-                    ))}
+                  <div className="relative">
+                    {/* Insert at top (new Step 1) - overlay so it doesn't add layout gap */}
+                    <InsertStepDivider
+                      insertIndex={0}
+                      onInsertStep={onInsertStep}
+                      offsetYClassName="-top-1"
+                    />
+
+                    <div className="space-y-4 pt-1">
+                      {steps.map((step, index) => (
+                        <div key={step.id}>
+                          <SortableStepItem
+                            step={step}
+                            stepNumber={index + 1}
+                            isOpen={step.id === openedStepId}
+                            onUpdate={onUpdateStep || (() => {})}
+                            onMinimize={handleMinimizeStep}
+                            onStepClick={handleStepClick}
+                            selectedObjectId={selectedObjectId}
+                            objects={objects}
+                            onStartRecording={
+                              onStartRecordingPosition
+                                ? () => onStartRecordingPosition(step.id)
+                                : undefined
+                            }
+                            onStopRecording={
+                              onStopRecordingPosition
+                                ? () => onStopRecordingPosition(step.id)
+                                : undefined
+                            }
+                            isRecordingPosition={recordingPositionForStepId === step.id}
+                            onFocusObject={onFocusObject}
+                            onDeleteStep={onDeleteStep}
+                          />
+
+                          {/* Insert between steps (centered in the existing gap) */}
+                          {index < steps.length - 1 && (
+                            <InsertStepDivider
+                              insertIndex={index + 1}
+                              onInsertStep={onInsertStep}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </SortableContext>
               </DndContext>

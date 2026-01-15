@@ -475,6 +475,10 @@ export const StepCard: React.FC<StepCardProps> = ({
       targetChildPath: undefined,
       startPosition: undefined,
       endPosition: undefined,
+      startRotation: undefined,
+      endRotation: undefined,
+      startScale: undefined,
+      endScale: undefined,
     });
     onUpdate(updatedStep);
   }, [createUpdatedStep, onUpdate]);
@@ -887,7 +891,7 @@ export const StepCard: React.FC<StepCardProps> = ({
             <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
               Settings
             </span>
-            <span title="Configure which object to move and where it should end up.">
+            <span title="Configure which object to move/rotate/scale and what its end transform should be.">
               <HelpCircle size={12} className="text-slate-400" />
             </span>
           </div>
@@ -901,29 +905,31 @@ export const StepCard: React.FC<StepCardProps> = ({
               </label>
               {targetObject ? (
                 <div className="group relative">
-                  <button
-                    onClick={() => handleFocusTargetObject(targetObject)}
-                    className="flex w-full items-center gap-2 rounded-[12px] border border-slate-200/60 bg-slate-100/50 px-3 py-2 text-left transition-all hover:border-slate-300/80 hover:bg-slate-100/80"
-                  >
-                    {(() => {
-                      const Icon = OBJECT_ICONS[targetObject.type] || Info;
-                      return <Icon size={14} className="text-slate-600" />;
-                    })()}
-                    <span className="flex-1 text-xs font-medium text-slate-700">
-                      {targetObject.name}
-                      {targetChild && ` / ${targetChild.name}`}
-                    </span>
+                  <div className="relative">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveTargetObject();
-                      }}
-                      className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 opacity-0 transition-all hover:bg-rose-100 hover:text-rose-600 group-hover:opacity-100"
+                      type="button"
+                      onClick={() => handleFocusTargetObject(targetObject)}
+                      className="flex w-full items-center gap-2 rounded-[12px] border border-slate-200/60 bg-slate-100/50 px-3 py-2 pr-10 text-left transition-all hover:border-slate-300/80 hover:bg-slate-100/80"
+                    >
+                      {(() => {
+                        const Icon = OBJECT_ICONS[targetObject.type] || Info;
+                        return <Icon size={14} className="text-slate-600" />;
+                      })()}
+                      <span className="flex-1 text-xs font-medium text-slate-700">
+                        {targetObject.name}
+                        {targetChild && ` / ${targetChild.name}`}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTargetObject()}
+                      className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 opacity-0 transition-all hover:bg-rose-100 hover:text-rose-600 group-hover:opacity-100"
                       title="Remove target object"
+                      aria-label="Remove target object"
                     >
                       <X size={11} />
                     </button>
-                  </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -968,7 +974,7 @@ export const StepCard: React.FC<StepCardProps> = ({
             {targetObject && (
               <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
                 <label className="mb-2 block text-xs font-semibold text-slate-700">
-                  End Position
+                  End Transform
                 </label>
                 <div className="space-y-3">
                   {isRecordingPosition ? (
@@ -976,7 +982,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                       <div className="flex items-center gap-2 rounded-[10px] border border-blue-200/60 bg-blue-50/50 px-3 py-2">
                         <Circle size={12} className="animate-pulse fill-blue-600 text-blue-600" />
                         <span className="text-xs font-medium text-blue-700">
-                          Recording... Move the object to its end position
+                          Recording... Move/rotate/scale the object to its end transform
                         </span>
                       </div>
                       <button
@@ -988,25 +994,33 @@ export const StepCard: React.FC<StepCardProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {step.endPosition ? (
+                      {(() => {
+                        const hasEndTransform =
+                          !!step.endPosition || !!step.endRotation || !!step.endScale;
+                        return hasEndTransform;
+                      })() ? (
                         <div className="flex items-center gap-2 rounded-[10px] border border-green-200/60 bg-green-50/50 px-3 py-2">
                           <CheckCircle size={14} className="text-green-600" />
                           <span className="text-xs font-medium text-green-700">
-                            End position recorded
+                            End transform recorded
                           </span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 rounded-[10px] border border-slate-200/60 bg-slate-100/50 px-3 py-2">
                           <Circle size={14} className="text-slate-400" />
-                          <span className="text-xs text-slate-400">No end position recorded</span>
+                          <span className="text-xs text-slate-400">No end transform recorded</span>
                         </div>
                       )}
                       <button
                         onClick={handleToggleRecording}
                         className="w-full rounded-[10px] border border-blue-300/60 bg-blue-100/50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:border-blue-400/80 hover:bg-blue-200/60"
-                        title="Click to start recording the end position. Move the object, then click Stop Recording."
+                        title="Click to start recording the end transform. Move/rotate/scale the object, then click Stop Recording."
                       >
-                        {step.endPosition ? 'Record New Position' : 'Record End Position'}
+                        {(() => {
+                          const hasEndTransform =
+                            !!step.endPosition || !!step.endRotation || !!step.endScale;
+                          return hasEndTransform ? 'Record New Transform' : 'Record End Transform';
+                        })()}
                       </button>
                     </div>
                   )}

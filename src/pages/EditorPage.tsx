@@ -31,6 +31,7 @@ import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import {
   calculateChildWorldPosition,
+  applyChildLocalTransform,
   applyChildWorldPosition,
   findChildByPathString,
 } from '../utils/childTransformUtils';
@@ -116,6 +117,8 @@ function EditorPageContent() {
   const latestRecordingEndPositionRef = useRef<{
     stepId: string;
     endPosition: { x: number; y: number; z: number } | null;
+    endRotation?: { x: number; y: number; z: number };
+    endScale?: { x: number; y: number; z: number };
   } | null>(null);
 
   // Store stack sizes in refs for real-time access (needed for testing)
@@ -324,20 +327,39 @@ function EditorPageContent() {
     debounceMs: 1000,
   });
 
+  const currentProjectId = currentProject?.id ?? null;
+
   // Establish baseline AFTER initial state load so autosave knows what "saved" means
   useEffect(() => {
-    if (!isInitialized || !currentProject) return;
+    if (!isInitialized || !currentProjectId) return;
     if (hasHydratedRef.current) return;
+    // Wait until local state has synced to undo/redo state, otherwise baseline may capture stale defaults
+    // and trigger an unnecessary autosave during initial hydration.
+    if (
+      undoRedoState.objects !== objects ||
+      undoRedoState.steps !== steps ||
+      undoRedoState.simulationTitle !== simulationTitle
+    ) {
+      return;
+    }
     hasHydratedRef.current = true;
     setBaseline();
-    // We only need currentProject?.id, not the entire object, to avoid unnecessary re-runs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject?.id, isInitialized, setBaseline]);
+  }, [
+    currentProjectId,
+    isInitialized,
+    setBaseline,
+    undoRedoState.objects,
+    undoRedoState.steps,
+    undoRedoState.simulationTitle,
+    objects,
+    steps,
+    simulationTitle,
+  ]);
 
   // Reset hydration when project changes
   useEffect(() => {
     hasHydratedRef.current = false;
-  }, [currentProject?.id]);
+  }, [currentProjectId]);
 
   // Best-effort flush on unload / backgrounding.
   useEffect(() => {
@@ -525,6 +547,11 @@ function EditorPageContent() {
         if (recordingStep && recordingStep.targetObjectId === updated.id) {
           // Calculate end position based on whether target is a child or parent
           let endPosition: { x: number; y: number; z: number };
+          // Capture end rotation/scale in LOCAL space:
+          // - Parent targets: from object.transform
+          // - Child targets: from child.localTransform
+          let endRotation: { x: number; y: number; z: number } | undefined = undefined;
+          let endScale: { x: number; y: number; z: number } | undefined = undefined;
 
           if (recordingStep.targetChildPath) {
             // Target is a child mesh
@@ -548,6 +575,21 @@ function EditorPageContent() {
                 z: updated.transform.z,
               };
             }
+
+            // Child rotation/scale come from child's localTransform
+            const child = findChildByPathString(updated, recordingStep.targetChildPath);
+            if (child) {
+              endRotation = {
+                x: child.localTransform.rotationX,
+                y: child.localTransform.rotationY,
+                z: child.localTransform.rotationZ,
+              };
+              endScale = {
+                x: child.localTransform.scaleX,
+                y: child.localTransform.scaleY,
+                z: child.localTransform.scaleZ,
+              };
+            }
           } else {
             // Target is parent object - use the updated transform directly
             // This is the ghost object's current position from the drag
@@ -556,12 +598,25 @@ function EditorPageContent() {
               y: updated.transform.y,
               z: updated.transform.z,
             };
+
+            endRotation = {
+              x: updated.transform.rotationX,
+              y: updated.transform.rotationY,
+              z: updated.transform.rotationZ,
+            };
+            endScale = {
+              x: updated.transform.scaleX,
+              y: updated.transform.scaleY,
+              z: updated.transform.scaleZ,
+            };
           }
 
           // Update ref synchronously FIRST for immediate access (prevents race conditions)
           latestRecordingEndPositionRef.current = {
             stepId: recordingStep.id,
             endPosition,
+            endRotation,
+            endScale,
           };
 
           // Update state for real-time visual feedback during drag
@@ -570,7 +625,7 @@ function EditorPageContent() {
           setUndoRedoState((prevState) => ({
             ...prevState,
             steps: prevState.steps.map((s) =>
-              s.id === recordingStep.id ? { ...s, endPosition } : s
+              s.id === recordingStep.id ? { ...s, endPosition, endRotation, endScale } : s
             ),
           }));
 
@@ -978,6 +1033,33 @@ function EditorPageContent() {
     [steps.length, executeCommand]
   );
 
+  const handleInsertStep = useCallback(
+    (index: number, step?: Omit<SimStep, 'id'>) => {
+      const nextStep: Omit<SimStep, 'id'> =
+        step ??
+        ({
+          title: '',
+          description: '',
+          completed: false,
+          type: null,
+        } satisfies Omit<SimStep, 'id'>);
+
+      const newStep: SimStep = {
+        ...nextStep,
+        id: crypto.randomUUID(),
+      };
+
+      const clampedIndex = Math.max(0, Math.min(index, steps.length));
+      const command = createCreateStepCommandHelper(
+        newStep,
+        clampedIndex,
+        `Insert step: ${newStep.title || 'Untitled'}`
+      );
+      executeCommand(command);
+    },
+    [steps.length, executeCommand]
+  );
+
   const handleUpdateStep = useCallback(
     (updated: SimStep) => {
       // Use undoRedoState.steps to get the most up-to-date step (not the local steps state which might be stale)
@@ -1046,22 +1128,30 @@ function EditorPageContent() {
         // This ensures the batch system has the correct initial state
         beginBatch();
 
-        if (recordingStep.endPosition) {
-          // Clear endPosition and store the cleared version as initial state
-          initialStepForCommand = { ...recordingStep, endPosition: undefined };
+        const hasExistingEndTransform =
+          !!recordingStep.endPosition || !!recordingStep.endRotation || !!recordingStep.endScale;
+        if (hasExistingEndTransform) {
+          // Clear end transform fields and store the cleared version as initial state
+          initialStepForCommand = {
+            ...recordingStep,
+            endPosition: undefined,
+            endRotation: undefined,
+            endScale: undefined,
+          };
 
-          // Clear endPosition via a command so it's part of the batch
-          // This ensures the batch system tracks the state change correctly
+          // Clear via a command so it's part of the batch
           const clearedStep: SimStep = {
             ...recordingStep,
             endPosition: undefined,
+            endRotation: undefined,
+            endScale: undefined,
           };
 
           const clearCommand = createUpdateStepCommandHelper(
             clearedStep.id,
-            recordingStep, // previousState: with endPosition
-            clearedStep, // newState: no endPosition
-            `Clear end position for recording: ${clearedStep.title || 'Untitled'}`
+            recordingStep, // previousState: with end transform
+            clearedStep, // newState: cleared
+            `Clear end transform for recording: ${clearedStep.title || 'Untitled'}`
           );
           executeCommand(clearCommand);
         }
@@ -1094,6 +1184,14 @@ function EditorPageContent() {
         latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
           ? latestRecordingEndPositionRef.current.endPosition
           : null;
+      const latestEndRot =
+        latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
+          ? latestRecordingEndPositionRef.current.endRotation
+          : undefined;
+      const latestEndScale =
+        latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
+          ? latestRecordingEndPositionRef.current.endScale
+          : undefined;
 
       // Read from undoRedoState.steps directly (most up-to-date) instead of local steps state
       // The local steps state is synced via useEffect which is async, so it might be stale
@@ -1105,6 +1203,8 @@ function EditorPageContent() {
         // currentStep.endPosition might be stale due to async state updates.
         // IMPORTANT: If latestEndPos exists, we MUST use it - the user dragged the object
         const endPosToSave = latestEndPos || currentStep.endPosition;
+        const endRotToSave = latestEndRot ?? currentStep.endRotation;
+        const endScaleToSave = latestEndScale ?? currentStep.endScale;
 
         // Note: We intentionally avoid per-interaction debug logging here in production.
 
@@ -1113,17 +1213,23 @@ function EditorPageContent() {
         // The ref value (latestEndPos) is the source of truth - if it exists, user dragged the object
         // We MUST create the command to persist the endPosition in the undo/redo system
         // The command will update from the initial state (no endPosition) to the final state (with endPosition)
-        if (endPosToSave) {
+        if (endPosToSave || endRotToSave || endScaleToSave) {
           // CRITICAL: Always use endPosToSave (prioritizing latestEndPos from ref)
           // Create updated step with the endPosition - create a completely new object to avoid reference issues
           // IMPORTANT: Spread ALL properties from currentStep to ensure we don't lose any step data
           const updatedStep: SimStep = {
             ...currentStep,
-            endPosition: {
-              x: endPosToSave.x,
-              y: endPosToSave.y,
-              z: endPosToSave.z,
-            }, // Always create a new object to avoid reference issues
+            endPosition: endPosToSave
+              ? {
+                  x: endPosToSave.x,
+                  y: endPosToSave.y,
+                  z: endPosToSave.z,
+                }
+              : currentStep.startPosition
+                ? { ...currentStep.startPosition }
+                : currentStep.endPosition,
+            endRotation: endRotToSave ? { ...endRotToSave } : currentStep.endRotation,
+            endScale: endScaleToSave ? { ...endScaleToSave } : currentStep.endScale,
           };
 
           // If endPosition is missing, something is inconsistent; bail out safely.
@@ -1141,7 +1247,7 @@ function EditorPageContent() {
             updatedStep.id,
             recordingInitialStepRef.current, // previousState: no endPosition (after clearing at start)
             updatedStep, // newState: with endPosition (from drag) - MUST have endPosition set
-            `Set end position: ${updatedStep.title || 'Untitled'}`
+            `Set end transform: ${updatedStep.title || 'Untitled'}`
           );
 
           // Execute the command - this will update the state during batching
@@ -1252,20 +1358,121 @@ function EditorPageContent() {
     [objects, parsedSelection]
   );
 
+  /**
+   * During move-item recording, we want the RightSidebar to edit the *ghost/end transform*,
+   * not the actual object (which remains at start transform in the scene).
+   *
+   * So when recording is active and the selected object matches the recording target,
+   * we synthesize a "ghost" SceneObject for the sidebar using:
+   * - endPosition/endRotation/endScale if present, otherwise start/current values.
+   */
+  const selectedObjectForSidebar = useMemo(() => {
+    if (!selectedObject) return null;
+    if (!recordingPositionForStepId) return selectedObject;
+
+    const recordingStep =
+      undoRedoState.steps.find((s) => s.id === recordingPositionForStepId) ||
+      steps.find((s) => s.id === recordingPositionForStepId);
+    if (!recordingStep?.targetObjectId) return selectedObject;
+    if (recordingStep.targetObjectId !== selectedObject.id) return selectedObject;
+
+    // Parent-target editing (ghost = end transform)
+    if (!recordingStep.targetChildPath) {
+      const startPos = recordingStep.startPosition ?? {
+        x: selectedObject.transform.x,
+        y: selectedObject.transform.y,
+        z: selectedObject.transform.z,
+      };
+      const ghostPos = recordingStep.endPosition ?? startPos;
+      const ghostRot = recordingStep.endRotation ?? {
+        x: selectedObject.transform.rotationX,
+        y: selectedObject.transform.rotationY,
+        z: selectedObject.transform.rotationZ,
+      };
+      const ghostScale = recordingStep.endScale ?? {
+        x: selectedObject.transform.scaleX,
+        y: selectedObject.transform.scaleY,
+        z: selectedObject.transform.scaleZ,
+      };
+
+      return {
+        ...selectedObject,
+        transform: {
+          ...selectedObject.transform,
+          x: ghostPos.x,
+          y: ghostPos.y,
+          z: ghostPos.z,
+          rotationX: ghostRot.x,
+          rotationY: ghostRot.y,
+          rotationZ: ghostRot.z,
+          scaleX: ghostScale.x,
+          scaleY: ghostScale.y,
+          scaleZ: ghostScale.z,
+        },
+      };
+    }
+
+    // Child-target editing: synthesize object with child placed at ghost world position and with end rot/scale.
+    const childPath = recordingStep.targetChildPath;
+    const implicitStartWorldPos = recordingStep.startPosition ??
+      calculateChildWorldPosition(selectedObject, childPath) ?? {
+        x: selectedObject.transform.x,
+        y: selectedObject.transform.y,
+        z: selectedObject.transform.z,
+      };
+    const ghostWorldPos = recordingStep.endPosition ?? implicitStartWorldPos;
+
+    const withChildPos =
+      applyChildWorldPosition(selectedObject, childPath, ghostWorldPos) ?? selectedObject;
+
+    const child = findChildByPathString(selectedObject, childPath);
+    if (!child) return withChildPos;
+
+    const ghostRot = recordingStep.endRotation ?? {
+      x: child.localTransform.rotationX,
+      y: child.localTransform.rotationY,
+      z: child.localTransform.rotationZ,
+    };
+    const ghostScale = recordingStep.endScale ?? {
+      x: child.localTransform.scaleX,
+      y: child.localTransform.scaleY,
+      z: child.localTransform.scaleZ,
+    };
+
+    const withChildRotScale =
+      recordingStep.endRotation || recordingStep.endScale
+        ? (applyChildLocalTransform(withChildPos, childPath, {
+            rotationX: ghostRot.x,
+            rotationY: ghostRot.y,
+            rotationZ: ghostRot.z,
+            scaleX: ghostScale.x,
+            scaleY: ghostScale.y,
+            scaleZ: ghostScale.z,
+          }) ?? withChildPos)
+        : withChildPos;
+
+    return withChildRotScale;
+  }, [selectedObject, recordingPositionForStepId, undoRedoState.steps, steps]);
+
   // Get the selected child mesh if a child is selected
   const selectedChild = useMemo((): ChildMesh | null => {
-    if (!selectedObject || !parsedSelection?.childPath || !selectedObject.children) {
+    if (
+      !selectedObjectForSidebar ||
+      !parsedSelection?.childPath ||
+      !selectedObjectForSidebar.children
+    ) {
       return null;
     }
     // Find the child whose path matches the selected child path
     const childPathArray = stringToPath(parsedSelection.childPath);
     return (
-      selectedObject.children.find((child) => child.path.join('.') === childPathArray.join('.')) ??
-      null
+      selectedObjectForSidebar.children.find(
+        (child) => child.path.join('.') === childPathArray.join('.')
+      ) ?? null
     );
-  }, [selectedObject, parsedSelection]);
+  }, [selectedObjectForSidebar, parsedSelection]);
 
-  const hasSelectedObject = useMemo(() => !!selectedObject, [selectedObject]);
+  const hasSelectedObject = useMemo(() => !!selectedObjectForSidebar, [selectedObjectForSidebar]);
 
   // Show loading state while initializing or loading projects
   if (isLoadingProjects || !isInitialized) {
@@ -1318,6 +1525,7 @@ function EditorPageContent() {
         selectedObjectId={selectedObjectId}
         onFocusObject={handleFocusObject}
         onAddStep={handleAddStep}
+        onInsertStep={handleInsertStep}
         onUpdateStep={handleUpdateStep}
         onDeleteStep={handleDeleteStep}
         onReorderSteps={handleReorderSteps}
@@ -1331,9 +1539,9 @@ function EditorPageContent() {
         onRemoveAsset={handleRemoveAsset}
       />
 
-      {selectedObject && (
+      {selectedObjectForSidebar && (
         <RightSidebar
-          object={selectedObject}
+          object={selectedObjectForSidebar}
           selectedChild={selectedChild}
           onUpdate={handleUpdateObject}
           onDelete={handleDeleteObject}

@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import 'fake-indexeddb/auto';
 import { vi } from 'vitest';
 
 // Polyfill PointerEvent for JSDOM
@@ -39,6 +40,15 @@ class ResizeObserverMock {
 }
 
 global.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+
+if (typeof FileList !== 'undefined' && !FileList.prototype.item) {
+  Object.defineProperty(FileList.prototype, 'item', {
+    value(this: FileList, index: number) {
+      return this[index] ?? null;
+    },
+    writable: false,
+  });
+}
 
 // Mock canvas context for Three.js
 HTMLCanvasElement.prototype.getContext = vi.fn(() => ({

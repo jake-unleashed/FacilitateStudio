@@ -22,7 +22,7 @@ export const RecordingModeOverlay: React.FC<RecordingModeOverlayProps> = ({
           <div className="flex items-center gap-2">
             <Circle size={16} className="animate-pulse fill-purple-600 text-purple-600" />
             <div>
-              <div className="text-sm font-semibold text-purple-700">Recording End Position</div>
+              <div className="text-sm font-semibold text-purple-700">Recording End Transform</div>
               <div className="text-xs text-purple-600">{targetObject.name}</div>
             </div>
           </div>

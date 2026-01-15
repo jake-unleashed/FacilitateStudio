@@ -3,7 +3,7 @@
  * Child meshes have local transforms relative to their parent object.
  */
 
-import { SceneObject, ChildMesh, pathToString } from '../types';
+import { SceneObject, ChildMesh, Transform, pathToString } from '../types';
 
 /**
  * Find a child mesh by its path string in an object's children array.
@@ -99,6 +99,39 @@ export function applyChildWorldPosition(
   };
 
   // Update the child in the children array
+  const updatedChildren = object.children.map((c) =>
+    pathToString(c.path) === childPathStr ? { ...c, localTransform: newLocalTransform } : c
+  );
+
+  return {
+    ...object,
+    children: updatedChildren,
+  };
+}
+
+/**
+ * Apply partial localTransform updates to a child mesh.
+ * This is used when we want to update child rotation/scale without affecting its local position,
+ * or vice-versa.
+ *
+ * @param object - The parent object
+ * @param childPathStr - Path string of the child
+ * @param updates - Partial local transform updates to merge
+ * @returns Updated object with modified child localTransform, or null if child not found
+ */
+export function applyChildLocalTransform(
+  object: SceneObject,
+  childPathStr: string,
+  updates: Partial<Transform>
+): SceneObject | null {
+  const child = findChildByPathString(object, childPathStr);
+  if (!child || !object.children) return null;
+
+  const newLocalTransform: Transform = {
+    ...child.localTransform,
+    ...updates,
+  };
+
   const updatedChildren = object.children.map((c) =>
     pathToString(c.path) === childPathStr ? { ...c, localTransform: newLocalTransform } : c
   );

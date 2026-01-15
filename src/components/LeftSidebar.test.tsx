@@ -245,6 +245,66 @@ describe('LeftSidebar', () => {
       expect(screen.getByText('Add Step')).toBeInTheDocument();
       expect(screen.queryByText('Step 1')).not.toBeInTheDocument();
     });
+
+    describe('insert step controls', () => {
+      it('does not render insert controls when onInsertStep is not provided', () => {
+        renderWithProvider(<LeftSidebar {...defaultProps} activeTab="steps" steps={TEST_STEPS} />);
+        expect(screen.queryByTestId('insert-step-0')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('insert-step-1')).not.toBeInTheDocument();
+      });
+
+      it('calls onInsertStep with index 0 when top insert is clicked', () => {
+        const onInsertStep = vi.fn();
+        renderWithProvider(
+          <LeftSidebar
+            {...defaultProps}
+            activeTab="steps"
+            steps={TEST_STEPS}
+            onInsertStep={onInsertStep}
+          />
+        );
+
+        fireEvent.click(screen.getByTestId('insert-step-0'));
+        expect(onInsertStep).toHaveBeenCalledTimes(1);
+        expect(onInsertStep).toHaveBeenCalledWith(0, {
+          title: '',
+          description: '',
+          completed: false,
+          type: null,
+        });
+      });
+
+      it('calls onInsertStep with correct index when inserting between steps', () => {
+        const onInsertStep = vi.fn();
+        renderWithProvider(
+          <LeftSidebar
+            {...defaultProps}
+            activeTab="steps"
+            steps={TEST_STEPS}
+            onInsertStep={onInsertStep}
+          />
+        );
+
+        // Between Step 1 and Step 2: insertIndex = 1
+        fireEvent.click(screen.getByTestId('insert-step-1'));
+        // Between Step 2 and Step 3: insertIndex = 2
+        fireEvent.click(screen.getByTestId('insert-step-2'));
+
+        expect(onInsertStep).toHaveBeenCalledTimes(2);
+        expect(onInsertStep).toHaveBeenNthCalledWith(1, 1, {
+          title: '',
+          description: '',
+          completed: false,
+          type: null,
+        });
+        expect(onInsertStep).toHaveBeenNthCalledWith(2, 2, {
+          title: '',
+          description: '',
+          completed: false,
+          type: null,
+        });
+      });
+    });
   });
 
   describe('Objects Panel', () => {

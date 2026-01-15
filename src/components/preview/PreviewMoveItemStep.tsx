@@ -24,8 +24,15 @@ interface PreviewMoveItemStepProps {
   shouldAnimate?: boolean;
   /** Callback when animation starts */
   onAnimationStart?: () => void;
-  /** Callback when object position changes during animation */
-  onPositionUpdate?: (position: { x: number; y: number; z: number }, childPath?: string) => void;
+  /** Callback when object transform changes during animation */
+  onTransformUpdate?: (
+    update: {
+      position: { x: number; y: number; z: number };
+      rotation: { x: number; y: number; z: number };
+      scale: { x: number; y: number; z: number };
+    },
+    childPath?: string
+  ) => void;
   /**
    * Callback to control which object/child is outlined in preview mode.
    * Used to drive postprocessing silhouette outlines without coupling to editor selection state.
@@ -45,13 +52,15 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   onComplete,
   shouldAnimate = false,
   onAnimationStart,
-  onPositionUpdate,
+  onTransformUpdate,
   onPreviewOutlineTargetChange,
 }) => {
   const { camera, scene, invalidate } = useThree();
   const [isAnimating, setIsAnimating] = useState(false);
   const animationStartTime = useRef<number>(0);
   const animationStartWorldPosRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const animationStartRotationRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const animationStartScaleRef = useRef<{ x: number; y: number; z: number } | null>(null);
   const hasPositionedCamera = useRef(false);
   const hasStartedAnimation = useRef(false);
   const previousStepIdRef = useRef<string | null>(null);
@@ -63,6 +72,12 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
   const tmpTargetVecRef = useRef(new THREE.Vector3()); // Avoid allocations in frame loop
   const [showOutline, setShowOutline] = useState(false); // Control outline visibility (after camera settles)
   const isCalculatingCameraRef = useRef(false); // Prevent re-entrant async calculations
+  const tmpEulerStartRef = useRef(new THREE.Euler());
+  const tmpEulerEndRef = useRef(new THREE.Euler());
+  const tmpEulerCurrentRef = useRef(new THREE.Euler());
+  const tmpQuatStartRef = useRef(new THREE.Quaternion());
+  const tmpQuatEndRef = useRef(new THREE.Quaternion());
+  const tmpQuatCurrentRef = useRef(new THREE.Quaternion());
 
   // Premium-feel tuning for camera settling:
   // - Use tighter thresholds so we don't cut off damping early
@@ -112,11 +127,52 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     };
   }, [targetObject, step.targetChildPath]);
 
+  /**
+   * Implicit start rotation/scale:
+   * - If startRotation/startScale are provided, use them (backwards compatible)
+   * - Otherwise, use the target's current local rotation/scale at the moment the step runs
+   */
+  const implicitStartRotationScale = useMemo(() => {
+    if (!targetObject) return null;
+
+    if (step.targetChildPath) {
+      const child = targetChild;
+      if (!child) return null;
+      return {
+        rotation: {
+          x: child.localTransform.rotationX,
+          y: child.localTransform.rotationY,
+          z: child.localTransform.rotationZ,
+        },
+        scale: {
+          x: child.localTransform.scaleX,
+          y: child.localTransform.scaleY,
+          z: child.localTransform.scaleZ,
+        },
+      };
+    }
+
+    return {
+      rotation: {
+        x: targetObject.transform.rotationX,
+        y: targetObject.transform.rotationY,
+        z: targetObject.transform.rotationZ,
+      },
+      scale: {
+        x: targetObject.transform.scaleX,
+        y: targetObject.transform.scaleY,
+        z: targetObject.transform.scaleZ,
+      },
+    };
+  }, [targetObject, targetChild, step.targetChildPath]);
+
   // Validate step has required data
   const isValidStep = useMemo(() => {
-    if (step.type !== 'move-item' || !step.targetObjectId || !step.endPosition || !targetObject) {
+    if (step.type !== 'move-item' || !step.targetObjectId || !targetObject) {
       return false;
     }
+    const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
+    if (!hasEndTransform) return false;
     // If targetChildPath is specified, validate that child exists
     if (step.targetChildPath && !targetChild) {
       return false;
@@ -223,9 +279,6 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     if (!cameraControlsRef.current) {
       return;
     }
-    if (!step.endPosition) {
-      return;
-    }
 
     // Check if we need to wait for useEffect to sync step ID (only on first frame after mount/step change)
     // This prevents race conditions where useFrame runs before useEffect
@@ -241,7 +294,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
           y: targetObject.transform.y,
           z: targetObject.transform.z,
         };
-      const endPos = step.endPosition;
+      const endPos = step.endPosition ?? startPos;
 
       // Kick off async calculation once; apply results when ready.
       if (isCalculatingCameraRef.current) {
@@ -334,18 +387,16 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
 
   // Start animation when shouldAnimate becomes true
   useEffect(() => {
-    if (
-      shouldAnimate &&
-      !isAnimating &&
-      !hasStartedAnimation.current &&
-      isValidStep &&
-      step.endPosition
-    ) {
+    if (shouldAnimate && !isAnimating && !hasStartedAnimation.current && isValidStep) {
       hasStartedAnimation.current = true;
       setIsAnimating(true);
       animationStartTime.current = Date.now();
       // Freeze the start position at animation start so it doesn't drift if the object updates during animation.
       animationStartWorldPosRef.current = step.startPosition ?? implicitStartPosition;
+      // Freeze local start rotation/scale at animation start.
+      animationStartRotationRef.current =
+        step.startRotation ?? implicitStartRotationScale?.rotation ?? null;
+      animationStartScaleRef.current = step.startScale ?? implicitStartRotationScale?.scale ?? null;
       if (onAnimationStart) {
         onAnimationStart();
       }
@@ -354,9 +405,11 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     shouldAnimate,
     isAnimating,
     isValidStep,
-    step.endPosition,
     step.startPosition,
+    step.startRotation,
+    step.startScale,
     implicitStartPosition,
+    implicitStartRotationScale,
     onAnimationStart,
   ]);
 
@@ -365,11 +418,13 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
     hasStartedAnimation.current = false;
     setIsAnimating(false);
     animationStartWorldPosRef.current = null;
+    animationStartRotationRef.current = null;
+    animationStartScaleRef.current = null;
   }, [step.id]);
 
   // Animate object movement
   useFrame(() => {
-    if (!isAnimating || !step.endPosition || !targetObject) return;
+    if (!isAnimating || !targetObject) return;
 
     const duration = 2000; // 2 seconds
     const elapsed = Date.now() - animationStartTime.current;
@@ -386,7 +441,7 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
         y: targetObject.transform.y,
         z: targetObject.transform.z,
       };
-    const end = step.endPosition;
+    const end = step.endPosition ?? start;
 
     // Interpolate position
     const currentWorldPos = {
@@ -395,12 +450,75 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
       z: start.z + (end.z - start.z) * easedProgress,
     };
 
+    const startRot = animationStartRotationRef.current ??
+      step.startRotation ??
+      implicitStartRotationScale?.rotation ?? {
+        x: 0,
+        y: 0,
+        z: 0,
+      };
+    const startScale = animationStartScaleRef.current ??
+      step.startScale ??
+      implicitStartRotationScale?.scale ?? {
+        x: 1,
+        y: 1,
+        z: 1,
+      };
+
+    const endRot = step.endRotation ?? startRot;
+    const endScale = step.endScale ?? startScale;
+
+    // Shortest-path quaternion slerp (local rotation)
+    tmpEulerStartRef.current.set(
+      THREE.MathUtils.degToRad(startRot.x),
+      THREE.MathUtils.degToRad(startRot.y),
+      THREE.MathUtils.degToRad(startRot.z),
+      'XYZ'
+    );
+    tmpEulerEndRef.current.set(
+      THREE.MathUtils.degToRad(endRot.x),
+      THREE.MathUtils.degToRad(endRot.y),
+      THREE.MathUtils.degToRad(endRot.z),
+      'XYZ'
+    );
+    tmpQuatStartRef.current.setFromEuler(tmpEulerStartRef.current);
+    tmpQuatEndRef.current.setFromEuler(tmpEulerEndRef.current);
+    if (tmpQuatStartRef.current.dot(tmpQuatEndRef.current) < 0) {
+      tmpQuatEndRef.current.x *= -1;
+      tmpQuatEndRef.current.y *= -1;
+      tmpQuatEndRef.current.z *= -1;
+      tmpQuatEndRef.current.w *= -1;
+    }
+    tmpQuatCurrentRef.current
+      .copy(tmpQuatStartRef.current)
+      .slerp(tmpQuatEndRef.current, easedProgress);
+    tmpEulerCurrentRef.current.setFromQuaternion(tmpQuatCurrentRef.current, 'XYZ');
+
+    const currentRot = {
+      x: THREE.MathUtils.radToDeg(tmpEulerCurrentRef.current.x),
+      y: THREE.MathUtils.radToDeg(tmpEulerCurrentRef.current.y),
+      z: THREE.MathUtils.radToDeg(tmpEulerCurrentRef.current.z),
+    };
+
+    const currentScale = {
+      x: startScale.x + (endScale.x - startScale.x) * easedProgress,
+      y: startScale.y + (endScale.y - startScale.y) * easedProgress,
+      z: startScale.z + (endScale.z - startScale.z) * easedProgress,
+    };
+
     // If target is a child, we need to update the parent object's transform
     // to achieve the desired child world position
     // For preview, we notify the parent of the world position
     // The parent (PreviewPage) will handle updating the actual object transform
-    if (onPositionUpdate) {
-      onPositionUpdate(currentWorldPos, step.targetChildPath);
+    if (onTransformUpdate) {
+      onTransformUpdate(
+        {
+          position: currentWorldPos,
+          rotation: currentRot,
+          scale: currentScale,
+        },
+        step.targetChildPath
+      );
     }
 
     // When animation completes

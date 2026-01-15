@@ -98,6 +98,26 @@ export interface SimStep {
   startPosition?: { x: number; y: number; z: number };
   /** For move-item steps: target/end position of the object */
   endPosition?: { x: number; y: number; z: number };
+  /**
+   * For move-item steps: starting rotation of the target (local space, degrees).
+   * Optional/legacy-friendly: if omitted, start rotation is implicit at step start.
+   */
+  startRotation?: { x: number; y: number; z: number };
+  /**
+   * For move-item steps: target/end rotation of the target (local space, degrees).
+   * Recorded during the “record end transform” workflow.
+   */
+  endRotation?: { x: number; y: number; z: number };
+  /**
+   * For move-item steps: starting scale of the target (local space).
+   * Optional/legacy-friendly: if omitted, start scale is implicit at step start.
+   */
+  startScale?: { x: number; y: number; z: number };
+  /**
+   * For move-item steps: target/end scale of the target (local space).
+   * Recorded during the “record end transform” workflow.
+   */
+  endScale?: { x: number; y: number; z: number };
 }
 
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';

@@ -103,12 +103,17 @@ Fix any issues with:
 
 ## Phase 4: Testing
 
-### Run Existing Tests
+### Run Tests (once)
 ```bash
 npm run test
 ```
 
-If tests fail, fix the code or update the tests as appropriate.
+If tests hang, run diagnostics:
+```bash
+npm run test:diagnose
+```
+
+If tests fail, fix the code or update the tests as appropriate. Avoid re-running the full suite more than once.
 
 ### Add Missing Tests
 
@@ -129,6 +134,10 @@ Run and fix any issues:
 ```bash
 npm run typecheck
 npm run lint
+```
+
+Only run formatting when needed (for example if lint reports formatting issues):
+```bash
 npm run format
 ```
 
@@ -138,9 +147,11 @@ All must pass with no errors. Fix issues rather than suppressing them.
 
 ## Phase 6: Final Verification
 
-Run the full check:
+Run any checks you have not already run in this session:
 ```bash
-npm run typecheck && npm run lint && npm run test
+npm run typecheck
+npm run lint
+npm run test
 ```
 
 All green = ready to push.

@@ -71,7 +71,7 @@ describe('RecordingModeOverlay', () => {
       />
     );
 
-    expect(screen.getByText('Recording End Position')).toBeInTheDocument();
+    expect(screen.getByText('Recording End Transform')).toBeInTheDocument();
     expect(screen.getByText('Test Cube')).toBeInTheDocument();
     expect(screen.getByText('Stop Recording')).toBeInTheDocument();
   });
