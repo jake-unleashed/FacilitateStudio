@@ -7,7 +7,8 @@ interface PreviewStepExecutorProps {
   steps: SimStep[];
   objects: SceneObject[];
   onComplete: () => void;
-  onExit: () => void;
+  /** Optional exit handler. If not provided, no exit button will be shown. */
+  onExit?: () => void;
   onSetCurrentPreviewStep?: (step: SimStep | null) => void;
   /** Callback when object is clicked (for move-item steps) */
   onObjectClick?: (objectId: string) => void;
@@ -193,12 +194,12 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
 
   /**
    * Handles keyboard navigation.
-   * Escape: Exit preview
+   * Escape: Exit preview (if onExit is provided)
    * Enter: Continue info card (only when waiting)
    */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && onExit) {
         onExit();
         return;
       }
@@ -224,12 +225,14 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-5 shadow-2xl">
           <p className="text-sm text-slate-700">No valid steps to preview.</p>
-          <button
-            onClick={onExit}
-            className="mt-4 rounded-[12px] bg-slate-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-slate-600"
-          >
-            Exit Preview
-          </button>
+          {onExit && (
+            <button
+              onClick={onExit}
+              className="mt-4 rounded-[12px] bg-slate-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-slate-600"
+            >
+              Exit Preview
+            </button>
+          )}
         </div>
       </div>
     );
@@ -244,14 +247,16 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
         </div>
       )}
 
-      {/* Exit button */}
-      <button
-        onClick={onExit}
-        className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white/90"
-        title="Exit Preview (Esc)"
-      >
-        <span>Exit</span>
-      </button>
+      {/* Exit button - only show if onExit is provided */}
+      {onExit && (
+        <button
+          onClick={onExit}
+          className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white/90"
+          title="Exit Preview (Esc)"
+        >
+          <span>Exit</span>
+        </button>
+      )}
 
       {/* Progress bar at bottom - unified container with liquid glass styling */}
       <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2">

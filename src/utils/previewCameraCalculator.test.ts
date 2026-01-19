@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
 import { calculatePreviewMoveItemCamera } from './previewCameraCalculator';
 import { generatePreviewCameraCandidates } from './previewCameraCalculator';
+import { generatePreviewCameraCandidatesWithPitchTiers } from './previewCameraCalculator';
 import { calculateFocusTargetForObject } from './focusTargetCalculator';
 import { SceneObject } from '../types';
 
@@ -150,6 +151,31 @@ describe('previewCameraCalculator', () => {
 
     for (let i = 1; i < candidates.length; i++) {
       expect(candidates[i].azimuthDelta).toBeGreaterThanOrEqual(candidates[i - 1].azimuthDelta);
+    }
+  });
+
+  it('generates pitch-tier candidates with base tier first', () => {
+    const basePitch = Math.atan(0.6);
+    const candidates = generatePreviewCameraCandidatesWithPitchTiers({
+      target: [0, 0, 0],
+      distance: 5,
+      defaultAzimuth: 0,
+      sampleCount: 4,
+      defaultPitch: basePitch,
+      pitchTiers: [
+        { pitch: basePitch, tierIndex: 0 },
+        { pitch: THREE.MathUtils.degToRad(88), tierIndex: 2 },
+        { pitch: THREE.MathUtils.degToRad(-75), tierIndex: 2 },
+      ],
+    });
+
+    expect(candidates.length).toBe(12); // 3 tiers * 4 azimuth samples
+
+    const firstNonBase = candidates.findIndex((c) => (c.tierIndex ?? 0) !== 0);
+    expect(firstNonBase).toBeGreaterThanOrEqual(4); // at least the 4 base candidates come first
+    for (let i = 0; i < firstNonBase; i++) {
+      expect(candidates[i].tierIndex ?? 0).toBe(0);
+      expect(candidates[i].pitch).toBeCloseTo(basePitch, 6);
     }
   });
 

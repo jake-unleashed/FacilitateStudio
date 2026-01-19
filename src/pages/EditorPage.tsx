@@ -9,9 +9,15 @@ import { DebugMenu } from '../components/DebugMenu';
 import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
+import { PublishModal } from '../components/PublishModal';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
 import { calculateIdealCameraPosition, calculateSoftFocus } from '../utils/focusUtils';
 import { calculateFocusTargetForObject } from '../utils/focusTargetCalculator';
+import {
+  calculateOcclusionAwareFocusCamera,
+  calculateQuickFocusCamera,
+  MIN_FOCUS_CAMERA_Y,
+} from '../utils/focusCameraOcclusion';
 import {
   SceneObject,
   SidebarSection,
@@ -26,7 +32,7 @@ import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
-import { PopupProvider, usePopup } from '../contexts/PopupContext';
+import { PopupProvider, usePopup, createErrorPopup } from '../contexts/PopupContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import {
@@ -88,6 +94,7 @@ function EditorPageContent() {
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
   // Recording state for move-item step end position
   const [recordingPositionForStepId, setRecordingPositionForStepId] = useState<string | null>(null);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
 
   // Undo/Redo system - initialize with empty state, will be set when project loads
   const initialEditorState = useMemo(
@@ -213,6 +220,8 @@ function EditorPageContent() {
 
   // Use ref for camera controls to avoid stale closures
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
+  // Keep a ref to the Three.js scene for occlusion-aware focus raycasts.
+  const sceneRef = useRef<THREE.Scene | null>(null);
   // Force re-render when controls become available
   const [, setControlsReady] = useState(false);
 
@@ -447,6 +456,19 @@ function EditorPageContent() {
     }
   }, [flushSave, isDirty, status]);
 
+  const handlePublishClick = useCallback(async () => {
+    if (!currentProject) return;
+    try {
+      // Ensure the project is persisted before generating a link that loads from IndexedDB.
+      await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600 });
+      setIsPublishModalOpen(true);
+    } catch (err) {
+      console.error('[EditorPage] Failed to save before publishing:', err);
+      const message = err instanceof Error ? err.message : 'Failed to save changes';
+      showPopup(createErrorPopup('Publish failed', message));
+    }
+  }, [currentProject, flushSave, showPopup]);
+
   // ============================================================================
   // Memoized Callbacks - Stable references for child components
   // ============================================================================
@@ -454,6 +476,10 @@ function EditorPageContent() {
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
     cameraControlsRef.current = controls;
     setControlsReady(true);
+  }, []);
+
+  const handleSceneReady = useCallback((scene: THREE.Scene) => {
+    sceneRef.current = scene;
   }, []);
 
   const handleCanvasReady = useCallback((canvas: HTMLCanvasElement) => {
@@ -484,44 +510,215 @@ function EditorPageContent() {
       const controls = cameraControlsRef.current;
       if (!controls) return;
 
+      const clampY = (pos: THREE.Vector3): THREE.Vector3 => {
+        if (pos.y < MIN_FOCUS_CAMERA_Y) pos.y = MIN_FOCUS_CAMERA_Y;
+        return pos;
+      };
+
+      const bumpCameraAboveGroundIfNeeded = (target: {
+        x: number;
+        y: number;
+        z: number;
+      }): boolean => {
+        const cur = new THREE.Vector3();
+        controls.getPosition(cur);
+        if (cur.y < MIN_FOCUS_CAMERA_Y) {
+          controls.setLookAt(cur.x, MIN_FOCUS_CAMERA_Y, cur.z, target.x, target.y, target.z, true);
+          return true;
+        }
+        return false;
+      };
+
+      // Capture current camera position so occlusion selection can prefer the current view direction.
+      const currentPos = new THREE.Vector3();
+      controls.getPosition(currentPos);
+
       // Calculate focus target (orbit center and bounds size)
       const focusTarget = await calculateFocusTargetForObject({ object, childPath });
+      const focusTargetVec = { x: focusTarget.targetX, y: focusTarget.targetY, z: focusTarget.targetZ };
 
-      // Calculate ideal camera position for this target
-      const idealCamera = calculateIdealCameraPosition(focusTarget);
+      // Prefer occlusion-aware camera positioning if we have a scene reference.
+      const scene = sceneRef.current;
+      if (!scene) {
+        // Fallback: legacy focus behavior
+        const ideal = calculateIdealCameraPosition(focusTarget);
+        const idealPos = clampY(new THREE.Vector3(ideal.x, ideal.y, ideal.z));
+        if (focusMode === 'full') {
+          controls.setLookAt(
+            idealPos.x,
+            idealPos.y,
+            idealPos.z,
+            focusTargetVec.x,
+            focusTargetVec.y,
+            focusTargetVec.z,
+            true
+          );
+        } else {
+          const cur = new THREE.Vector3();
+          controls.getPosition(cur);
+          const soft = calculateSoftFocus(cur, focusTarget, { ...ideal, y: idealPos.y });
+          if (soft.shouldMoveCamera && soft.newCameraPosition) {
+            clampY(soft.newCameraPosition);
+            controls.setLookAt(
+              soft.newCameraPosition.x,
+              soft.newCameraPosition.y,
+              soft.newCameraPosition.z,
+              focusTargetVec.x,
+              focusTargetVec.y,
+              focusTargetVec.z,
+              true
+            );
+          } else {
+            // Even if we don't “need” to move for soft focus, never leave the camera underground.
+            if (!bumpCameraAboveGroundIfNeeded(focusTargetVec)) {
+              controls.setTarget(focusTargetVec.x, focusTargetVec.y, focusTargetVec.z, true);
+            }
+          }
+        }
+        return;
+      }
+
+      // Fast path: test the “obvious” view (current direction at ideal distance).
+      // If it’s clear enough, skip the expensive multi-candidate occlusion scoring.
+      const quick = calculateQuickFocusCamera({
+        target: focusTarget,
+        scene,
+        targetObjectId: object.id,
+        targetChildPath: childPath,
+        currentCameraPosition: currentPos,
+      });
+
+      if (quick.shouldUseFastPath && quick.position) {
+        clampY(quick.position);
+        const idealCamera = {
+          x: quick.position.x,
+          y: quick.position.y,
+          z: quick.position.z,
+          distance: quick.position.distanceTo(
+            new THREE.Vector3(focusTarget.targetX, focusTarget.targetY, focusTarget.targetZ)
+          ),
+        };
+
+        if (focusMode === 'full') {
+          controls.setLookAt(
+            idealCamera.x,
+            idealCamera.y,
+            idealCamera.z,
+            focusTargetVec.x,
+            focusTargetVec.y,
+            focusTargetVec.z,
+            true
+          );
+          return;
+        }
+
+        const latestPos = new THREE.Vector3();
+        controls.getPosition(latestPos);
+        const soft = calculateSoftFocus(latestPos, focusTarget, idealCamera);
+
+        if (soft.shouldMoveCamera && soft.newCameraPosition) {
+          clampY(soft.newCameraPosition);
+          controls.setLookAt(
+            soft.newCameraPosition.x,
+            soft.newCameraPosition.y,
+            soft.newCameraPosition.z,
+            focusTargetVec.x,
+            focusTargetVec.y,
+            focusTargetVec.z,
+            true
+          );
+        } else {
+          // Even if we don't “need” to move for soft focus, never leave the camera underground.
+          if (!bumpCameraAboveGroundIfNeeded(focusTargetVec)) {
+            controls.setTarget(focusTargetVec.x, focusTargetVec.y, focusTargetVec.z, true);
+          }
+        }
+
+        return;
+      }
+
+      // Single-decision feel: compute the best camera view synchronously (fast path),
+      // then do ONE camera move.
+      const refined = calculateOcclusionAwareFocusCamera({
+        target: focusTarget,
+        scene,
+        targetObjectId: object.id,
+        targetChildPath: childPath,
+        currentCameraPosition: currentPos,
+        // Editor mode: balanced preference toward minimal camera movement.
+        sampleCount: 8,
+        azimuthBiasStrength: 0.6,
+        verticalTiers: { enabled: true, sampleCountPerTier: 6 },
+        breathingRoom: {
+          enabled: true,
+          mode: 'strict',
+          // Relaxed threshold to avoid big camera swings in editor mode.
+          minClearFraction: 0.8,
+          // Avoid backing off distance in editor mode (reduces candidates & motion).
+          distanceMultipliers: [1],
+          sampleRadiusScale: 0.34,
+          sampleMinRadius: 0.12,
+          includeDiagonalSamples: false,
+          minVisibilityWeight: 1.5,
+        },
+      });
+
+      const idealCamera = {
+        x: refined.position.x,
+        y: Math.max(refined.position.y, MIN_FOCUS_CAMERA_Y),
+        z: refined.position.z,
+        distance: refined.position.distanceTo(
+          new THREE.Vector3(focusTarget.targetX, focusTarget.targetY, focusTarget.targetZ)
+        ),
+      };
 
       if (focusMode === 'full') {
-        // Full focus: move camera directly to ideal framing position
         controls.setLookAt(
           idealCamera.x,
           idealCamera.y,
           idealCamera.z,
-          focusTarget.targetX,
-          focusTarget.targetY,
-          focusTarget.targetZ,
+          focusTargetVec.x,
+          focusTargetVec.y,
+          focusTargetVec.z,
+          true
+        );
+        return;
+      }
+
+      // Soft focus: decide once, after we know the best viewpoint.
+      const latestPos = new THREE.Vector3();
+      controls.getPosition(latestPos);
+      const soft = calculateSoftFocus(latestPos, focusTarget, idealCamera);
+
+      if (refined.wasOccluded) {
+        // If the current view is occluded, rotate to the chosen clear view even if inside comfort zone.
+        controls.setLookAt(
+          idealCamera.x,
+          idealCamera.y,
+          idealCamera.z,
+          focusTargetVec.x,
+          focusTargetVec.y,
+          focusTargetVec.z,
+          true
+        );
+        return;
+      }
+
+      if (soft.shouldMoveCamera && soft.newCameraPosition) {
+        clampY(soft.newCameraPosition);
+        controls.setLookAt(
+          soft.newCameraPosition.x,
+          soft.newCameraPosition.y,
+          soft.newCameraPosition.z,
+          focusTargetVec.x,
+          focusTargetVec.y,
+          focusTargetVec.z,
           true
         );
       } else {
-        // Soft focus: adaptive zoom based on current distance
-        const currentPos = new THREE.Vector3();
-        controls.getPosition(currentPos);
-
-        const softFocusResult = calculateSoftFocus(currentPos, focusTarget, idealCamera);
-
-        if (softFocusResult.shouldMoveCamera && softFocusResult.newCameraPosition) {
-          // Move camera toward ideal position
-          controls.setLookAt(
-            softFocusResult.newCameraPosition.x,
-            softFocusResult.newCameraPosition.y,
-            softFocusResult.newCameraPosition.z,
-            focusTarget.targetX,
-            focusTarget.targetY,
-            focusTarget.targetZ,
-            true
-          );
-        } else {
-          // Within comfort zone - just update orbit center
-          controls.setTarget(focusTarget.targetX, focusTarget.targetY, focusTarget.targetZ, true);
+        // Even if we don't “need” to move for soft focus, never leave the camera underground.
+        if (!bumpCameraAboveGroundIfNeeded(focusTargetVec)) {
+          controls.setTarget(focusTargetVec.x, focusTargetVec.y, focusTargetVec.z, true);
         }
       }
     },
@@ -1493,6 +1690,7 @@ function EditorPageContent() {
         onUpdateObject={handleUpdateObject}
         onFocusObject={handleFocusObject}
         onCameraControlsReady={handleCameraControlsReady}
+        onSceneReady={handleSceneReady}
         onCanvasReady={handleCanvasReady}
         onDragStart={beginBatch}
         onDragEnd={endBatch}
@@ -1513,6 +1711,7 @@ function EditorPageContent() {
         onRedo={redo}
         canUndo={canUndo}
         canRedo={canRedo}
+        onPublishClick={handlePublishClick}
         projectId={projectId}
       />
 
@@ -1581,6 +1780,14 @@ function EditorPageContent() {
           errorMessage={exitOverlay.errorMessage}
           onStay={handleExitStay}
           onLeaveAnyway={handleExitLeaveAnyway}
+        />
+      )}
+
+      {currentProject && (
+        <PublishModal
+          project={currentProject}
+          isOpen={isPublishModalOpen}
+          onClose={() => setIsPublishModalOpen(false)}
         />
       )}
 

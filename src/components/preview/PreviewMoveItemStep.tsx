@@ -9,9 +9,12 @@ import {
 } from '../../utils/childTransformUtils';
 import {
   calculatePreviewMoveItemBaseFraming,
-  generatePreviewCameraCandidates,
+  generatePreviewCameraCandidatesWithPitchTiers,
 } from '../../utils/previewCameraCalculator';
-import { pickBestPreviewCameraCandidateByRaycast } from '../../utils/previewCameraOcclusion';
+import {
+  pickBestPreviewCameraCandidateByRaycastWithMetricsAsync,
+} from '../../utils/previewCameraOcclusion';
+import { MIN_FOCUS_CAMERA_Y } from '../../utils/focusCameraOcclusion';
 import type { PreviewOutlineTarget } from './types';
 
 interface PreviewMoveItemStepProps {
@@ -316,15 +319,43 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
             camera: camera as THREE.PerspectiveCamera,
           });
 
-          const candidates = generatePreviewCameraCandidates({
+          // Single-decision feel: compute the best candidate fast, then do ONE camera move.
+          const defaultPitch = (() => {
+            const dx = (camera as THREE.PerspectiveCamera).position.x - base.target[0];
+            const dy = (camera as THREE.PerspectiveCamera).position.y - base.target[1];
+            const dz = (camera as THREE.PerspectiveCamera).position.z - base.target[2];
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (!isFinite(d) || d < 1e-6) return Math.atan(0.6);
+            return Math.asin(THREE.MathUtils.clamp(dy / d, -1, 1));
+          })();
+
+          const basePitch = Math.atan(0.6);
+          const baseTierCandidates = generatePreviewCameraCandidatesWithPitchTiers({
             target: base.target,
             distance: base.distance,
             defaultAzimuth: base.defaultAzimuth,
             sampleCount: RAYCAST_SAMPLE_COUNT,
+            pitchTiers: [{ pitch: basePitch, tierIndex: 0 }],
+            defaultPitch,
           });
 
-          const bestCandidate = pickBestPreviewCameraCandidateByRaycast({
-            candidates,
+          // If base tier fails to find a clear-enough view, expand to above/below tiers.
+          const fallbackCandidates = generatePreviewCameraCandidatesWithPitchTiers({
+            target: base.target,
+            distance: base.distance,
+            defaultAzimuth: base.defaultAzimuth,
+            sampleCount: RAYCAST_SAMPLE_COUNT,
+            pitchTiers: [
+              { pitch: basePitch, tierIndex: 0 },
+              { pitch: THREE.MathUtils.degToRad(75), tierIndex: 1 },
+              { pitch: THREE.MathUtils.degToRad(-15), tierIndex: 1 },
+              { pitch: THREE.MathUtils.degToRad(88), tierIndex: 2 },
+              { pitch: THREE.MathUtils.degToRad(-75), tierIndex: 2 },
+            ],
+            defaultPitch,
+          });
+
+          const scoreParams = {
             scene,
             targetObjectId: step.targetObjectId!,
             targetChildPath: step.targetChildPath,
@@ -332,25 +363,41 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
             startTarget: base.startFocusTarget,
             endTarget: base.endFocusTarget,
             boundsSize: base.boundsSize,
-          });
-
-          const chosenPosition = bestCandidate?.position ?? base.defaultPosition;
-          const cameraPos = {
-            position: chosenPosition,
-            target: base.target,
+            breathingRoomMode: 'legacy' as const,
           };
+
+          const baseScored = pickBestPreviewCameraCandidateByRaycastWithMetricsAsync
+            ? await pickBestPreviewCameraCandidateByRaycastWithMetricsAsync({
+                candidates: baseTierCandidates,
+                ...scoreParams,
+              })
+            : null;
+
+          const scored =
+            baseScored && baseScored.clearFraction >= 0.9
+              ? baseScored
+              : await pickBestPreviewCameraCandidateByRaycastWithMetricsAsync({
+                  candidates: fallbackCandidates,
+                  ...scoreParams,
+                });
+
+          const chosenPosition = scored?.candidate.position ?? base.defaultPosition;
+          const clampedPosition: [number, number, number] = [
+            chosenPosition[0],
+            Math.max(chosenPosition[1], MIN_FOCUS_CAMERA_Y),
+            chosenPosition[2],
+          ];
+
+          // Ignore if step changed while we were computing.
+          if (previousStepIdRef.current !== step.id) return;
 
           // Store target position for checking completion
           targetCameraPositionRef.current = new THREE.Vector3(
-            cameraPos.position[0],
-            cameraPos.position[1],
-            cameraPos.position[2]
+            clampedPosition[0],
+            clampedPosition[1],
+            clampedPosition[2]
           );
-          targetCameraTargetRef.current = new THREE.Vector3(
-            cameraPos.target[0],
-            cameraPos.target[1],
-            cameraPos.target[2]
-          );
+          targetCameraTargetRef.current = new THREE.Vector3(base.target[0], base.target[1], base.target[2]);
           settleStartTimeRef.current = null;
 
           // Set positioning flag so MainCanvas allows controls to be enabled
@@ -359,14 +406,13 @@ export const PreviewMoveItemStep: React.FC<PreviewMoveItemStepProps> = ({
             isPositioningCameraRef.current = true;
           }
 
-          // Use setLookAt with smooth transition
           currentControls.setLookAt(
-            cameraPos.position[0],
-            cameraPos.position[1],
-            cameraPos.position[2],
-            cameraPos.target[0],
-            cameraPos.target[1],
-            cameraPos.target[2],
+            clampedPosition[0],
+            clampedPosition[1],
+            clampedPosition[2],
+            base.target[0],
+            base.target[1],
+            base.target[2],
             true
           );
 

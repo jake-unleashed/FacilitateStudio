@@ -12,10 +12,144 @@
  */
 
 import * as THREE from 'three';
-import { SceneObject, stringToPath } from '../types';
+import { SceneObject, Transform, stringToPath } from '../types';
 import { FocusTarget, sceneToWorldCoordinates } from './focusUtils';
 import { getOrLoadModel } from './modelCache';
 import { findChildByPath } from './modelLoaders';
+
+function isDefaultLocalTransform(t: Transform): boolean {
+  return (
+    t.x === 0 &&
+    t.y === 0 &&
+    t.z === 0 &&
+    t.rotationX === 0 &&
+    t.rotationY === 0 &&
+    t.rotationZ === 0 &&
+    t.scaleX === 1 &&
+    t.scaleY === 1 &&
+    t.scaleZ === 1
+  );
+}
+
+/**
+ * Compute pivot points for a mesh/group in its parent's local space.
+ * Mirrors the logic used by `ImportedModel.tsx` so focus targets match rendered transforms.
+ */
+function computeMeshPivots(mesh: THREE.Object3D): { localCenter: THREE.Vector3; localBase: THREE.Vector3 } {
+  // Reset to identity to get the "base" bounding box (matches ImportedModel behavior).
+  mesh.position.set(0, 0, 0);
+  mesh.rotation.set(0, 0, 0);
+  mesh.scale.set(1, 1, 1);
+  mesh.updateMatrixWorld(true);
+
+  const box = new THREE.Box3().setFromObject(mesh);
+  const worldCenter = new THREE.Vector3();
+  box.getCenter(worldCenter);
+
+  const worldBase = new THREE.Vector3(worldCenter.x, box.min.y, worldCenter.z);
+
+  const parent = mesh.parent as THREE.Object3D | null;
+  const localCenter = worldCenter.clone();
+  const localBase = worldBase.clone();
+
+  if (parent) {
+    parent.updateMatrixWorld(true);
+    const parentInv = parent.matrixWorld.clone().invert();
+    localCenter.applyMatrix4(parentInv);
+    localBase.applyMatrix4(parentInv);
+  }
+
+  return { localCenter, localBase };
+}
+
+function calculateRotationOffset(pivot: THREE.Vector3, rotation: THREE.Euler): THREE.Vector3 {
+  const rotatedPivot = pivot.clone().applyEuler(rotation);
+  return pivot.clone().sub(rotatedPivot);
+}
+
+function calculateScaleOffset(
+  pivot: THREE.Vector3,
+  scale: { x: number; y: number; z: number }
+): THREE.Vector3 {
+  return new THREE.Vector3(pivot.x * (1 - scale.x), pivot.y * (1 - scale.y), pivot.z * (1 - scale.z));
+}
+
+/**
+ * Apply user child localTransforms to the cloned model instance for focus calculations.
+ *
+ * This mirrors `ImportedModel.tsx` (pivot-aware rotation + base-aware scaling) so the focus
+ * target remains correct even when users rotate/scale child groups.
+ */
+function applyChildLocalTransformsForFocus(model: THREE.Object3D, object: SceneObject): void {
+  if (!object.children || object.children.length === 0) return;
+
+  for (const child of object.children) {
+    const lt = child.localTransform;
+    if (isDefaultLocalTransform(lt)) continue;
+
+    const meshObj = findChildByPath(model, child.path);
+    if (!meshObj) continue;
+
+    const userOffset = new THREE.Vector3(lt.x / 100, lt.y / 100, -lt.z / 100);
+    const { localCenter, localBase } = computeMeshPivots(meshObj);
+
+    const rotationEuler = new THREE.Euler(
+      THREE.MathUtils.degToRad(lt.rotationX),
+      THREE.MathUtils.degToRad(lt.rotationY),
+      THREE.MathUtils.degToRad(lt.rotationZ),
+      'XYZ'
+    );
+
+    const rotationOffset = calculateRotationOffset(localCenter, rotationEuler);
+    const scaleOffset = calculateScaleOffset(localBase, { x: lt.scaleX, y: lt.scaleY, z: lt.scaleZ });
+
+    meshObj.position.set(
+      userOffset.x + rotationOffset.x + scaleOffset.x,
+      userOffset.y + rotationOffset.y + scaleOffset.y,
+      userOffset.z + rotationOffset.z + scaleOffset.z
+    );
+    meshObj.rotation.copy(rotationEuler);
+    meshObj.scale.set(lt.scaleX, lt.scaleY, lt.scaleZ);
+  }
+}
+
+/**
+ * Convert a point in model-local space to world space, mirroring the two-group structure in
+ * `ImportedModel.tsx`:
+ * - Outer group: positioned at pivotWorldY (ground + modelHeight/2), applies rotation + scale
+ * - Inner group: offsets model by -modelHeight/2 to keep bottom grounded during transforms
+ */
+function modelLocalPointToWorld(params: {
+  object: SceneObject;
+  parentWorld: { x: number; y: number; z: number };
+  modelHeight: number;
+  point: THREE.Vector3;
+}): THREE.Vector3 {
+  const { object, parentWorld, modelHeight, point } = params;
+
+  const pivotWorldY = parentWorld.y + modelHeight / 2;
+  const outerPos = new THREE.Vector3(parentWorld.x, pivotWorldY, parentWorld.z);
+
+  const innerOffset = new THREE.Vector3(0, -modelHeight / 2, 0);
+  const delta = point.clone().add(innerOffset);
+
+  // Apply outer scale (component-wise), then outer rotation, then translation.
+  delta.set(
+    delta.x * object.transform.scaleX,
+    delta.y * object.transform.scaleY,
+    delta.z * object.transform.scaleZ
+  );
+
+  const outerRot = new THREE.Euler(
+    THREE.MathUtils.degToRad(object.transform.rotationX),
+    THREE.MathUtils.degToRad(object.transform.rotationY),
+    THREE.MathUtils.degToRad(object.transform.rotationZ),
+    'XYZ'
+  );
+  delta.applyEuler(outerRot);
+
+  return outerPos.add(delta);
+}
 
 /**
  * Calculate focus target for an object (handles both imported models and primitives).
@@ -53,11 +187,21 @@ export async function calculateFocusTargetForObject(params: {
     // Load model from cache (fast - already loaded)
     const { model, metrics } = await getOrLoadModel(object.properties.modelAssetId);
     const modelHeight = metrics.size.y;
+    // IMPORTANT: Imported models are rendered with a two-group structure in `ImportedModel.tsx`:
+    // - Outer group Y is placed at (groundY + modelHeight/2)
+    // - Inner group offsets the model by (-modelHeight/2)
+    // This makes the model visually centered around the outer group's origin, so scaling does NOT
+    // shift the model up/down relative to the ground. Focus target math must mirror that layout,
+    // otherwise focus height will drift when users change scale in the editor.
     const maxScale = Math.max(
       object.transform.scaleX,
       object.transform.scaleY,
       object.transform.scaleZ
     );
+
+    // IMPORTANT: Focus uses a cloned model instance. Apply child localTransforms here so bounds/centers
+    // reflect user edits (rotate/scale of child groups, etc.).
+    applyChildLocalTransformsForFocus(model, object);
 
     // Calculate actual world-space bounding box from ONLY visible geometry
     // This excludes empty transforms, cameras, lights, etc.
@@ -86,8 +230,6 @@ export async function calculateFocusTargetForObject(params: {
       effectiveMaxDim = visibleMaxDim > 0 ? visibleMaxDim : metrics.maxDimension;
     }
 
-    const effectiveHeight = visibleSize.y > 0 ? visibleSize.y : modelHeight;
-
     if (childPath) {
       // Child focus: find and compute bounds for specific child mesh
       focusTarget = calculateChildFocusTarget(
@@ -95,15 +237,22 @@ export async function calculateFocusTargetForObject(params: {
         parentWorld,
         model,
         childPath,
-        effectiveHeight,
+        modelHeight,
         effectiveMaxDim
       );
     } else {
       // Root object focus: use volume-weighted center (where the bulk of geometry is)
+      const worldPoint = modelLocalPointToWorld({
+        object,
+        parentWorld,
+        modelHeight,
+        point: weightedCenter,
+      });
+
       focusTarget = {
-        targetX: parentWorld.x + weightedCenter.x * object.transform.scaleX,
-        targetY: parentWorld.y + weightedCenter.y * object.transform.scaleY,
-        targetZ: parentWorld.z + weightedCenter.z * object.transform.scaleZ,
+        targetX: worldPoint.x,
+        targetY: worldPoint.y,
+        targetZ: worldPoint.z,
         boundsSize: effectiveMaxDim * maxScale,
       };
     }
@@ -234,13 +383,6 @@ function calculateChildFocusTarget(
     return fallback;
   }
 
-  // Apply child's local transform if modified
-  const childData = object.children?.find((c) => c.path.join('.') === childPath);
-  if (childData?.localTransform) {
-    const lt = childData.localTransform;
-    childMesh.position.set(lt.x / 100, lt.y / 100, -lt.z / 100);
-  }
-
   // Compute bounding box from only visible geometry (excludes empty transforms)
   const childBox = calculateVisibleBounds(childMesh);
 
@@ -291,10 +433,17 @@ function calculateChildFocusTarget(
     effectiveBoundsSize = Math.max(childSize.x, childSize.y, childSize.z);
   }
 
+  const worldPoint = modelLocalPointToWorld({
+    object,
+    parentWorld,
+    modelHeight,
+    point: weightedCenter,
+  });
+
   return {
-    targetX: parentWorld.x + weightedCenter.x * object.transform.scaleX,
-    targetY: parentWorld.y + weightedCenter.y * object.transform.scaleY,
-    targetZ: parentWorld.z + weightedCenter.z * object.transform.scaleZ,
+    targetX: worldPoint.x,
+    targetY: worldPoint.y,
+    targetZ: worldPoint.z,
     boundsSize: effectiveBoundsSize * maxScale,
   };
 }

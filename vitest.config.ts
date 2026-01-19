@@ -5,6 +5,16 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   test: {
+    // Running R3F/Three-related tests in parallel can be memory-intensive in jsdom,
+    // especially on Windows. Use a single forked worker to reduce memory pressure
+    // and avoid thread-pool deserialization/OOM issues.
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        minForks: 1,
+        maxForks: 1,
+      },
+    },
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

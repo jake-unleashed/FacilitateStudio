@@ -1,0 +1,107 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
+import { PublishedSimulationPage } from './PublishedSimulationPage';
+import { PopupProvider } from '../contexts/PopupContext';
+import type { Project } from '../types/project';
+
+// Mock useSearchParams
+const mockSearchParams = new URLSearchParams();
+const mockSetSearchParams = vi.fn();
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useSearchParams: () => [mockSearchParams, mockSetSearchParams],
+  };
+});
+
+// Mock useProjects
+const mockGetProject = vi.fn();
+const mockUseProjects = {
+  getProject: mockGetProject,
+  isLoading: false,
+};
+
+vi.mock('../hooks/useProjects', () => ({
+  useProjects: () => mockUseProjects,
+}));
+
+const mockProject: Project = {
+  id: 'test-project',
+  name: 'Test Published Simulation',
+  objects: [],
+  steps: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+function renderWithContext(ui: React.ReactElement) {
+  return render(
+    <BrowserRouter>
+      <PopupProvider>{ui}</PopupProvider>
+    </BrowserRouter>
+  );
+}
+
+describe('PublishedSimulationPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearchParams.delete('projectId');
+    mockUseProjects.isLoading = false;
+  });
+
+  it('shows loading state initially', () => {
+    mockUseProjects.isLoading = true;
+    renderWithContext(<PublishedSimulationPage />);
+    expect(screen.getByText(/loading published simulation/i)).toBeInTheDocument();
+  });
+
+  it('shows error when projectId is missing', () => {
+    // Don't set projectId in search params
+    renderWithContext(<PublishedSimulationPage />);
+    expect(screen.getByText(/invalid published link/i)).toBeInTheDocument();
+    expect(screen.getByText(/this link is missing a project id/i)).toBeInTheDocument();
+  });
+
+  it('shows error when project is not found', () => {
+    mockSearchParams.set('projectId', 'nonexistent-project');
+    mockGetProject.mockReturnValue(null);
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    expect(screen.getByText(/simulation.*available/i)).toBeInTheDocument();
+  });
+
+  it('renders simulation when project is found', () => {
+    mockSearchParams.set('projectId', 'test-project');
+    mockGetProject.mockReturnValue(mockProject);
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    // Should render the canvas (MainCanvas component)
+    // Note: MainCanvas itself is complex and mocked, so we just verify no error screens
+    expect(screen.queryByText(/invalid published link/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/available/i)).not.toBeInTheDocument();
+  });
+
+  it('displays branding badge', () => {
+    mockSearchParams.set('projectId', 'test-project');
+    mockGetProject.mockReturnValue(mockProject);
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    expect(screen.getByText(/powered by facilitate/i)).toBeInTheDocument();
+  });
+
+  it('does not show exit button in published view', () => {
+    mockSearchParams.set('projectId', 'test-project');
+    mockGetProject.mockReturnValue(mockProject);
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    // Exit button should not be present (unlike PreviewPage)
+    expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument();
+  });
+});

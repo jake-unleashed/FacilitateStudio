@@ -42,6 +42,8 @@ interface TopBarProps {
   canRedo?: boolean;
   /** Optional explicit preview handler; if omitted, falls back to navigating to /preview/:projectId */
   onPreviewClick?: () => void;
+  /** Called when user clicks Publish. */
+  onPublishClick?: () => void;
   /** Project id used for preview navigation fallback */
   projectId?: string;
 }
@@ -278,7 +280,10 @@ SimulationTitle.displayName = 'SimulationTitle';
 /**
  * Action buttons on the right side (Preview, Publish, Mobile Menu).
  */
-const ActionButtons = memo<{ onPreviewClick?: () => void }>(({ onPreviewClick }) => (
+const ActionButtons = memo<{
+  onPreviewClick?: () => void;
+  onPublishClick?: () => void;
+}>(({ onPreviewClick, onPublishClick }) => (
   <div className="z-10 flex items-center gap-3">
     <Button
       variant="secondary"
@@ -291,6 +296,7 @@ const ActionButtons = memo<{ onPreviewClick?: () => void }>(({ onPreviewClick })
     <Button
       variant="primary"
       className="gap-2 rounded-[20px] pl-4 pr-5 shadow-lg shadow-blue-500/30"
+      onClick={onPublishClick}
     >
       <Share2 size={16} />
       Publish
@@ -329,6 +335,7 @@ const TopBarInner: React.FC<TopBarProps> = ({
   canUndo = false,
   canRedo = false,
   onPreviewClick,
+  onPublishClick,
   projectId,
 }) => {
   const navigate = useNavigate();
@@ -435,7 +442,7 @@ const TopBarInner: React.FC<TopBarProps> = ({
         />
 
         {/* Right Section: Action Buttons */}
-        <ActionButtons onPreviewClick={handlePreviewClick} />
+        <ActionButtons onPreviewClick={handlePreviewClick} onPublishClick={onPublishClick} />
       </header>
     </div>
   );

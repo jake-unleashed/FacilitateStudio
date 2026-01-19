@@ -35,8 +35,24 @@ export interface PreviewMoveItemBaseFraming {
 export interface PreviewCameraCandidate {
   position: [number, number, number];
   azimuth: number;
+  /** Pitch angle in radians (0 = horizontal plane, + = above, - = below) */
+  pitch?: number;
   /** Absolute delta from the default azimuth (smaller is more consistent) */
   azimuthDelta: number;
+  /** Absolute delta from the default pitch (smaller is more consistent) */
+  pitchDelta?: number;
+  /** Candidate tier index (0 = preferred/base, higher = more “fallback”) */
+  tierIndex?: number;
+}
+
+export interface CameraPitchTier {
+  /** Pitch angle in radians (0 = horizontal plane, + = above, - = below) */
+  pitch: number;
+  /**
+   * Tier ordering. 0 should be the “normal” view; higher values are more fallback.
+   * Used to keep “above/below” as last-resort angles.
+   */
+  tierIndex: number;
 }
 
 export interface PreviewMoveItemCameraParams {
@@ -148,7 +164,34 @@ export function generatePreviewCameraCandidates(params: {
   defaultAzimuth?: number;
   sampleCount?: number;
 }): PreviewCameraCandidate[] {
+  // Legacy API: generate candidates for the single “base” pitch (edit-like view).
   const { target, distance, defaultAzimuth = CAMERA_VIEWING_ANGLE, sampleCount = 12 } = params;
+  return generatePreviewCameraCandidatesWithPitchTiers({
+    target,
+    distance,
+    defaultAzimuth,
+    sampleCount,
+    pitchTiers: [{ pitch: Math.atan(CAMERA_HEIGHT_FACTOR), tierIndex: 0 }],
+    defaultPitch: Math.atan(CAMERA_HEIGHT_FACTOR),
+  });
+}
+
+/**
+ * Generate camera candidates around a target with optional pitch tiers.
+ * This enables “above/below” fallback angles (e.g. top-down, bottom-up) while keeping
+ * the standard ring as the primary tier.
+ */
+export function generatePreviewCameraCandidatesWithPitchTiers(params: {
+  target: [number, number, number];
+  /** Ideal distance from focus utilities (not the actual 3D distance; see notes below) */
+  distance: number;
+  defaultAzimuth: number;
+  sampleCount: number;
+  pitchTiers: CameraPitchTier[];
+  /** Default pitch used for tie-breaking and ordering (typically current camera pitch). */
+  defaultPitch: number;
+}): PreviewCameraCandidate[] {
+  const { target, distance, defaultAzimuth, sampleCount, pitchTiers, defaultPitch } = params;
 
   const targetFocus: FocusTarget = {
     targetX: target[0],
@@ -156,6 +199,11 @@ export function generatePreviewCameraCandidates(params: {
     targetZ: target[2],
     boundsSize: 1,
   };
+
+  // NOTE: In our existing framing style, `distance` represents the “ideal” distance from
+  // focusUtils, but the actual camera distance is larger due to CAMERA_HEIGHT_FACTOR.
+  // We preserve that behavior by converting to an equivalent 3D radius for pitch-based placement.
+  const radius3d = distance * Math.sqrt(1 + CAMERA_HEIGHT_FACTOR * CAMERA_HEIGHT_FACTOR);
 
   const azimuths: number[] = [];
   const step = (Math.PI * 2) / sampleCount;
@@ -170,17 +218,44 @@ export function generatePreviewCameraCandidates(params: {
     return x;
   };
 
-  return azimuths
-    .map((azimuth) => {
-      const delta = Math.abs(normalizeAngle(azimuth - defaultAzimuth));
-      const pos = positionFromTarget(targetFocus, distance, azimuth);
-      return {
-        position: [pos.x, pos.y, pos.z] as [number, number, number],
+  const clampPitch = (p: number) => {
+    // Avoid exact +/-90° which can create degeneracies.
+    const eps = THREE.MathUtils.degToRad(1.5);
+    return Math.max(-Math.PI / 2 + eps, Math.min(Math.PI / 2 - eps, p));
+  };
+
+  const candidates: PreviewCameraCandidate[] = [];
+
+  for (const tier of pitchTiers) {
+    const pitch = clampPitch(tier.pitch);
+    for (const azimuth of azimuths) {
+      const azDelta = Math.abs(normalizeAngle(azimuth - defaultAzimuth));
+      const pitchDelta = Math.abs(pitch - defaultPitch);
+      const pos = positionFromTargetWithAzimuthPitch(targetFocus, radius3d, azimuth, pitch);
+      candidates.push({
+        position: [pos.x, pos.y, pos.z],
         azimuth,
-        azimuthDelta: delta,
-      };
-    })
-    .sort((a, b) => a.azimuthDelta - b.azimuthDelta);
+        pitch,
+        azimuthDelta: azDelta,
+        pitchDelta,
+        tierIndex: tier.tierIndex,
+      });
+    }
+  }
+
+  // Primary ordering:
+  // - tierIndex first (base tier stays first; above/below are fallbacks)
+  // - azimuth delta second (stay near current/default view direction)
+  // - pitch delta third (avoid big pitch flips unless needed)
+  candidates.sort((a, b) => {
+    const ta = a.tierIndex ?? 0;
+    const tb = b.tierIndex ?? 0;
+    if (ta !== tb) return ta - tb;
+    if (a.azimuthDelta !== b.azimuthDelta) return a.azimuthDelta - b.azimuthDelta;
+    return (a.pitchDelta ?? 0) - (b.pitchDelta ?? 0);
+  });
+
+  return candidates;
 }
 
 /**
@@ -273,5 +348,19 @@ function positionFromTarget(target: FocusTarget, distance: number, azimuth: numb
     target.targetX + Math.cos(azimuth) * distance,
     target.targetY + distance * CAMERA_HEIGHT_FACTOR,
     target.targetZ + Math.sin(azimuth) * distance
+  );
+}
+
+function positionFromTargetWithAzimuthPitch(
+  target: FocusTarget,
+  radius3d: number,
+  azimuth: number,
+  pitch: number
+): THREE.Vector3 {
+  const c = Math.cos(pitch);
+  return new THREE.Vector3(
+    target.targetX + Math.cos(azimuth) * c * radius3d,
+    target.targetY + Math.sin(pitch) * radius3d,
+    target.targetZ + Math.sin(azimuth) * c * radius3d
   );
 }

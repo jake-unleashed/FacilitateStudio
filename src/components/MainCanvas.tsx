@@ -150,6 +150,8 @@ interface SceneContentProps {
   onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
+  /** Callback when the Three.js scene is ready (for occlusion-aware focus raycasts) */
+  onSceneReady?: (scene: THREE.Scene) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   recordingPositionForStepId?: string | null;
@@ -184,6 +186,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
   onUpdateObject,
   onFocusObject,
   onCameraControlsReady,
+  onSceneReady,
   onDragStart,
   onDragEnd,
   recordingPositionForStepId,
@@ -200,7 +203,17 @@ const SceneContent: React.FC<SceneContentProps> = ({
 }) => {
   const controlsRef = useRef<CameraControlsImpl>(null);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
-  const { invalidate } = useThree();
+  const { invalidate, scene } = useThree();
+  const hasNotifiedSceneRef = useRef(false);
+
+  // Expose the Three.js scene to parent callers (used for occlusion-aware edit focus).
+  useEffect(() => {
+    if (!onSceneReady) return;
+    if (hasNotifiedSceneRef.current) return;
+    if (!scene) return;
+    hasNotifiedSceneRef.current = true;
+    onSceneReady(scene);
+  }, [onSceneReady, scene]);
 
   // Ref to track latest endPosition during drag (avoids race condition with state updates)
   const latestEndPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -1190,6 +1203,8 @@ interface MainCanvasProps {
   onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onCameraControlsReady?: (controls: CameraControlsImpl) => void;
+  /** Callback when the Three.js scene is ready (for occlusion-aware focus raycasts) */
+  onSceneReady?: (scene: THREE.Scene) => void;
   /** Callback when the WebGL canvas is ready (for thumbnail capture) */
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   /** Show performance monitor (defaults to true in development) */
@@ -1237,6 +1252,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onUpdateObject,
   onFocusObject,
   onCameraControlsReady,
+  onSceneReady,
   onCanvasReady,
   showPerformanceMonitor = IS_DEV,
   onDragStart,
@@ -1304,6 +1320,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onUpdateObject={onUpdateObject}
             onFocusObject={onFocusObject}
             onCameraControlsReady={onCameraControlsReady}
+            onSceneReady={onSceneReady}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             recordingPositionForStepId={recordingPositionForStepId}
