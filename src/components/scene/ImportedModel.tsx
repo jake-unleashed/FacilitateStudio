@@ -36,6 +36,19 @@ const SELECTION_INTENSITY = 0.25;
 /** Hover emissive intensity - increased for clearer pre-selection feedback */
 const HOVER_INTENSITY = 0.18;
 
+/**
+ * Returns true if `node` is the same as `root` or a descendant of `root`.
+ * Useful for filtering pointer intersections to a specific model subtree.
+ */
+function isWithinSubtree(root: THREE.Object3D, node: THREE.Object3D): boolean {
+  let current: THREE.Object3D | null = node;
+  while (current) {
+    if (current === root) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
 // =============================================================================
 // Transform Utilities
 // =============================================================================
@@ -656,6 +669,30 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     onHoverEnd();
   }, [hoveredChildPath, onHoverEnd]);
 
+  /**
+   * `onPointerOut` can fire when moving between meshes inside the same model because pointer events
+   * bubble from the intersected mesh. If we treat every pointer-out as a true leave, we briefly
+   * clear hover state (and the canvas cursor snaps back to default), which feels inconsistent.
+   *
+   * We only want to clear hover when the pointer actually leaves the entire model.
+   */
+  const handlePointerOut = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (!model) {
+        handlePointerLeave();
+        return;
+      }
+
+      // If we're still intersecting any mesh that belongs to this model, we're just moving between
+      // internal meshes/subtrees — do not clear hover.
+      const stillHoveringThisModel = e.intersections.some((i) => isWithinSubtree(model, i.object));
+      if (stillHoveringThisModel) return;
+
+      handlePointerLeave();
+    },
+    [model, handlePointerLeave]
+  );
+
   // Fade-in animation with proper cleanup
   useEffect(() => {
     if (!loading && !error && model) {
@@ -1002,7 +1039,7 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           onPointerDown={handlePointerDown}
           onDoubleClick={handleDoubleClick}
           onPointerOver={onHoverStart}
-          onPointerOut={handlePointerLeave}
+          onPointerOut={handlePointerOut}
           onPointerMove={handlePointerMove}
         />
 

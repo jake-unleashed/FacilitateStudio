@@ -107,36 +107,42 @@ const GridWithNoDepth: React.FC<GridWithNoDepthProps> = (props) => {
 /**
  * Determines whether dragging is allowed for a pointer interaction.
  *
- * FEATURE: "Selection Before Drag"
- * Objects must be selected before they can be dragged. This prevents accidental
- * object movement when users try to rotate the camera around objects.
+ * FEATURE: "Direct Dragging Disabled"
+ * Direct click-and-drag translation of objects is disabled. Objects can only be moved
+ * using the transform handles (gizmo). This prevents accidental object movement when:
+ * - Users try to rotate the camera around objects
+ * - Users attempt to select objects but accidentally drag them
+ * - Camera movement (left click) accidentally triggers object translation
  *
  * When canDrag is false:
  * - Camera controls remain enabled (user can rotate/pan)
  * - Click-to-select still works (object is selected on pointer up if no drag)
  * - Object position is NOT updated during the gesture
+ * - Objects can ONLY be moved via transform handles
  *
- * @param selectedParentId - ID of the currently selected parent object (null if none)
- * @param selectedChildPath - Path of the currently selected child (null if parent or none)
- * @param clickedObjectId - ID of the object being clicked
- * @param dragChildPath - Path of the child that would be dragged (null for parent drag)
- * @returns true if dragging should be allowed, false for selection-only interaction
+ * @param _selectedParentId - ID of the currently selected parent object (null if none)
+ * @param _selectedChildPath - Path of the currently selected child (null if parent or none)
+ * @param _clickedObjectId - ID of the object being clicked
+ * @param _dragChildPath - Path of the child that would be dragged (null for parent drag)
+ * @returns Always false - direct dragging is disabled, use transform handles instead
  */
 function calculateCanDrag(
-  selectedParentId: string | null,
-  selectedChildPath: string | null,
-  clickedObjectId: string,
-  dragChildPath?: string | null
+  _selectedParentId: string | null,
+  _selectedChildPath: string | null,
+  _clickedObjectId: string,
+  _dragChildPath?: string | null
 ): boolean {
-  const isParentSelected = selectedParentId === clickedObjectId;
+  // Direct dragging is disabled - objects can only be moved via transform handles
+  // This prevents accidental object movement when users interact with the camera
+  return false;
 
-  if (dragChildPath) {
-    // Dragging a specific child: only allowed if that exact child is selected
-    return isParentSelected && selectedChildPath === dragChildPath;
-  } else {
-    // Dragging the parent: only allowed if parent is selected AND no child is selected
-    return isParentSelected && selectedChildPath === null;
-  }
+  // Previous implementation (disabled):
+  // const isParentSelected = selectedParentId === clickedObjectId;
+  // if (dragChildPath) {
+  //   return isParentSelected && selectedChildPath === dragChildPath;
+  // } else {
+  //   return isParentSelected && selectedChildPath === null;
+  // }
 }
 
 // ============================================================================
@@ -244,6 +250,19 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
   const [isRecentlyDragged, setIsRecentlyDragged] = useState(false);
+
+  // Hover handling:
+  // When moving directly from one object to another, React/Three pointer events can fire
+  // "leave" for the previous object after "enter" for the next object. If we blindly clear
+  // hover on every leave, the cursor can flicker to default while still hovering a new object.
+  // We only clear hover if the leaving object is still the currently-hovered one.
+  const handleHoverStart = useCallback((objectId: string) => {
+    setHoveredObjectId(objectId);
+  }, []);
+
+  const handleHoverEnd = useCallback((objectId: string) => {
+    setHoveredObjectId((prev) => (prev === objectId ? null : prev));
+  }, []);
 
   // Ref to track hasMoved synchronously (avoids stale closure issues in event handlers)
   const hasMovedRef = useRef(false);
@@ -1002,8 +1021,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
                         onDoubleClick={handleDoubleClick}
                         isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
                         isHovered={hoveredObjectId === obj.id}
-                        onHoverStart={() => setHoveredObjectId(obj.id)}
-                        onHoverEnd={() => setHoveredObjectId(null)}
+                        onHoverStart={() => handleHoverStart(obj.id)}
+                        onHoverEnd={() => handleHoverEnd(obj.id)}
                       />
                     ) : (
                       <IndustrialPrimitive
@@ -1013,8 +1032,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
                         onDoubleClick={handleDoubleClick}
                         isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
                         isHovered={hoveredObjectId === obj.id}
-                        onHoverStart={() => setHoveredObjectId(obj.id)}
-                        onHoverEnd={() => setHoveredObjectId(null)}
+                        onHoverStart={() => handleHoverStart(obj.id)}
+                        onHoverEnd={() => handleHoverEnd(obj.id)}
                       />
                     )}
                   </Select>
@@ -1068,8 +1087,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
                     onDoubleClick={handleDoubleClick}
                     isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
                     isHovered={hoveredObjectId === ghostObject.id}
-                    onHoverStart={() => setHoveredObjectId(ghostObject.id)}
-                    onHoverEnd={() => setHoveredObjectId(null)}
+                    onHoverStart={() => handleHoverStart(ghostObject.id)}
+                    onHoverEnd={() => handleHoverEnd(ghostObject.id)}
                     isGhost={true}
                     highlightOnlyChild={!!recordingStep?.targetChildPath}
                   />
@@ -1081,8 +1100,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
                     onDoubleClick={handleDoubleClick}
                     isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
                     isHovered={hoveredObjectId === ghostObject.id}
-                    onHoverStart={() => setHoveredObjectId(ghostObject.id)}
-                    onHoverEnd={() => setHoveredObjectId(null)}
+                    onHoverStart={() => handleHoverStart(ghostObject.id)}
+                    onHoverEnd={() => handleHoverEnd(ghostObject.id)}
                     isGhost={true}
                   />
                 )}

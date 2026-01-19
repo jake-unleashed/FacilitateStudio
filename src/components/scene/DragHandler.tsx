@@ -96,15 +96,20 @@ export const CursorManager: React.FC<{
 
   useEffect(() => {
     if (isDragging) {
-      gl.domElement.style.cursor = 'grabbing';
+      // `isDragging` can still become true for "gesture moved beyond threshold" even when
+      // direct object translation is disabled (e.g. user is rotating the camera while
+      // starting a gesture over an object). Keep a safe/default cursor for those cases.
+      gl.domElement.style.cursor = 'default';
     } else if (isHovering) {
-      gl.domElement.style.cursor = 'grab';
+      // Objects are selectable/clickable, but not directly draggable.
+      gl.domElement.style.cursor = 'pointer';
     } else {
-      gl.domElement.style.cursor = 'crosshair';
+      // Default cursor for camera navigation.
+      gl.domElement.style.cursor = 'default';
     }
 
     return () => {
-      gl.domElement.style.cursor = 'crosshair';
+      gl.domElement.style.cursor = 'default';
     };
   }, [isHovering, isDragging, gl]);
 

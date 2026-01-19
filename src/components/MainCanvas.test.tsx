@@ -437,32 +437,28 @@ describe('Focus Logic', () => {
 // Selection Before Drag (canDrag) Tests
 // ============================================================================
 
-describe('calculateCanDrag - Selection Before Drag Logic', () => {
+describe('calculateCanDrag - Direct Dragging Disabled', () => {
   /**
    * Reimplementation of calculateCanDrag for testing
    * This mirrors the logic in MainCanvas.tsx
+   * 
+   * Direct dragging is now disabled - objects can only be moved via transform handles.
+   * This prevents accidental object movement when interacting with the camera.
    */
   function calculateCanDrag(
-    selectedParentId: string | null,
-    selectedChildPath: string | null,
-    clickedObjectId: string,
-    dragChildPath?: string | null
+    _selectedParentId: string | null,
+    _selectedChildPath: string | null,
+    _clickedObjectId: string,
+    _dragChildPath?: string | null
   ): boolean {
-    const isParentSelected = selectedParentId === clickedObjectId;
-
-    if (dragChildPath) {
-      // Dragging a specific child: only allowed if that exact child is selected
-      return isParentSelected && selectedChildPath === dragChildPath;
-    } else {
-      // Dragging the parent: only allowed if parent is selected AND no child is selected
-      return isParentSelected && selectedChildPath === null;
-    }
+    // Direct dragging is disabled - always return false
+    return false;
   }
 
   describe('Parent Object Dragging', () => {
-    it('should allow drag when parent is selected and no child is selected', () => {
+    it('should NOT allow drag even when parent is selected', () => {
       const canDrag = calculateCanDrag('obj-1', null, 'obj-1');
-      expect(canDrag).toBe(true);
+      expect(canDrag).toBe(false);
     });
 
     it('should NOT allow drag when clicking on unselected object', () => {
@@ -476,16 +472,15 @@ describe('calculateCanDrag - Selection Before Drag Logic', () => {
     });
 
     it('should NOT allow parent drag when a child is selected', () => {
-      // Parent is selected but a child is also selected - dragging parent should not be allowed
       const canDrag = calculateCanDrag('obj-1', 'Scene.Wheel_FL', 'obj-1');
       expect(canDrag).toBe(false);
     });
   });
 
   describe('Child Object Dragging', () => {
-    it('should allow drag when the exact child is selected', () => {
+    it('should NOT allow drag even when the exact child is selected', () => {
       const canDrag = calculateCanDrag('obj-1', 'Scene.Wheel_FL', 'obj-1', 'Scene.Wheel_FL');
-      expect(canDrag).toBe(true);
+      expect(canDrag).toBe(false);
     });
 
     it('should NOT allow drag when different child is selected', () => {
@@ -510,22 +505,18 @@ describe('calculateCanDrag - Selection Before Drag Logic', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle empty string as child path (should be treated as no child)', () => {
-      // Empty string dragChildPath should be treated same as no child
+    it('should NOT allow drag with empty string as child path', () => {
       const canDrag = calculateCanDrag('obj-1', null, 'obj-1', '');
-      // Empty string is falsy, so it falls into parent drag case
-      expect(canDrag).toBe(true);
+      expect(canDrag).toBe(false);
     });
 
-    it('should handle nested child paths correctly', () => {
+    it('should NOT allow drag with nested child paths', () => {
       const nestedPath = 'Scene.Body.Engine.Piston';
       const canDrag = calculateCanDrag('obj-1', nestedPath, 'obj-1', nestedPath);
-      expect(canDrag).toBe(true);
+      expect(canDrag).toBe(false);
     });
 
     it('should NOT allow drag when nested child is partially matched', () => {
-      // Selected: Scene.Body.Engine
-      // Trying to drag: Scene.Body.Engine.Piston (different path)
       const canDrag = calculateCanDrag(
         'obj-1',
         'Scene.Body.Engine',
@@ -535,19 +526,19 @@ describe('calculateCanDrag - Selection Before Drag Logic', () => {
       expect(canDrag).toBe(false);
     });
 
-    it('should handle special characters in path', () => {
+    it('should NOT allow drag with special characters in path', () => {
       const pathWithSpecials = 'Scene.Wheel_FL_01.Rim-Chrome';
       const canDrag = calculateCanDrag('obj-1', pathWithSpecials, 'obj-1', pathWithSpecials);
-      expect(canDrag).toBe(true);
+      expect(canDrag).toBe(false);
     });
   });
 });
 
-describe('Selection Before Drag Behavior', () => {
-  describe('Camera Controls Enabled State', () => {
-    it('should keep camera enabled when canDrag is false (clicking unselected object)', () => {
-      // When clicking on an unselected object, camera controls should remain enabled
-      // so user can rotate around
+describe('Direct Dragging Disabled Behavior', () => {
+  describe('Camera Controls Always Enabled', () => {
+    it('should keep camera enabled since canDrag is always false', () => {
+      // Since direct dragging is disabled, canDrag is always false,
+      // so camera controls should remain enabled
       const dragState = { canDrag: false };
       const previewMode = false;
       const isRecentlyDragged = false;
@@ -557,17 +548,6 @@ describe('Selection Before Drag Behavior', () => {
         !previewMode && (dragState === null || !dragState.canDrag) && !isRecentlyDragged;
 
       expect(cameraEnabled).toBe(true);
-    });
-
-    it('should disable camera when canDrag is true (dragging selected object)', () => {
-      const dragState = { canDrag: true };
-      const previewMode = false;
-      const isRecentlyDragged = false;
-
-      const cameraEnabled =
-        !previewMode && (dragState === null || !dragState.canDrag) && !isRecentlyDragged;
-
-      expect(cameraEnabled).toBe(false);
     });
 
     it('should enable camera when dragState is null', () => {
@@ -635,23 +615,21 @@ describe('Selection Before Drag Behavior', () => {
   });
 
   describe('Event Propagation', () => {
-    it('should stop propagation when canDrag is true', () => {
-      // When canDrag is true, events should be stopped to prevent camera from moving
-      const canDrag = true;
-      const shouldStopPropagation = canDrag;
-      expect(shouldStopPropagation).toBe(true);
+    it('should show pointer cursor when hovering objects', () => {
+      const isHovering = true;
+      const expectedCursor = isHovering ? 'pointer' : 'default';
+      expect(expectedCursor).toBe('pointer');
     });
 
-    it('should NOT stop propagation when canDrag is false', () => {
-      // When canDrag is false, events should flow through to camera controls
-      const canDrag = false;
-      const shouldStopPropagation = canDrag;
-      expect(shouldStopPropagation).toBe(false);
+    it('should show default cursor when not hovering', () => {
+      const isHovering = false;
+      const expectedCursor = isHovering ? 'pointer' : 'default';
+      expect(expectedCursor).toBe('default');
     });
   });
 
   describe('handleMarkAsDrag with canDrag', () => {
-    it('should NOT call onDragStart when canDrag is false', () => {
+    it('should NOT call onDragStart since canDrag is always false', () => {
       const mockOnDragStart = vi.fn();
       const dragState = { canDrag: false, hasMoved: false };
 
@@ -664,20 +642,6 @@ describe('Selection Before Drag Behavior', () => {
       }
 
       expect(mockOnDragStart).not.toHaveBeenCalled();
-    });
-
-    it('should call onDragStart when canDrag is true', () => {
-      const mockOnDragStart = vi.fn();
-      const dragState = { canDrag: true, hasMoved: false };
-
-      // Simulate handleMarkAsDrag logic
-      if (dragState && !dragState.canDrag) {
-        // Skip onDragStart
-      } else {
-        mockOnDragStart();
-      }
-
-      expect(mockOnDragStart).toHaveBeenCalled();
     });
   });
 });
