@@ -3,12 +3,11 @@ import { CAMERA_HEIGHT_FACTOR, FocusTarget, calculateIdealCameraPosition } from 
 import {
   CameraPitchTier,
   generatePreviewCameraCandidatesWithPitchTiers,
-  type PreviewCameraCandidate,
 } from './previewCameraCalculator';
 import {
   pickBestPreviewCameraCandidateByRaycastWithMetrics,
   pickBestPreviewCameraCandidateByRaycastWithMetricsAsync,
-  RaycastBreathingRoomMode,
+  type RaycastBreathingRoomMode,
   evaluateCameraVisibility,
   type RaycastCameraCandidateScore,
   type RaycastProgressiveOptions,
@@ -19,6 +18,11 @@ import {
  * Keeps the camera above the ground grid plane (y=0) to avoid disorienting under-ground viewpoints.
  */
 export const MIN_FOCUS_CAMERA_Y = 0.05;
+
+type CameraCandidateLike = {
+  position: [number, number, number];
+  azimuth: number;
+};
 
 function clampFocusCameraAboveGround(pos: THREE.Vector3): THREE.Vector3 {
   if (pos.y < MIN_FOCUS_CAMERA_Y) {
@@ -160,6 +164,14 @@ export function calculateQuickFocusCamera(params: {
  *
  * Reuses the same candidate generation + raycast scoring as preview/publish mode, but
  * simplifies inputs (single target instead of start/end path framing).
+ *
+ * Ground handling:
+ * - We evaluate candidates normally (including low-angle tiers when enabled)
+ * - We only accept / select candidates whose Y is already above `MIN_FOCUS_CAMERA_Y`
+ * - If nothing above-ground is viable, we fall back to the ideal camera position (clamped)
+ *
+ * This avoids the previous behavior where an underground "best" candidate would be clamped up to
+ * the ground plane, often placing the camera in an obstructed, awkward near-ground shot.
  */
 export function calculateOcclusionAwareFocusCamera(
   params: FocusCameraParams
@@ -226,13 +238,26 @@ export function calculateOcclusionAwareFocusCamera(
       ]
     : baseTiers;
 
-  interface ScoringCandidate extends PreviewCameraCandidate {
-    tierIndex?: number;
-  }
+  // Track the best *already-above-ground* candidate so we don't "win underground then clamp",
+  // which can produce a low-angle viewpoint that becomes occluded after clamping.
+  let bestAboveGroundCandidate: CameraCandidateLike | null = null;
+  let bestAboveGroundWasOccluded = false;
+  let bestAboveGroundScore = -Infinity;
 
-  let bestCandidate: ScoringCandidate | null = null;
-  let bestWasOccluded = false;
-  let bestScore = -Infinity;
+  const isCandidateAboveGround = (candidate: CameraCandidateLike): boolean =>
+    candidate.position[1] >= MIN_FOCUS_CAMERA_Y;
+
+  const considerBest = (next: {
+    candidate: CameraCandidateLike;
+    adjustedScore: number;
+    wasOccluded: boolean;
+  }) => {
+    if (isCandidateAboveGround(next.candidate) && next.adjustedScore > bestAboveGroundScore) {
+      bestAboveGroundScore = next.adjustedScore;
+      bestAboveGroundCandidate = next.candidate;
+      bestAboveGroundWasOccluded = next.wasOccluded;
+    }
+  };
 
   /**
    * Score all candidates at a given distance for the specified pitch tiers.
@@ -240,7 +265,7 @@ export function calculateOcclusionAwareFocusCamera(
    */
   const scoreAtDistance = (distance: number, tiers: CameraPitchTier[]): {
     scored: RaycastCameraCandidateScore | null;
-    candidates: PreviewCameraCandidate[];
+    candidates: CameraCandidateLike[];
     wasOccluded: boolean;
   } => {
     const candidates = generatePreviewCameraCandidatesWithPitchTiers({
@@ -279,68 +304,107 @@ export function calculateOcclusionAwareFocusCamera(
 
   for (const mult of breathingEnabled ? distanceMultipliers : [1]) {
     const distance = ideal.distance * mult;
+    const distancePenalty = (mult - 1) * 0.25;
 
     // Phase 1: base tier only
     const baseResult = scoreAtDistance(distance, baseTiers);
     if (baseResult.scored) {
-      if (baseResult.scored.clearFraction >= minClearFraction) {
-        bestCandidate = baseResult.scored.candidate;
-        bestWasOccluded = baseResult.wasOccluded;
-        break;
-      }
-      // Keep as best-so-far (with small penalty for backing off)
-      const distancePenalty = (mult - 1) * 0.25;
       const adjustedScore = baseResult.scored.score - distancePenalty;
-      if (adjustedScore > bestScore) {
-        bestScore = adjustedScore;
-        bestCandidate = baseResult.scored.candidate;
-        bestWasOccluded = baseResult.wasOccluded;
+      considerBest({
+        candidate: baseResult.scored.candidate,
+        adjustedScore,
+        wasOccluded: baseResult.wasOccluded,
+      });
+
+      // Early accept: only when the winning candidate is BOTH clear enough AND already above ground.
+      // This preserves the existing "fast accept" behavior for normal cases.
+      if (
+        baseResult.scored.clearFraction >= minClearFraction &&
+        isCandidateAboveGround(baseResult.scored.candidate)
+      ) {
+        return {
+          position: clampFocusCameraAboveGround(
+            new THREE.Vector3(
+              baseResult.scored.candidate.position[0],
+              baseResult.scored.candidate.position[1],
+              baseResult.scored.candidate.position[2]
+            )
+          ),
+          target: targetVec,
+          azimuth: baseResult.scored.candidate.azimuth,
+          wasOccluded: baseResult.wasOccluded,
+        };
       }
     }
 
     // Phase 2: include vertical tiers (fallback) only if base didn't meet threshold
-    if (verticalEnabled && (!baseResult.scored || baseResult.scored.clearFraction < minClearFraction)) {
+    const baseWasAcceptable =
+      !!baseResult.scored &&
+      baseResult.scored.clearFraction >= minClearFraction &&
+      isCandidateAboveGround(baseResult.scored.candidate);
+
+    if (verticalEnabled && !baseWasAcceptable) {
       const fallbackResult = scoreAtDistance(distance, fallbackTiers);
       if (fallbackResult.scored) {
-        if (fallbackResult.scored.clearFraction >= minClearFraction) {
-          bestCandidate = fallbackResult.scored.candidate;
-          bestWasOccluded = fallbackResult.wasOccluded;
-          break;
-        }
-        const distancePenalty = (mult - 1) * 0.25;
         const adjustedScore = fallbackResult.scored.score - distancePenalty;
-        if (adjustedScore > bestScore) {
-          bestScore = adjustedScore;
-          bestCandidate = fallbackResult.scored.candidate;
-          bestWasOccluded = fallbackResult.wasOccluded;
+        considerBest({
+          candidate: fallbackResult.scored.candidate,
+          adjustedScore,
+          wasOccluded: fallbackResult.wasOccluded,
+        });
+
+        if (
+          fallbackResult.scored.clearFraction >= minClearFraction &&
+          isCandidateAboveGround(fallbackResult.scored.candidate)
+        ) {
+          return {
+            position: clampFocusCameraAboveGround(
+              new THREE.Vector3(
+                fallbackResult.scored.candidate.position[0],
+                fallbackResult.scored.candidate.position[1],
+                fallbackResult.scored.candidate.position[2]
+              )
+            ),
+            target: targetVec,
+            azimuth: fallbackResult.scored.candidate.azimuth,
+            wasOccluded: fallbackResult.wasOccluded,
+          };
         }
       }
     }
   }
 
-  if (!bestCandidate) {
-    // Should be extremely rare; fall back to the ideal camera position.
-    return {
-      position: clampFocusCameraAboveGround(new THREE.Vector3(ideal.x, ideal.y, ideal.z)),
-      target: targetVec,
-      azimuth: 0,
-      wasOccluded: false,
-    };
-  }
+  // If we couldn't find ANY above-ground candidate, fall back to the ideal position instead of
+  // returning an underground "winner" that would get clamped above ground (often producing an
+  // awkward, obstructed low-angle shot).
+  const didFallbackToIdeal = bestAboveGroundCandidate == null;
+  const chosenWasOccluded = didFallbackToIdeal ? false : bestAboveGroundWasOccluded;
+
+  const chosenCandidate: CameraCandidateLike = bestAboveGroundCandidate ?? {
+    position: [ideal.x, Math.max(ideal.y, MIN_FOCUS_CAMERA_Y), ideal.z],
+    azimuth: 0,
+  };
 
   return {
     position: clampFocusCameraAboveGround(
-      new THREE.Vector3(bestCandidate.position[0], bestCandidate.position[1], bestCandidate.position[2])
+      new THREE.Vector3(
+        chosenCandidate.position[0],
+        chosenCandidate.position[1],
+        chosenCandidate.position[2]
+      )
     ),
     target: targetVec,
-    azimuth: bestCandidate.azimuth,
-    wasOccluded: bestWasOccluded,
+    azimuth: chosenCandidate.azimuth,
+    wasOccluded: chosenWasOccluded,
   };
 }
 
 /**
  * Async progressive version of occlusion-aware focus camera selection.
  * This avoids blocking the UI thread on heavy scenes by yielding between candidate batches.
+ *
+ * Behavior matches `calculateOcclusionAwareFocusCamera`, including above-ground candidate
+ * preference and ideal fallback when no above-ground candidate exists.
  */
 export async function calculateOcclusionAwareFocusCameraAsync(
   params: FocusCameraParams
@@ -407,13 +471,26 @@ export async function calculateOcclusionAwareFocusCameraAsync(
       ]
     : baseTiers;
 
-  interface ScoringCandidate extends PreviewCameraCandidate {
-    tierIndex?: number;
-  }
+  // Track best already-above-ground candidate to avoid selecting an underground viewpoint
+  // that later gets clamped into an occluded low-angle camera position.
+  let bestAboveGroundCandidate: CameraCandidateLike | null = null;
+  let bestAboveGroundWasOccluded = false;
+  let bestAboveGroundScore = -Infinity;
 
-  let bestCandidate: ScoringCandidate | null = null;
-  let bestWasOccluded = false;
-  let bestScore = -Infinity;
+  const isCandidateAboveGround = (candidate: CameraCandidateLike): boolean =>
+    candidate.position[1] >= MIN_FOCUS_CAMERA_Y;
+
+  const considerBest = (next: {
+    candidate: CameraCandidateLike;
+    adjustedScore: number;
+    wasOccluded: boolean;
+  }) => {
+    if (isCandidateAboveGround(next.candidate) && next.adjustedScore > bestAboveGroundScore) {
+      bestAboveGroundScore = next.adjustedScore;
+      bestAboveGroundCandidate = next.candidate;
+      bestAboveGroundWasOccluded = next.wasOccluded;
+    }
+  };
 
   /**
    * Score all candidates at a given distance for the specified pitch tiers (async version).
@@ -421,7 +498,7 @@ export async function calculateOcclusionAwareFocusCameraAsync(
    */
   const scoreAtDistance = async (distance: number, tiers: CameraPitchTier[]): Promise<{
     scored: RaycastCameraCandidateScore | null;
-    candidates: PreviewCameraCandidate[];
+    candidates: CameraCandidateLike[];
     wasOccluded: boolean;
   }> => {
     const candidates = generatePreviewCameraCandidatesWithPitchTiers({
@@ -481,60 +558,96 @@ export async function calculateOcclusionAwareFocusCameraAsync(
 
   for (const mult of breathingEnabled ? distanceMultipliers : [1]) {
     const distance = ideal.distance * mult;
+    const distancePenalty = (mult - 1) * 0.25;
 
     // Phase 1: base tier only
     const baseResult = await scoreAtDistance(distance, baseTiers);
     if (baseResult.scored) {
-      if (baseResult.scored.clearFraction >= minClearFraction) {
-        bestCandidate = baseResult.scored.candidate;
-        bestWasOccluded = baseResult.wasOccluded;
-        break;
-      }
-      // Keep as best-so-far (with small penalty for backing off)
-      const distancePenalty = (mult - 1) * 0.25;
       const adjustedScore = baseResult.scored.score - distancePenalty;
-      if (adjustedScore > bestScore) {
-        bestScore = adjustedScore;
-        bestCandidate = baseResult.scored.candidate;
-        bestWasOccluded = baseResult.wasOccluded;
+      considerBest({
+        candidate: baseResult.scored.candidate,
+        adjustedScore,
+        wasOccluded: baseResult.wasOccluded,
+      });
+
+      // Early accept only when clear enough AND already above ground.
+      if (
+        baseResult.scored.clearFraction >= minClearFraction &&
+        isCandidateAboveGround(baseResult.scored.candidate)
+      ) {
+        return {
+          position: clampFocusCameraAboveGround(
+            new THREE.Vector3(
+              baseResult.scored.candidate.position[0],
+              baseResult.scored.candidate.position[1],
+              baseResult.scored.candidate.position[2]
+            )
+          ),
+          target: targetVec,
+          azimuth: baseResult.scored.candidate.azimuth,
+          wasOccluded: baseResult.wasOccluded,
+        };
       }
     }
 
     // Phase 2: include vertical tiers (fallback) only if base didn't meet threshold
-    if (verticalEnabled) {
+    const baseWasAcceptable =
+      !!baseResult.scored &&
+      baseResult.scored.clearFraction >= minClearFraction &&
+      isCandidateAboveGround(baseResult.scored.candidate);
+
+    if (verticalEnabled && !baseWasAcceptable) {
       const fallbackResult = await scoreAtDistance(distance, fallbackTiers);
       if (fallbackResult.scored) {
-        if (fallbackResult.scored.clearFraction >= minClearFraction) {
-          bestCandidate = fallbackResult.scored.candidate;
-          bestWasOccluded = fallbackResult.wasOccluded;
-          break;
-        }
-        const distancePenalty = (mult - 1) * 0.25;
         const adjustedScore = fallbackResult.scored.score - distancePenalty;
-        if (adjustedScore > bestScore) {
-          bestScore = adjustedScore;
-          bestCandidate = fallbackResult.scored.candidate;
-          bestWasOccluded = fallbackResult.wasOccluded;
+        considerBest({
+          candidate: fallbackResult.scored.candidate,
+          adjustedScore,
+          wasOccluded: fallbackResult.wasOccluded,
+        });
+
+        if (
+          fallbackResult.scored.clearFraction >= minClearFraction &&
+          isCandidateAboveGround(fallbackResult.scored.candidate)
+        ) {
+          return {
+            position: clampFocusCameraAboveGround(
+              new THREE.Vector3(
+                fallbackResult.scored.candidate.position[0],
+                fallbackResult.scored.candidate.position[1],
+                fallbackResult.scored.candidate.position[2]
+              )
+            ),
+            target: targetVec,
+            azimuth: fallbackResult.scored.candidate.azimuth,
+            wasOccluded: fallbackResult.wasOccluded,
+          };
         }
       }
     }
   }
 
-  if (!bestCandidate) {
-    return {
-      position: clampFocusCameraAboveGround(new THREE.Vector3(ideal.x, ideal.y, ideal.z)),
-      target: targetVec,
-      azimuth: 0,
-      wasOccluded: false,
-    };
-  }
+  // If we couldn't find ANY above-ground candidate, fall back to the ideal position instead of
+  // returning an underground "winner" that would get clamped above ground (often producing an
+  // awkward, obstructed low-angle shot).
+  const didFallbackToIdeal = bestAboveGroundCandidate == null;
+  const chosenWasOccluded = didFallbackToIdeal ? false : bestAboveGroundWasOccluded;
+
+  const chosenCandidate: CameraCandidateLike = bestAboveGroundCandidate ?? {
+    position: [ideal.x, Math.max(ideal.y, MIN_FOCUS_CAMERA_Y), ideal.z],
+    azimuth: 0,
+  };
 
   return {
     position: clampFocusCameraAboveGround(
-      new THREE.Vector3(bestCandidate.position[0], bestCandidate.position[1], bestCandidate.position[2])
+      new THREE.Vector3(
+        chosenCandidate.position[0],
+        chosenCandidate.position[1],
+        chosenCandidate.position[2]
+      )
     ),
     target: targetVec,
-    azimuth: bestCandidate.azimuth,
-    wasOccluded: bestWasOccluded,
+    azimuth: chosenCandidate.azimuth,
+    wasOccluded: chosenWasOccluded,
   };
 }
