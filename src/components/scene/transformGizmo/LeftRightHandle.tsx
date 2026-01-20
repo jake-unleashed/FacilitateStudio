@@ -103,23 +103,27 @@ export const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHand
 
       // Get initial object position
       let initialObjectX: number;
+      let initialObjectY: number;
       let initialObjectZ: number;
-      let childWorldScaleX: number | undefined;
-      let childWorldScaleZ: number | undefined;
+      let invParentLinear: THREE.Matrix3 | undefined;
 
       if (selectedChild && selectedChildPath) {
         const childData = findChildDataByPath(object.children, selectedChildPath);
         initialObjectX = childData?.localTransform?.x ?? 0;
+        initialObjectY = childData?.localTransform?.y ?? 0;
         initialObjectZ = childData?.localTransform?.z ?? 0;
 
         if (childMesh) {
-          const worldScale = new THREE.Vector3();
-          childMesh.getWorldScale(worldScale);
-          childWorldScaleX = worldScale.x;
-          childWorldScaleZ = worldScale.z;
+          childMesh.updateMatrixWorld(true);
+          const parent = childMesh.parent;
+          if (parent) {
+            parent.updateMatrixWorld(true);
+            invParentLinear = new THREE.Matrix3().setFromMatrix4(parent.matrixWorld).invert();
+          }
         }
       } else {
         initialObjectX = object.transform.x;
+        initialObjectY = object.transform.y;
         initialObjectZ = object.transform.z;
       }
 
@@ -128,9 +132,9 @@ export const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHand
         moveDirection,
         pixelsPerWorldUnit,
         initialObjectX,
+        initialObjectY,
         initialObjectZ,
-        childWorldScaleX,
-        childWorldScaleZ,
+        invParentLinear,
         hasMoved: false,
       };
 
@@ -180,12 +184,16 @@ export const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHand
       const worldDeltaZ = state.moveDirection.z * worldDelta;
 
       if (currentSelectedChild && currentSelectedChildPath) {
-        // Child movement: account for effective world scale
-        const effectiveScaleX = state.childWorldScaleX || 1;
-        const effectiveScaleZ = state.childWorldScaleZ || 1;
+        // Child movement: interpret gesture in WORLD space, then convert to parent-local delta.
+        // This keeps translation consistent across root/parent/child, even if parent is rotated on X/Y/Z.
+        if (!state.invParentLinear) return;
 
-        const rawX = state.initialObjectX + (worldDeltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
-        const rawZ = state.initialObjectZ - (worldDeltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+        const localDelta = new THREE.Vector3(worldDeltaX, 0, worldDeltaZ).applyMatrix3(
+          state.invParentLinear
+        );
+        const rawX = state.initialObjectX + localDelta.x * INTERNAL_TO_WORLD;
+        const rawY = state.initialObjectY + localDelta.y * INTERNAL_TO_WORLD;
+        const rawZ = state.initialObjectZ - localDelta.z * INTERNAL_TO_WORLD;
 
         // Note: Child positions are local to parent, so we don't clamp them to grid boundary
         // The parent's position determines if the child is within grid bounds
@@ -194,7 +202,7 @@ export const LeftRightHandle = memo<LeftRightHandleProps>(function LeftRightHand
           if (pathToString(child.path) === currentSelectedChildPath) {
             return {
               ...child,
-              localTransform: { ...child.localTransform, x: rawX, z: rawZ },
+              localTransform: { ...child.localTransform, x: rawX, y: rawY, z: rawZ },
             };
           }
           return child;

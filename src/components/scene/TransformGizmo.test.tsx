@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import * as THREE from 'three';
 import React from 'react';
+import { act } from 'react-dom/test-utils';
 
 import { SceneObject, ChildMesh } from '../../types';
 
@@ -63,6 +64,7 @@ vi.mock('../../utils/modelLoaders', () => ({
 }));
 
 // Import after mocks
+import { findChildByPath } from '../../utils/modelLoaders';
 import { TransformGizmo } from './transformGizmo';
 
 // ============================================================================
@@ -472,6 +474,71 @@ describe('TransformGizmo', () => {
 
       const xzHandle = screen.getByTestId('handle-xz');
       expect(xzHandle.className).toContain('cursor-grab');
+    });
+
+    it('should update child localTransform when dragging with rotated parent', async () => {
+      const child = createTestChild(['wheel2']);
+      const rotatedObjectWithChild = createTestObject({
+        transform: { ...testObject.transform, rotationY: 90 },
+        children: [child],
+      });
+
+      // Ensure the mocked scene object group is rotated like the object.
+      testGroup.rotation.set(0, Math.PI / 2, 0);
+      testGroup.updateMatrixWorld(true);
+
+      // Make findChildByPath resolve a real mesh so the gizmo can compute parent transforms.
+      const meshInGroup = testGroup.children.find((c) => c instanceof THREE.Mesh) as THREE.Mesh | undefined;
+      expect(meshInGroup).toBeTruthy();
+      (findChildByPath as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
+        meshInGroup ?? null
+      );
+
+      render(
+        <TransformGizmo
+          object={rotatedObjectWithChild}
+          selectedChildPath="wheel2"
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      // Flush the frame-driven state updates (childMesh, positions) into React.
+      await act(async () => {
+        runFrame();
+      });
+
+      const xzHandle = screen.getByTestId('handle-xz');
+
+      // Start drag
+      await act(async () => {
+        fireEvent.pointerDown(xzHandle, { clientX: 400, clientY: 300 });
+      });
+
+      // Move significantly on screen (should exceed threshold and update)
+      await act(async () => {
+        fireEvent(
+          window,
+          new PointerEvent('pointermove', {
+            clientX: 450,
+            clientY: 250,
+            bubbles: true,
+          })
+        );
+      });
+
+      expect(mockOnUpdateObject).toHaveBeenCalled();
+
+      const lastCall = mockOnUpdateObject.mock.calls[mockOnUpdateObject.mock.calls.length - 1]?.[0];
+      expect(lastCall.children).toBeDefined();
+
+      const updatedChild = lastCall.children?.find((c: ChildMesh) => c.path.join('.') === 'wheel2');
+      expect(updatedChild).toBeDefined();
+      expect(
+        updatedChild?.localTransform.x !== child.localTransform.x ||
+          updatedChild?.localTransform.z !== child.localTransform.z
+      ).toBe(true);
     });
   });
 

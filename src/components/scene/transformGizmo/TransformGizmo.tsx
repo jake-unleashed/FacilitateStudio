@@ -118,6 +118,12 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
     ? findChildDataByPath(object.children, selectedChildPath)
     : null;
 
+  // Cached inverse parent linear transform for child-world translation during handle drags.
+  // Set at drag start, cleared at drag end.
+  const invParentLinearRef = useRef<THREE.Matrix3 | null>(null);
+  const childDragStartWorldPosRef = useRef<THREE.Vector3 | null>(null);
+  const childDragStartLocalRef = useRef<{ x: number; y: number; z: number } | null>(null);
+
   /**
    * Updates handle positions each frame based on object bounding box
    */
@@ -238,7 +244,15 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
         }
       }
 
-      heightValue = selectedChild.localTransform.y;
+      // Child translation should be WORLD-based: show world Y in internal units.
+      if (foundChildMesh) {
+        const worldPos = new THREE.Vector3();
+        foundChildMesh.getWorldPosition(worldPos);
+        heightValue = worldPos.y * INTERNAL_TO_WORLD;
+      } else {
+        // Fallback (no mesh found): use local value
+        heightValue = selectedChild.localTransform.y;
+      }
       currentScaleFactor = object.transform.scaleY;
     }
 
@@ -379,17 +393,44 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   const handleHeightChange = useCallback(
     (newY: number) => {
       if (selectedChild && selectedChildPath) {
-        // Update child's local transform
-        const updatedChildren = object.children?.map((child) => {
-          if (pathToString(child.path) === selectedChildPath) {
+        if (!object.children) return;
+
+        // If we have the mesh + cached inverse parent linear transform, apply a WORLD-Y delta robustly.
+        if (
+          childMesh &&
+          invParentLinearRef.current &&
+          childDragStartWorldPosRef.current &&
+          childDragStartLocalRef.current
+        ) {
+          const targetWorldY = newY / INTERNAL_TO_WORLD;
+          const worldDeltaY = targetWorldY - childDragStartWorldPosRef.current.y;
+
+          const localDelta = new THREE.Vector3(0, worldDeltaY, 0).applyMatrix3(
+            invParentLinearRef.current
+          );
+
+          const updatedChildren = object.children.map((child) => {
+            if (pathToString(child.path) !== selectedChildPath) return child;
             return {
               ...child,
-              localTransform: { ...child.localTransform, y: newY },
+              localTransform: {
+                ...child.localTransform,
+                x: childDragStartLocalRef.current!.x + localDelta.x * INTERNAL_TO_WORLD,
+                y: childDragStartLocalRef.current!.y + localDelta.y * INTERNAL_TO_WORLD,
+                z: childDragStartLocalRef.current!.z - localDelta.z * INTERNAL_TO_WORLD,
+              },
             };
-          }
-          return child;
-        });
+          });
 
+          onUpdateObject({ ...object, children: updatedChildren });
+          return;
+        }
+
+        // Fallback (tests / missing mesh): treat as local Y.
+        const updatedChildren = object.children.map((child) => {
+          if (pathToString(child.path) !== selectedChildPath) return child;
+          return { ...child, localTransform: { ...child.localTransform, y: newY } };
+        });
         onUpdateObject({ ...object, children: updatedChildren });
       } else {
         // Update parent's transform
@@ -399,16 +440,41 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
         });
       }
     },
-    [object, selectedChild, selectedChildPath, onUpdateObject]
+    [object, selectedChild, selectedChildPath, onUpdateObject, childMesh]
   );
 
   const handleDragStart = useCallback(() => {
     setIsAnyHandleDragging(true);
+    if (selectedChildPath && childMesh?.parent) {
+      childMesh.parent.updateMatrixWorld(true);
+      invParentLinearRef.current = new THREE.Matrix3()
+        .setFromMatrix4(childMesh.parent.matrixWorld)
+        .invert();
+      const worldPos = new THREE.Vector3();
+      childMesh.getWorldPosition(worldPos);
+      childDragStartWorldPosRef.current = worldPos;
+      if (selectedChild) {
+        childDragStartLocalRef.current = {
+          x: selectedChild.localTransform.x,
+          y: selectedChild.localTransform.y,
+          z: selectedChild.localTransform.z,
+        };
+      } else {
+        childDragStartLocalRef.current = null;
+      }
+    } else {
+      invParentLinearRef.current = null;
+      childDragStartWorldPosRef.current = null;
+      childDragStartLocalRef.current = null;
+    }
     onDragStart?.();
-  }, [onDragStart]);
+  }, [onDragStart, selectedChildPath, childMesh, selectedChild]);
 
   const handleDragEnd = useCallback(() => {
     setIsAnyHandleDragging(false);
+    invParentLinearRef.current = null;
+    childDragStartWorldPosRef.current = null;
+    childDragStartLocalRef.current = null;
     onDragEnd?.();
   }, [onDragEnd]);
 

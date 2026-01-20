@@ -198,6 +198,28 @@ export function extractScaleFromMatrix(matrix: THREE.Matrix4, axis: 'x' | 'y' | 
 }
 
 /**
+ * Converts a world-space delta vector into the parent-local delta vector.
+ *
+ * This is used for child translation: user gestures are interpreted in world space
+ * (consistent across root/parent/child), but we persist child movement as
+ * `localTransform` deltas in the child's parent space.
+ *
+ * This implementation is robust for:
+ * - Parent rotation on any axis (X/Y/Z)
+ * - Non-uniform scaling
+ *
+ * Note: Translation components are intentionally ignored (deltas only).
+ */
+export function worldDeltaToParentLocalDelta(
+  parentWorldMatrix: THREE.Matrix4,
+  worldDelta: THREE.Vector3
+): THREE.Vector3 {
+  const linear = new THREE.Matrix3().setFromMatrix4(parentWorldMatrix);
+  const invLinear = linear.invert();
+  return worldDelta.clone().applyMatrix3(invLinear);
+}
+
+/**
  * Clamps a value between min and max
  */
 export function clamp(value: number, min: number, max: number): number {

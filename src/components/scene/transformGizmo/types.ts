@@ -124,9 +124,13 @@ export interface XZDragState {
   initialGrabX: number;
   initialGrabZ: number;
   initialObjectX: number;
+  initialObjectY: number;
   initialObjectZ: number;
-  childWorldScaleX?: number;
-  childWorldScaleZ?: number;
+  /**
+   * Inverse of the parent's linear (rotation+scale) transform.
+   * Used to convert world-space deltas into the child's parent-local delta.
+   */
+  invParentLinear?: THREE.Matrix3;
   hasMoved: boolean;
 }
 
@@ -140,11 +144,15 @@ export interface LeftRightDragState {
   pixelsPerWorldUnit: number;
   /** Initial object X position in internal units */
   initialObjectX: number;
+  /** Initial object Y position in internal units */
+  initialObjectY: number;
   /** Initial object Z position in internal units */
   initialObjectZ: number;
-  /** Child world scale factors */
-  childWorldScaleX?: number;
-  childWorldScaleZ?: number;
+  /**
+   * Inverse of the parent's linear (rotation+scale) transform.
+   * Used to convert world-space deltas into the child's parent-local delta.
+   */
+  invParentLinear?: THREE.Matrix3;
   /** Whether movement threshold exceeded */
   hasMoved: boolean;
 }

@@ -157,8 +157,6 @@ interface ImportedModelProps {
     pendingChildPath?: string | null,
     dragChildPath?: string | null
   ) => void;
-  /** Called when a child mesh is clicked and should be directly selected/dragged */
-  onChildPointerDown?: (e: ThreeEvent<PointerEvent>, obj: SceneObject, childPath: string) => void;
   onDoubleClick: (obj: SceneObject) => void;
   isDragging: boolean;
   isHovered: boolean;
@@ -193,7 +191,6 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
   selectedChildPath,
   outlinedChildPath,
   onPointerDown,
-  onChildPointerDown,
   onDoubleClick,
   isDragging: _isDragging,
   isHovered,
@@ -576,11 +573,13 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
             // Pass selectedChildPath as dragChildPath so dragging moves the selected child, not root
             onPointerDown(e, obj, deeperChild, selectedChildPath);
           } else {
-            // No deeper child available - start drag for the selected child
-            // This moves the selected subtree
-            if (onChildPointerDown) {
-              onChildPointerDown(e, obj, selectedChildPath);
-            }
+            // No deeper child available (leaf selection).
+            //
+            // Direct click-and-drag translation is disabled (movement must happen via gizmo handles).
+            // Still create a gesture tracking state for the selected child so that:
+            // - Click release keeps selection stable (no accidental parent re-select)
+            // - Drag gesture is treated as camera navigation (not object movement)
+            onPointerDown(e, obj, null, selectedChildPath);
           }
         } else if (childPath) {
           // Clicked on a different child (outside the selected subtree)
@@ -607,7 +606,6 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     },
     [
       onPointerDown,
-      onChildPointerDown,
       obj,
       findChildPathForMesh,
       findDeeperChild,

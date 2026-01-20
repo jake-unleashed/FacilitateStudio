@@ -286,8 +286,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
     const handleGlobalPointerUp = () => {
       // Only act if we have drag state
       if (dragStateRef.current) {
-        // Clear the drag state - the child was already selected in handleChildPointerDown
-        // so we just need to clean up
+        // Clear any in-flight gesture tracking state.
         setDragState(null);
       }
     };
@@ -714,79 +713,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
     ]
   );
 
-  // Handle pointer down on a child mesh - selects the child and sets up drag state
-  const handleChildPointerDown = useCallback(
-    (e: ThreeEvent<PointerEvent>, obj: SceneObject, childPath: string) => {
-      // Only handle left mouse button
-      if (e.nativeEvent.button !== 0) return;
-
-      // Stop propagation to prevent camera controls from responding
-      e.stopPropagation();
-      e.nativeEvent.stopPropagation();
-      (
-        e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }
-      ).stopImmediatePropagation?.();
-
-      // Find the child's current local transform
-      const child = obj.children?.find((c) => pathToString(c.path) === childPath);
-      if (!child) return;
-
-      const clickPoint = e.point;
-      const groundPlaneY = clickPoint.y;
-
-      // Get child's current local position (in scene units)
-      const initialChildX = child.localTransform.x;
-      const initialChildZ = child.localTransform.z;
-
-      // Extract effective world scale from the clicked mesh's world matrix.
-      // This accounts for ALL transforms: parent's obj.transform.scale, model preprocessing scale, etc.
-      // The world matrix contains position, rotation, and scale. We extract scale by measuring
-      // the length of the basis vectors (columns of the upper 3x3 rotation/scale matrix).
-      const clickedMesh = e.object;
-      clickedMesh.updateMatrixWorld(true); // Ensure matrix is up-to-date
-      const worldMatrix = clickedMesh.matrixWorld;
-
-      // Extract scale from world matrix by getting the length of basis vectors
-      // X basis vector is elements [0,1,2], Z basis vector is elements [8,9,10]
-      const elements = worldMatrix.elements;
-      const childWorldScaleX = Math.sqrt(
-        elements[0] * elements[0] + elements[1] * elements[1] + elements[2] * elements[2]
-      );
-      const childWorldScaleZ = Math.sqrt(
-        elements[8] * elements[8] + elements[9] * elements[9] + elements[10] * elements[10]
-      );
-
-      // Reset hasMovedRef synchronously before setting drag state
-      hasMovedRef.current = false;
-
-      // Set up drag state for the child
-      // canDrag is true because this handler is only called when clicking on an already-selected child
-      setDragState({
-        objectId: obj.id,
-        object: obj,
-        childPath: childPath,
-        groundPlaneY,
-        initialObjectX: initialChildX,
-        initialObjectZ: initialChildZ,
-        initialGrabX: clickPoint.x,
-        initialGrabZ: clickPoint.z,
-        hasMoved: false,
-        startPosition: { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY },
-        childWorldScaleX,
-        childWorldScaleZ,
-        canDrag: true,
-      });
-
-      // Select the child
-      const childSelectionId = createChildSelectionId(obj.id, childPath);
-      onSelectObject(childSelectionId);
-
-      // Adaptive soft focus: handles too close, too far, and comfort zone automatically
-      onFocusObject?.(obj, childPath, 'soft');
-    },
-    [onSelectObject, onFocusObject]
-  );
-
   // Handle drag end - select object if it was just a click
   // Also triggers smart auto-focus when selecting an object (only if camera is far from ideal)
   const handleDragEnd = useCallback(
@@ -805,9 +731,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
           // Adaptive soft focus: handles too close, too far, and comfort zone automatically
           onFocusObject?.(dragState.object, dragState.pendingChildPath, 'soft');
         } else if (dragState.childPath) {
-          // Already selecting a child directly (sibling navigation or child re-click)
-          // The child was already selected in handleChildPointerDown, so just keep it
-          // Don't re-select - this prevents accidentally selecting the parent on click release
+          // Gesture targeted an already-selected child (e.g. leaf child re-click).
+          // Keep selection stable and do not re-select parent on click release.
         } else {
           // No pending child and no current child, select the parent object
           onSelectObject(dragState.objectId);
@@ -1017,7 +942,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
                             : null
                         }
                         onPointerDown={handleObjectPointerDown}
-                        onChildPointerDown={handleChildPointerDown}
                         onDoubleClick={handleDoubleClick}
                         isDragging={dragState?.objectId === obj.id && dragState.hasMoved}
                         isHovered={hoveredObjectId === obj.id}
@@ -1083,7 +1007,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
                       selectedParentId === ghostObject.id ? selectedChildPath : null
                     }
                     onPointerDown={handleObjectPointerDown}
-                    onChildPointerDown={handleChildPointerDown}
                     onDoubleClick={handleDoubleClick}
                     isDragging={dragState?.objectId === ghostObject.id && dragState.hasMoved}
                     isHovered={hoveredObjectId === ghostObject.id}

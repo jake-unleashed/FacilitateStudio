@@ -13,7 +13,7 @@ import { XZHandleProps, XZDragState } from './types';
 import { XZ_DRAG_THRESHOLD } from './constants';
 import { XZ_BOUNDARY_INTERNAL, INTERNAL_TO_WORLD } from '../../../constants';
 import { pathToString } from '../../../types';
-import { extractScaleFromMatrix, clamp, getHandleClasses } from './utils';
+import { clamp, getHandleClasses } from './utils';
 import { useTooltip } from './useTooltip';
 import { GizmoTooltip } from './GizmoTooltip';
 
@@ -112,20 +112,25 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
 
       // Determine initial position values and child scale factors
       let initialX: number;
+      let initialY: number;
       let initialZ: number;
-      let childWorldScaleX: number | undefined;
-      let childWorldScaleZ: number | undefined;
+      let invParentLinear: THREE.Matrix3 | undefined;
 
       if (selectedChild && selectedChildPath && childMesh) {
         initialX = selectedChild.localTransform.x;
+        initialY = selectedChild.localTransform.y;
         initialZ = selectedChild.localTransform.z;
 
-        // Extract effective world scale from child mesh's world matrix
+        // Precompute inverse parent linear transform (rotation+scale) for robust world-space dragging.
         childMesh.updateMatrixWorld(true);
-        childWorldScaleX = extractScaleFromMatrix(childMesh.matrixWorld, 'x');
-        childWorldScaleZ = extractScaleFromMatrix(childMesh.matrixWorld, 'z');
+        const parent = childMesh.parent;
+        if (parent) {
+          parent.updateMatrixWorld(true);
+          invParentLinear = new THREE.Matrix3().setFromMatrix4(parent.matrixWorld).invert();
+        }
       } else {
         initialX = object.transform.x;
+        initialY = object.transform.y;
         initialZ = object.transform.z;
       }
 
@@ -135,9 +140,9 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
         initialGrabX: intersection.x,
         initialGrabZ: intersection.z,
         initialObjectX: initialX,
+        initialObjectY: initialY,
         initialObjectZ: initialZ,
-        childWorldScaleX,
-        childWorldScaleZ,
+        invParentLinear,
         hasMoved: false,
       };
       onDragStart();
@@ -182,12 +187,14 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
       const currentOnUpdateObject = onUpdateObjectRef.current;
 
       if (currentSelectedChild && currentSelectedChildPath) {
-        // Child movement: account for effective world scale
-        const effectiveScaleX = state.childWorldScaleX || 1;
-        const effectiveScaleZ = state.childWorldScaleZ || 1;
+        // Child movement: interpret gesture in WORLD space, then convert to parent-local delta.
+        // This keeps translation consistent across root/parent/child, even if parent is rotated on X/Y/Z.
+        if (!state.invParentLinear) return;
 
-        const rawX = state.initialObjectX + (deltaX / effectiveScaleX) * INTERNAL_TO_WORLD;
-        const rawZ = state.initialObjectZ - (deltaZ / effectiveScaleZ) * INTERNAL_TO_WORLD;
+        const localDelta = new THREE.Vector3(deltaX, 0, deltaZ).applyMatrix3(state.invParentLinear);
+        const rawX = state.initialObjectX + localDelta.x * INTERNAL_TO_WORLD;
+        const rawY = state.initialObjectY + localDelta.y * INTERNAL_TO_WORLD;
+        const rawZ = state.initialObjectZ - localDelta.z * INTERNAL_TO_WORLD;
 
         // Note: Child positions are local to parent, so we don't clamp them to grid boundary
         // The parent's position determines if the child is within grid bounds
@@ -196,7 +203,7 @@ export const XZHandle = memo<XZHandleProps>(function XZHandle({
           if (pathToString(child.path) === currentSelectedChildPath) {
             return {
               ...child,
-              localTransform: { ...child.localTransform, x: rawX, z: rawZ },
+              localTransform: { ...child.localTransform, x: rawX, y: rawY, z: rawZ },
             };
           }
           return child;

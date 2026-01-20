@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { HeightHandleProps, HeightDragState } from './types';
 import { DRAG_THRESHOLD_PX, HEIGHT_MIN, HEIGHT_MAX } from './constants';
 import { INTERNAL_TO_WORLD } from '../../../constants';
-import { extractScaleFromMatrix, clamp, getHandleClasses } from './utils';
+import { clamp, getHandleClasses } from './utils';
 import { useTooltip } from './useTooltip';
 import { GizmoTooltip } from './GizmoTooltip';
 
@@ -27,8 +27,8 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
   camera,
   gl,
   worldPosition,
-  scaleFactor,
-  childMesh,
+  scaleFactor: _scaleFactor,
+  childMesh: _childMesh,
   isChild = false,
 }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -47,17 +47,6 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
   const tooltip = useTooltip('Drag up/down to adjust height', isDragging);
 
   /**
-   * Calculates the effective Y scale accounting for child mesh world transform
-   */
-  const getEffectiveScaleY = useCallback((): number => {
-    if (childMesh) {
-      childMesh.updateMatrixWorld(true);
-      return extractScaleFromMatrix(childMesh.matrixWorld, 'y');
-    }
-    return scaleFactor;
-  }, [childMesh, scaleFactor]);
-
-  /**
    * Calculates how many pixels correspond to one internal unit of height change
    * Also returns worldUnitsPerInternalUnit for ground constraint calculations
    */
@@ -66,8 +55,9 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
     worldUnitsPerInternalUnit: number;
   } => {
     const rect = gl.domElement.getBoundingClientRect();
-    const effectiveScaleY = getEffectiveScaleY();
-    const worldUnitsPerInternalUnit = (1 / INTERNAL_TO_WORLD) * effectiveScaleY;
+    // Translation should be in world space: 1 internal unit = 1/INTERNAL_TO_WORLD world units.
+    // Parent/child scale should NOT change the perceived translation distance.
+    const worldUnitsPerInternalUnit = 1 / INTERNAL_TO_WORLD;
 
     // Project two points separated by one internal unit of world height
     const pos1 = worldPosition.clone().project(camera);
@@ -83,7 +73,7 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
       pixelsPerInternalUnit: Math.abs(screenY1 - screenY2) || 1,
       worldUnitsPerInternalUnit,
     };
-  }, [camera, gl, worldPosition, getEffectiveScaleY]);
+  }, [camera, gl, worldPosition]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
