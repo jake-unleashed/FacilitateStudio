@@ -60,20 +60,36 @@ function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 /**
- * Simple deep comparison for save-relevant data.
- * Returns true if the data has changed since the last saved state.
+ * Pre-serialized snapshot for efficient comparisons.
+ *
+ * We store the JSON strings so we don't repeatedly `JSON.stringify` the saved baseline
+ * when checking for dirty state.
  */
-function hasDataChanged(
-  current: SaveDataSnapshot,
-  saved: SaveDataSnapshot | null
-): boolean {
+interface SerializedSnapshot {
+  name: string;
+  objectsLen: number;
+  stepsLen: number;
+  objectsJson: string;
+  stepsJson: string;
+}
+
+function serializeSnapshot(data: SaveDataSnapshot): SerializedSnapshot {
+  return {
+    name: data.name,
+    objectsLen: data.objects.length,
+    stepsLen: data.steps.length,
+    objectsJson: JSON.stringify(data.objects),
+    stepsJson: JSON.stringify(data.steps),
+  };
+}
+
+function hasSerializedChanged(current: SerializedSnapshot, saved: SerializedSnapshot | null): boolean {
   if (!saved) return false; // No baseline yet
   if (current.name !== saved.name) return true;
-  if (current.objects.length !== saved.objects.length) return true;
-  if (current.steps.length !== saved.steps.length) return true;
-  // Deep compare objects and steps using JSON (simple but effective for our data)
-  if (JSON.stringify(current.objects) !== JSON.stringify(saved.objects)) return true;
-  if (JSON.stringify(current.steps) !== JSON.stringify(saved.steps)) return true;
+  if (current.objectsLen !== saved.objectsLen) return true;
+  if (current.stepsLen !== saved.stepsLen) return true;
+  if (current.objectsJson !== saved.objectsJson) return true;
+  if (current.stepsJson !== saved.stepsJson) return true;
   return false;
 }
 
@@ -95,6 +111,7 @@ export function useProjectAutoSave({
 
   // Track the last saved state to detect actual changes
   const lastSavedDataRef = useRef<SaveDataSnapshot | null>(null);
+  const lastSavedSerializedRef = useRef<SerializedSnapshot | null>(null);
 
   // Track if we have a baseline (initial load complete)
   const hasBaselineRef = useRef(false);
@@ -147,6 +164,11 @@ export function useProjectAutoSave({
     };
   }, []);
 
+  const currentSerialized = useMemo(
+    () => serializeSnapshot({ name, objects, steps }),
+    [name, objects, steps]
+  );
+
   const runSave = useCallback(
     async (opts: {
       includeThumbnail: boolean;
@@ -160,7 +182,8 @@ export function useProjectAutoSave({
         if (!base) return;
 
         const data = computeCurrentData(opts.dataOverride);
-        if (hasBaselineRef.current && !hasDataChanged(data, lastSavedDataRef.current)) {
+        const serialized = serializeSnapshot(data);
+        if (hasBaselineRef.current && !hasSerializedChanged(serialized, lastSavedSerializedRef.current)) {
           if (isMountedRef.current) {
             setStatus('saved');
             setLastError(null);
@@ -196,6 +219,7 @@ export function useProjectAutoSave({
         try {
           await saveProjectRef.current(updated);
           lastSavedDataRef.current = data;
+          lastSavedSerializedRef.current = serialized;
         } catch (err) {
           const e = toError(err);
           if (isMountedRef.current) {
@@ -271,12 +295,14 @@ export function useProjectAutoSave({
       objects: latestRef.current.objects,
       steps: latestRef.current.steps,
     };
-    if (!hasDataChanged(currentData, lastSavedDataRef.current)) return;
+    const serialized = serializeSnapshot(currentData);
+    if (!hasSerializedChanged(serialized, lastSavedSerializedRef.current)) return;
     try {
       const updated = buildProject(base, currentData, base.thumbnail);
       // Best-effort only; cannot await in unload handlers.
       void saveProjectRef.current(updated).catch(() => {});
       lastSavedDataRef.current = currentData;
+      lastSavedSerializedRef.current = serialized;
     } catch {
       // Best-effort only
     }
@@ -285,11 +311,13 @@ export function useProjectAutoSave({
   const setBaseline = useCallback(() => {
     cancelScheduledSave();
     hasBaselineRef.current = true;
-    lastSavedDataRef.current = {
+    const data: SaveDataSnapshot = {
       name: latestRef.current.name,
       objects: latestRef.current.objects,
       steps: latestRef.current.steps,
     };
+    lastSavedDataRef.current = data;
+    lastSavedSerializedRef.current = serializeSnapshot(data);
     setStatus('saved');
     setLastError(null);
   }, [cancelScheduledSave]);
@@ -300,10 +328,8 @@ export function useProjectAutoSave({
     if (!hasBaselineRef.current) return;
     if (!latestRef.current.project) return;
 
-    const currentData = { name, objects, steps };
-
     // Check if data actually changed from last saved state
-    if (!hasDataChanged(currentData, lastSavedDataRef.current)) {
+    if (!hasSerializedChanged(currentSerialized, lastSavedSerializedRef.current)) {
       return; // No actual change, don't mark dirty
     }
 
@@ -322,7 +348,7 @@ export function useProjectAutoSave({
     return () => {
       // Don't cancel on cleanup - we want the save to complete
     };
-  }, [name, objects, steps, debounceMs, cancelScheduledSave, runSave]);
+  }, [currentSerialized, debounceMs, cancelScheduledSave, runSave]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -336,9 +362,8 @@ export function useProjectAutoSave({
 
   const isDirty = useMemo(() => {
     if (!hasBaselineRef.current) return false;
-    const currentData = { name, objects, steps };
-    return hasDataChanged(currentData, lastSavedDataRef.current);
-  }, [name, objects, steps]);
+    return hasSerializedChanged(currentSerialized, lastSavedSerializedRef.current);
+  }, [currentSerialized]);
 
   return useMemo(
     () => ({

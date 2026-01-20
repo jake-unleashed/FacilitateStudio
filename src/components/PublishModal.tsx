@@ -11,6 +11,24 @@ export interface PublishModalProps {
   onClose: () => void;
 }
 
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  // Keep this list conservative and predictable for our modal UI.
+  const nodes = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+  );
+
+  return nodes.filter((el) => {
+    if (el.hasAttribute('disabled')) return false;
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    // If something is intentionally non-focusable, respect it.
+    const tabIndex = el.getAttribute('tabindex');
+    if (tabIndex === '-1') return false;
+    return true;
+  });
+}
+
 /**
  * Modal component for publishing a simulation.
  * Displays a shareable link with copy and open functionality.
@@ -18,6 +36,8 @@ export interface PublishModalProps {
 export function PublishModal({ project, isOpen, onClose }: PublishModalProps): JSX.Element | null {
   const { showPopup } = usePopup();
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   const publish = useMemo(() => {
     try {
@@ -32,24 +52,66 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
     }
   }, [project.id]);
 
-  // Focus + select URL when opening
+  // Focus trap + restore focus on close/unmount.
   useEffect(() => {
     if (!isOpen) return;
-    const t = setTimeout(() => {
+
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusTimer = setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
     }, 0);
-    return () => clearTimeout(t);
-  }, [isOpen]);
 
-  // Escape closes
-  useEffect(() => {
-    if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusables = getFocusableElements(dialog);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const active = document.activeElement;
+      const currentIndex = active ? focusables.indexOf(active as HTMLElement) : -1;
+
+      // If focus is outside the dialog, pull it back in.
+      if (currentIndex === -1) {
+        e.preventDefault();
+        (e.shiftKey ? focusables[focusables.length - 1] : focusables[0]).focus();
+        return;
+      }
+
+      const nextIndex = e.shiftKey
+        ? (currentIndex - 1 + focusables.length) % focusables.length
+        : (currentIndex + 1) % focusables.length;
+
+      e.preventDefault();
+      focusables[nextIndex].focus();
     };
+
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+
+    return () => {
+      clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKeyDown);
+      // Restore focus to what opened the modal.
+      const toRestore = previouslyFocusedRef.current;
+      previouslyFocusedRef.current = null;
+      setTimeout(() => {
+        toRestore?.focus?.();
+      }, 0);
+    };
   }, [isOpen, onClose]);
 
   const handleCopy = useCallback(async () => {
@@ -86,6 +148,8 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
       role="dialog"
       aria-modal="true"
       aria-label="Publish simulation"
+      aria-labelledby="publish-modal-title"
+      aria-describedby="publish-modal-description"
     >
       {/* Backdrop */}
       <button
@@ -93,16 +157,28 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
         className="absolute inset-0 cursor-default bg-black/30 backdrop-blur-sm"
         aria-label="Close publish modal"
         onClick={onClose}
+        tabIndex={-1}
       />
 
       {/* Dialog */}
-      <div className="relative mx-4 w-full max-w-lg rounded-[32px] border border-white/40 bg-white/80 p-6 shadow-glass backdrop-blur-xl">
+      <div
+        ref={dialogRef}
+        className="relative mx-4 w-full max-w-lg rounded-[32px] border border-white/40 bg-white/80 p-6 shadow-glass backdrop-blur-xl"
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold tracking-tight text-slate-800">
+            <h3
+              id="publish-modal-title"
+              className="truncate text-sm font-bold tracking-tight text-slate-800"
+            >
               Publish “{project.name}”
             </h3>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">{publish.warning}</p>
+            <p
+              id="publish-modal-description"
+              className="mt-1 text-xs leading-relaxed text-slate-500"
+            >
+              {publish.warning}
+            </p>
           </div>
 
           <Button

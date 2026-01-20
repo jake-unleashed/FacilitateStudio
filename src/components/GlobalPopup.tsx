@@ -12,7 +12,7 @@
  * - Accessible with proper ARIA attributes
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { AlertCircle, AlertTriangle, Info, CheckCircle } from 'lucide-react';
 import { usePopup, PopupType } from '../contexts/PopupContext';
 
@@ -73,16 +73,40 @@ const POPUP_TYPE_CONFIG: Record<
 // Component
 // =============================================================================
 
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  const nodes = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+  );
+  return nodes.filter((el) => {
+    if (el.hasAttribute('disabled')) return false;
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    const tabIndex = el.getAttribute('tabindex');
+    if (tabIndex === '-1') return false;
+    return true;
+  });
+}
+
 export const GlobalPopup: React.FC = () => {
   const { popup, dismissPopup } = usePopup();
 
   // Track exit animation state
   const [isExiting, setIsExiting] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const okButtonRef = useRef<HTMLButtonElement>(null);
+  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   // Handle dismiss with animation
   const handleDismiss = useCallback(() => {
     setIsExiting(true);
-    setTimeout(() => {
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current);
+      dismissTimeoutRef.current = null;
+    }
+    dismissTimeoutRef.current = setTimeout(() => {
+      dismissTimeoutRef.current = null;
       setIsExiting(false);
       dismissPopup();
     }, ANIMATION_DURATION);
@@ -94,6 +118,70 @@ export const GlobalPopup: React.FC = () => {
       setIsExiting(false);
     }
   }, [popup]);
+
+  // Focus management + focus trap + Escape.
+  useEffect(() => {
+    if (!popup) return;
+
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusTimer = setTimeout(() => {
+      okButtonRef.current?.focus();
+    }, 0);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleDismiss();
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusables = getFocusableElements(dialog);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const active = document.activeElement;
+      const currentIndex = active ? focusables.indexOf(active as HTMLElement) : -1;
+
+      if (currentIndex === -1) {
+        e.preventDefault();
+        (e.shiftKey ? focusables[focusables.length - 1] : focusables[0]).focus();
+        return;
+      }
+
+      const nextIndex = e.shiftKey
+        ? (currentIndex - 1 + focusables.length) % focusables.length
+        : (currentIndex + 1) % focusables.length;
+
+      e.preventDefault();
+      focusables[nextIndex].focus();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKeyDown);
+
+      // Ensure we don't set state after unmount.
+      if (dismissTimeoutRef.current) {
+        clearTimeout(dismissTimeoutRef.current);
+        dismissTimeoutRef.current = null;
+      }
+
+      const toRestore = previouslyFocusedRef.current;
+      previouslyFocusedRef.current = null;
+      setTimeout(() => {
+        toRestore?.focus?.();
+      }, 0);
+    };
+  }, [popup, handleDismiss]);
 
   // Don't render if no popup
   if (!popup) {
@@ -123,6 +211,7 @@ export const GlobalPopup: React.FC = () => {
 
       {/* Popup Card */}
       <div
+        ref={dialogRef}
         className={`
           relative mx-4 w-full max-w-lg rounded-2xl border bg-white p-6 shadow-xl
           transition-all duration-200 ease-out
@@ -154,6 +243,7 @@ export const GlobalPopup: React.FC = () => {
         {/* OK Button */}
         <div className="mt-6 flex justify-center">
           <button
+            ref={okButtonRef}
             onClick={handleDismiss}
             className="rounded-lg bg-slate-800 px-8 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
           >

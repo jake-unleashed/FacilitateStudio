@@ -192,6 +192,7 @@ export const StepCard = forwardRef<StepCardHandle, StepCardProps>(({
 
   // Delete confirmation state (click twice to confirm)
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs for DOM inputs - allows reading actual typed value on blur (bypasses React state timing)
   const stepNameTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -626,6 +627,10 @@ export const StepCard = forwardRef<StepCardHandle, StepCardProps>(({
   // Handle delete button click (click twice to confirm)
   const handleDeleteClick = useCallback(() => {
     if (confirmingDelete) {
+      if (deleteConfirmTimeoutRef.current) {
+        clearTimeout(deleteConfirmTimeoutRef.current);
+        deleteConfirmTimeoutRef.current = null;
+      }
       // Second click - actually delete
       if (onDelete) {
         onDelete();
@@ -635,11 +640,25 @@ export const StepCard = forwardRef<StepCardHandle, StepCardProps>(({
       // First click - show confirmation
       setConfirmingDelete(true);
       // Reset confirmation state after 3 seconds if user doesn't confirm
-      setTimeout(() => {
+      if (deleteConfirmTimeoutRef.current) {
+        clearTimeout(deleteConfirmTimeoutRef.current);
+      }
+      deleteConfirmTimeoutRef.current = setTimeout(() => {
+        deleteConfirmTimeoutRef.current = null;
         setConfirmingDelete(false);
       }, 3000);
     }
   }, [confirmingDelete, onDelete]);
+
+  // Cleanup any pending delete-confirm timeout on unmount.
+  useEffect(() => {
+    return () => {
+      if (deleteConfirmTimeoutRef.current) {
+        clearTimeout(deleteConfirmTimeoutRef.current);
+        deleteConfirmTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Update end position when recording (called from parent via step updates)
   useEffect(() => {

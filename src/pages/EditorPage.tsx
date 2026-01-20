@@ -27,14 +27,16 @@ import {
   parseSelectionId,
   stringToPath,
 } from '../types';
-import { Project } from '../types/project';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
-import { PopupProvider, usePopup, createErrorPopup } from '../contexts/PopupContext';
+import { PopupProvider, usePopup } from '../contexts/PopupContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
+import { useEditorProjectLifecycle } from '../hooks/editor/useEditorProjectLifecycle';
+import { useEditorNavigationGuards } from '../hooks/editor/useEditorNavigationGuards';
+import { useRecordingEndTransform } from '../hooks/editor/useRecordingEndTransform';
 import {
   calculateChildWorldPosition,
   applyChildLocalTransform,
@@ -82,10 +84,6 @@ function EditorPageContent() {
   const navigate = useNavigate();
   const { getProject, saveProject, createProject, isLoading: isLoadingProjects } = useProjects();
 
-  // Project state
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-
   // Editor state
   const [activeTab, setActiveTab] = useState<SidebarSection | null>(null);
   const [objects, setObjects] = useState<SceneObject[]>(INITIAL_OBJECTS);
@@ -93,8 +91,14 @@ function EditorPageContent() {
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
   // Recording state for move-item step end position
-  const [recordingPositionForStepId, setRecordingPositionForStepId] = useState<string | null>(null);
-  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  // recordingPositionForStepId is owned by useRecordingEndTransform (below)
+
+  const handleSelectObject = useCallback((id: string | null) => {
+    setSelectedObjectId(id);
+    // Note: We no longer auto-switch panels when selecting an object.
+    // Users can manually switch to the Objects tab if they want to see the hierarchy.
+    // This allows users to stay on the Add panel when adding multiple objects.
+  }, []);
 
   // Undo/Redo system - initialize with empty state, will be set when project loads
   const initialEditorState = useMemo(
@@ -121,13 +125,29 @@ function EditorPageContent() {
     redoStackSize,
   } = useUndoRedo(initialEditorState, { maxHistory: 50, enableKeyboardShortcuts: true });
 
-  // Ref to track latest endPosition during drag (updated synchronously to avoid race conditions)
-  const latestRecordingEndPositionRef = useRef<{
-    stepId: string;
-    endPosition: { x: number; y: number; z: number } | null;
-    endRotation?: { x: number; y: number; z: number };
-    endScale?: { x: number; y: number; z: number };
-  } | null>(null);
+  const { currentProject, isInitialized } = useEditorProjectLifecycle({
+    projectId,
+    isLoadingProjects,
+    getProject,
+    createProject,
+    navigate,
+    setUndoRedoState,
+  });
+
+  const {
+    recordingPositionForStepId,
+    latestRecordingEndPositionRef,
+    handleStartRecordingPosition,
+    handleStopRecordingPosition,
+  } = useRecordingEndTransform({
+    steps,
+    undoRedoSteps: undoRedoState.steps,
+    objects,
+    beginBatch,
+    endBatch,
+    executeCommand,
+    onSelectObject: handleSelectObject,
+  });
 
   // Store stack sizes in refs for real-time access (needed for testing)
   const undoStackSizeRef = useRef(undoStackSize);
@@ -261,63 +281,7 @@ function EditorPageContent() {
 
   const hasHydratedRef = useRef(false);
 
-  const [exitOverlay, setExitOverlay] = useState<null | {
-    mode: 'saving' | 'error';
-    errorMessage?: string;
-  }>(null);
-
-  const pendingExitActionRef = useRef<(() => void) | null>(null);
   const leftSidebarRef = useRef<LeftSidebarHandle | null>(null);
-  const stopRecordingRef = useRef<(() => void) | null>(null);
-
-  // ============================================================================
-  // Project Loading & Initialization
-  // ============================================================================
-
-  useEffect(() => {
-    // Wait for projects to load from localStorage before initializing
-    if (isLoadingProjects || isInitialized) return;
-
-    if (projectId) {
-      // Load existing project
-      const project = getProject(projectId);
-      if (project) {
-        setCurrentProject(project);
-        // Initialize undo/redo state first, then it will sync to local state
-        setUndoRedoState({
-          objects: project.objects,
-          steps: project.steps,
-          simulationTitle: project.name,
-        });
-        setIsInitialized(true);
-      } else {
-        // Project not found, redirect to home
-        navigate('/');
-        return;
-      }
-    } else {
-      // Create a new project
-      const newProject = createProject('New Simulation');
-      setCurrentProject(newProject);
-      // Initialize undo/redo state first, then it will sync to local state
-      setUndoRedoState({
-        objects: [],
-        steps: [],
-        simulationTitle: newProject.name,
-      });
-      // Update URL to include the new project ID
-      navigate(`/editor/${newProject.id}`, { replace: true });
-      setIsInitialized(true);
-    }
-  }, [
-    projectId,
-    getProject,
-    createProject,
-    navigate,
-    isInitialized,
-    isLoadingProjects,
-    setUndoRedoState,
-  ]);
 
   // ============================================================================
   // Auto-save Logic
@@ -339,6 +303,33 @@ function EditorPageContent() {
     saveProject,
     captureThumbnail: handleCaptureThumbnail,
     debounceMs: 1000,
+  });
+
+  const flushPendingStepEdits = useCallback(() => {
+    leftSidebarRef.current?.flushPendingEdits();
+  }, []);
+
+  const {
+    exitOverlay,
+    isPublishModalOpen,
+    setIsPublishModalOpen,
+    requestNavigation,
+    handleRequestHome,
+    handleExitStay,
+    handleExitLeaveAnyway,
+    handleManualSave,
+    handlePublishClick,
+  } = useEditorNavigationGuards({
+    navigate,
+    currentProject,
+    isDirty,
+    flushPendingStepEdits,
+    recordingPositionForStepId,
+    stopRecording: handleStopRecordingPosition,
+    getCurrentState,
+    flushSave,
+    flushSaveNow,
+    showPopup,
   });
 
   const currentProjectId = currentProject?.id ?? null;
@@ -375,177 +366,6 @@ function EditorPageContent() {
     hasHydratedRef.current = false;
   }, [currentProjectId]);
 
-  // Best-effort flush on unload / backgrounding.
-  useEffect(() => {
-    const handlePageHide = () => {
-      if (!isDirty) return;
-      flushSaveNow();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'hidden') return;
-      if (!isDirty) return;
-      flushSaveNow();
-    };
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!isDirty) return;
-      flushSaveNow();
-      e.preventDefault();
-      // Required for some browsers to show a confirmation dialog.
-      e.returnValue = '';
-    };
-
-    window.addEventListener('pagehide', handlePageHide);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [isDirty, flushSaveNow]);
-
-  const requestNavigation = useCallback(
-    async (destination: { type: 'home' } | { type: 'preview'; projectId: string }) => {
-      // Flush any in-flight step edits (debounced/unblurred) BEFORE saving.
-      leftSidebarRef.current?.flushPendingEdits();
-
-      // If recording, stop it so the final endPosition command is committed before saving.
-      if (recordingPositionForStepId) {
-        stopRecordingRef.current?.();
-      }
-
-      const snapshot = getCurrentState();
-      const dataOverride = {
-        name: snapshot.simulationTitle,
-        objects: snapshot.objects,
-        steps: snapshot.steps,
-      };
-
-      const doNavigate = () => {
-        if (destination.type === 'home') {
-          navigate('/');
-        } else {
-          navigate(`/preview/${destination.projectId}`);
-        }
-      };
-
-      // Clear any prior pending action; set the new one only on error.
-      pendingExitActionRef.current = null;
-
-      // Avoid overlay flicker on fast saves: show after brief delay if still saving.
-      let didForceNavigate = false;
-      let didFinish = false;
-      const showOverlayDelay = setTimeout(() => {
-        if (didFinish) return;
-        setExitOverlay({ mode: 'saving' });
-      }, 150);
-
-      // Safety timeout: if save takes longer than 2s total, force-navigate anyway.
-      const safetyTimeout = setTimeout(() => {
-        if (didFinish) return;
-        didForceNavigate = true;
-        console.warn('[EditorPage] Save took too long; force-navigating.');
-        didFinish = true;
-        clearTimeout(showOverlayDelay);
-        setExitOverlay(null);
-        doNavigate();
-      }, 2000);
-
-      try {
-        await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600, dataOverride });
-        if (didForceNavigate) return;
-        didFinish = true;
-        clearTimeout(safetyTimeout);
-        clearTimeout(showOverlayDelay);
-        setExitOverlay(null);
-        doNavigate();
-      } catch (err) {
-        if (didForceNavigate) return;
-        didFinish = true;
-        clearTimeout(safetyTimeout);
-        clearTimeout(showOverlayDelay);
-        console.error('[EditorPage] Failed to save before navigating:', err);
-        const message = err instanceof Error ? err.message : 'Failed to save changes';
-        pendingExitActionRef.current = doNavigate;
-        setExitOverlay({ mode: 'error', errorMessage: message });
-      }
-    },
-    [flushSave, getCurrentState, navigate, recordingPositionForStepId]
-  );
-
-  const handleRequestHome = useCallback(async () => {
-    await requestNavigation({ type: 'home' });
-  }, [requestNavigation]);
-
-  const handleExitStay = useCallback(() => {
-    setExitOverlay(null);
-  }, []);
-
-  const handleExitLeaveAnyway = useCallback(() => {
-    setExitOverlay(null);
-    const action = pendingExitActionRef.current;
-    pendingExitActionRef.current = null;
-    if (action) {
-      action();
-      return;
-    }
-    navigate('/');
-  }, [navigate]);
-
-  const handleManualSave = useCallback(async () => {
-    try {
-      const snapshot = getCurrentState();
-      await flushSave({
-        includeThumbnail: true,
-        thumbnailTimeoutMs: 600,
-        dataOverride: {
-          name: snapshot.simulationTitle,
-          objects: snapshot.objects,
-          steps: snapshot.steps,
-        },
-      });
-    } catch (err) {
-      console.error('[EditorPage] Manual save failed:', err);
-      const message = err instanceof Error ? err.message : 'Failed to save changes';
-      showPopup(createErrorPopup('Save failed', message));
-    }
-  }, [flushSave, getCurrentState, showPopup]);
-
-  const handlePublishClick = useCallback(async () => {
-    if (!currentProject) return;
-    try {
-      // Flush any in-flight step edits before saving for publish.
-      leftSidebarRef.current?.flushPendingEdits();
-      if (recordingPositionForStepId) {
-        stopRecordingRef.current?.();
-      }
-      const snapshot = getCurrentState();
-      await flushSave({
-        includeThumbnail: true,
-        thumbnailTimeoutMs: 600,
-        dataOverride: {
-          name: snapshot.simulationTitle,
-          objects: snapshot.objects,
-          steps: snapshot.steps,
-        },
-      });
-      setIsPublishModalOpen(true);
-    } catch (err) {
-      console.error('[EditorPage] Failed to save before publishing:', err);
-      const message = err instanceof Error ? err.message : 'Failed to save changes';
-      showPopup(createErrorPopup('Publish failed', message));
-    }
-  }, [
-    currentProject,
-    flushSave,
-    getCurrentState,
-    recordingPositionForStepId,
-    showPopup,
-  ]);
-
   // ============================================================================
   // Memoized Callbacks - Stable references for child components
   // ============================================================================
@@ -561,13 +381,6 @@ function EditorPageContent() {
 
   const handleCanvasReady = useCallback((canvas: HTMLCanvasElement) => {
     canvasRef.current = canvas;
-  }, []);
-
-  const handleSelectObject = useCallback((id: string | null) => {
-    setSelectedObjectId(id);
-    // Note: We no longer auto-switch panels when selecting an object.
-    // Users can manually switch to the Objects tab if they want to see the hierarchy.
-    // This allows users to stay on the Add panel when adding multiple objects.
   }, []);
 
   /**
@@ -924,6 +737,7 @@ function EditorPageContent() {
       steps,
       undoRedoState.steps,
       setUndoRedoState,
+      latestRecordingEndPositionRef,
     ]
   );
 
@@ -1380,250 +1194,6 @@ function EditorPageContent() {
     },
     [executeCommand]
   );
-
-  // Recording handlers for move-item step end position
-  const handleStartRecordingPosition = useCallback(
-    (stepId: string) => {
-      setRecordingPositionForStepId(stepId);
-
-      // Clear the ref when starting a new recording session
-      latestRecordingEndPositionRef.current = null;
-
-      // Auto-select the target object so the transform gizmo appears immediately
-      // Read from undoRedoState.steps to get the most up-to-date step
-      const recordingStep =
-        undoRedoState.steps.find((s) => s.id === stepId) || steps.find((s) => s.id === stepId);
-      if (recordingStep?.targetObjectId) {
-        // Clear endPosition when starting a new recording session so ghost starts at startPosition
-        // Store the initial step state AFTER clearing (this is what we'll compare against when stopping)
-        let initialStepForCommand = { ...recordingStep };
-
-        // Start batch FIRST so the initial state is captured before we clear endPosition
-        // This ensures the batch system has the correct initial state
-        beginBatch();
-
-        const hasExistingEndTransform =
-          !!recordingStep.endPosition || !!recordingStep.endRotation || !!recordingStep.endScale;
-        if (hasExistingEndTransform) {
-          // Clear end transform fields and store the cleared version as initial state
-          initialStepForCommand = {
-            ...recordingStep,
-            endPosition: undefined,
-            endRotation: undefined,
-            endScale: undefined,
-          };
-
-          // Clear via a command so it's part of the batch
-          const clearedStep: SimStep = {
-            ...recordingStep,
-            endPosition: undefined,
-            endRotation: undefined,
-            endScale: undefined,
-          };
-
-          const clearCommand = createUpdateStepCommandHelper(
-            clearedStep.id,
-            recordingStep, // previousState: with end transform
-            clearedStep, // newState: cleared
-            `Clear end transform for recording: ${clearedStep.title || 'Untitled'}`
-          );
-          executeCommand(clearCommand);
-        }
-
-        // Store the initial step state for undo command creation (after clearing endPosition)
-        // This is what we'll use as previousState when creating the final command
-        recordingInitialStepRef.current = initialStepForCommand;
-
-        // If target is a child, create compound selection ID
-        if (recordingStep.targetChildPath) {
-          handleSelectObject(`${recordingStep.targetObjectId}/${recordingStep.targetChildPath}`);
-        } else {
-          handleSelectObject(recordingStep.targetObjectId);
-        }
-      }
-    },
-    [beginBatch, steps, handleSelectObject, undoRedoState.steps, executeCommand]
-    // Note: createUpdateStepCommandHelper is a stable outer scope function, not a dependency
-  );
-
-  // Track the initial step state when recording starts (for creating undo command)
-  const recordingInitialStepRef = useRef<SimStep | null>(null);
-
-  const handleStopRecordingPosition = useCallback(() => {
-    // Create a command for the step's endPosition change so it's part of the batch
-    if (recordingPositionForStepId && recordingInitialStepRef.current) {
-      // Get the latest endPosition from the ref (updated synchronously during drag)
-      // This is the most reliable source since it's updated immediately during drag
-      const latestEndPos =
-        latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
-          ? latestRecordingEndPositionRef.current.endPosition
-          : null;
-      const latestEndRot =
-        latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
-          ? latestRecordingEndPositionRef.current.endRotation
-          : undefined;
-      const latestEndScale =
-        latestRecordingEndPositionRef.current?.stepId === recordingPositionForStepId
-          ? latestRecordingEndPositionRef.current.endScale
-          : undefined;
-
-      // Read from undoRedoState.steps directly (most up-to-date) instead of local steps state
-      // The local steps state is synced via useEffect which is async, so it might be stale
-      const currentStep = undoRedoState.steps.find((s) => s.id === recordingPositionForStepId);
-
-      if (currentStep && recordingInitialStepRef.current) {
-        // CRITICAL: Always prioritize ref value (latestEndPos) - it's updated synchronously during drag
-        // The ref is the source of truth. If it exists, the user definitely dragged the object.
-        // currentStep.endPosition might be stale due to async state updates.
-        // IMPORTANT: If latestEndPos exists, we MUST use it - the user dragged the object
-        const endPosToSave = latestEndPos || currentStep.endPosition;
-        const endRotToSave = latestEndRot ?? currentStep.endRotation;
-        const endScaleToSave = latestEndScale ?? currentStep.endScale;
-
-        // Note: We intentionally avoid per-interaction debug logging here in production.
-
-        // CRITICAL: If latestEndPos exists, we MUST save it - the user dragged the object
-        // Always create command if we have an endPosition to save
-        // The ref value (latestEndPos) is the source of truth - if it exists, user dragged the object
-        // We MUST create the command to persist the endPosition in the undo/redo system
-        // The command will update from the initial state (no endPosition) to the final state (with endPosition)
-        if (endPosToSave || endRotToSave || endScaleToSave) {
-          // CRITICAL: Always use endPosToSave (prioritizing latestEndPos from ref)
-          // Create updated step with the endPosition - create a completely new object to avoid reference issues
-          // IMPORTANT: Spread ALL properties from currentStep to ensure we don't lose any step data
-          const updatedStep: SimStep = {
-            ...currentStep,
-            endPosition: endPosToSave
-              ? {
-                  x: endPosToSave.x,
-                  y: endPosToSave.y,
-                  z: endPosToSave.z,
-                }
-              : currentStep.startPosition
-                ? { ...currentStep.startPosition }
-                : currentStep.endPosition,
-            endRotation: endRotToSave ? { ...endRotToSave } : currentStep.endRotation,
-            endScale: endScaleToSave ? { ...endScaleToSave } : currentStep.endScale,
-          };
-
-          // If endPosition is missing, something is inconsistent; bail out safely.
-          if (!updatedStep.endPosition) return;
-
-          // CRITICAL: The command's previousState must be the state from when recording STARTED
-          // (after clearing endPosition). The newState is the state with the endPosition.
-          // When the command executes during batching, it will update the step in the state.
-          // Even though we've already updated the state via setUndoRedoState, the command ensures
-          // the change is persisted in the undo/redo system and won't be lost.
-
-          // CRITICAL: Ensure updatedStep has ALL properties from currentStep, not just endPosition
-          // This prevents losing other step properties when the command executes
-          const stepCommand = createUpdateStepCommandHelper(
-            updatedStep.id,
-            recordingInitialStepRef.current, // previousState: no endPosition (after clearing at start)
-            updatedStep, // newState: with endPosition (from drag) - MUST have endPosition set
-            `Set end transform: ${updatedStep.title || 'Untitled'}`
-          );
-
-          // Execute the command - this will update the state during batching
-          // The batch system will then commit it when endBatch() is called
-          executeCommand(stepCommand);
-        } else {
-          // No endPosition recorded; nothing to persist.
-        }
-      } else {
-        // Missing currentStep or initial ref; nothing to persist.
-      }
-      recordingInitialStepRef.current = null;
-    }
-
-    // Clear the ref when recording stops
-    latestRecordingEndPositionRef.current = null;
-
-    // Restore the actual object to its start position if it was moved during recording
-    // Read from undoRedoState.steps to get the most up-to-date step (after command execution)
-    // NOTE: The state might be stale here due to async updates, but the command should have
-    // updated currentStateRef.current which will be used when the batch commits
-    if (recordingPositionForStepId) {
-      const recordingStep =
-        undoRedoState.steps.find((s) => s.id === recordingPositionForStepId) ||
-        steps.find((s) => s.id === recordingPositionForStepId);
-      if (recordingStep?.targetObjectId && recordingStep.startPosition) {
-        const targetObject = objects.find((obj) => obj.id === recordingStep.targetObjectId);
-        if (targetObject) {
-          if (recordingStep.targetChildPath) {
-            // Target is a child mesh - restore child's world position
-            const currentChildWorldPos = calculateChildWorldPosition(
-              targetObject,
-              recordingStep.targetChildPath
-            );
-            const isAtStartPosition =
-              currentChildWorldPos &&
-              currentChildWorldPos.x === recordingStep.startPosition.x &&
-              currentChildWorldPos.y === recordingStep.startPosition.y &&
-              currentChildWorldPos.z === recordingStep.startPosition.z;
-
-            if (!isAtStartPosition) {
-              const restoredObject = applyChildWorldPosition(
-                targetObject,
-                recordingStep.targetChildPath,
-                recordingStep.startPosition
-              );
-              if (restoredObject) {
-                const previousObject = objects.find((obj) => obj.id === restoredObject.id);
-                if (previousObject) {
-                  const command = createUpdateObjectCommandHelper(
-                    restoredObject.id,
-                    previousObject,
-                    restoredObject,
-                    `Restore ${targetObject.name} / ${findChildByPathString(targetObject, recordingStep.targetChildPath)?.name || 'child'} to start position`
-                  );
-                  executeCommand(command);
-                }
-              }
-            }
-          } else {
-            // Target is parent object - restore parent transform
-            const isAtStartPosition =
-              targetObject.transform.x === recordingStep.startPosition.x &&
-              targetObject.transform.y === recordingStep.startPosition.y &&
-              targetObject.transform.z === recordingStep.startPosition.z;
-
-            if (!isAtStartPosition) {
-              const restoredObject: SceneObject = {
-                ...targetObject,
-                transform: {
-                  ...targetObject.transform,
-                  x: recordingStep.startPosition.x,
-                  y: recordingStep.startPosition.y,
-                  z: recordingStep.startPosition.z,
-                },
-              };
-              const previousObject = objects.find((obj) => obj.id === restoredObject.id);
-              if (previousObject) {
-                const command = createUpdateObjectCommandHelper(
-                  restoredObject.id,
-                  previousObject,
-                  restoredObject,
-                  `Restore ${restoredObject.name} to start position`
-                );
-                executeCommand(command);
-              }
-            }
-          }
-        }
-      }
-    }
-    // CRITICAL: Clear recording state BEFORE ending batch to ensure batch commits correctly
-    setRecordingPositionForStepId(null);
-    // End batch AFTER clearing state - this ensures the batch command has the correct final state
-    endBatch();
-  }, [endBatch, recordingPositionForStepId, undoRedoState.steps, steps, objects, executeCommand]);
-
-  // Expose stop-recording as a ref so navigation handlers can call it safely
-  // without depending on its declaration order.
-  useEffect(() => {
-    stopRecordingRef.current = handleStopRecordingPosition;
-  }, [handleStopRecordingPosition]);
 
   // ============================================================================
   // Memoized Derived State

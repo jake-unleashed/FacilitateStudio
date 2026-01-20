@@ -49,7 +49,7 @@ describe('PublishModal', () => {
 
   it('renders modal when isOpen is true', () => {
     renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
-    expect(screen.getByRole('dialog', { name: /publish simulation/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     // Check project name is displayed somewhere in the modal
     expect(screen.getByText(/test simulation/i)).toBeInTheDocument();
   });

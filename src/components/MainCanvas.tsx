@@ -1252,7 +1252,9 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             stencil: false, // Disable stencil buffer if not needed
             depth: true,
             alpha: true, // Enable transparency for background gradient compositing
-            preserveDrawingBuffer: true, // Required for thumbnail capture
+            // Only enable when we need to read pixels for thumbnail capture (Editor).
+            // Leaving this on can reduce performance in some browsers/GPUs.
+            preserveDrawingBuffer: !!onCanvasReady,
           }}
         >
           <SceneContent
