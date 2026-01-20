@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Info,
   MoveRight,
@@ -28,6 +28,11 @@ interface StepCardProps {
   isRecordingPosition?: boolean;
   onFocusObject?: (object: SceneObject) => void;
   onDelete?: () => void;
+}
+
+export interface StepCardHandle {
+  /** Flush any in-progress edits (e.g. focused textarea that hasn’t blurred yet). */
+  flushPendingUpdates: () => void;
 }
 
 interface StepTypeConfig {
@@ -144,7 +149,7 @@ function useDebounce<T>(value: T, delay: number): T {
  * - Real-time preview of Info Card appearance
  * - Drag-to-reorder support (when minimized)
  */
-export const StepCard: React.FC<StepCardProps> = ({
+export const StepCard = forwardRef<StepCardHandle, StepCardProps>(({
   step,
   isOpen,
   onUpdate,
@@ -156,7 +161,7 @@ export const StepCard: React.FC<StepCardProps> = ({
   isRecordingPosition = false,
   onFocusObject,
   onDelete,
-}) => {
+}, ref) => {
   // Local state for form fields
   const [stepName, setStepName] = useState(step.title);
   // Keep selectedType as the actual step type (can be null) to prevent premature type assignment
@@ -265,6 +270,71 @@ export const StepCard: React.FC<StepCardProps> = ({
       targetChildPath,
       endPosition,
     ]
+  );
+
+  const flushPendingUpdates = useCallback(() => {
+    // Don’t force-save during recording; recording uses a different persistence path.
+    if (isRecordingPosition) return;
+
+    // Read the DOM values when editing fields are active; fall back to local state.
+    const latestStepName = stepNameTextareaRef.current?.value ?? stepName;
+    const latestHeading = headingTextareaRef.current?.value ?? heading;
+    const latestBodyText = bodyTextTextareaRef.current?.value ?? bodyText;
+    const latestButtonText = buttonTextInputRef.current?.value ?? buttonText;
+
+    // Sync local state to prevent debounce from acknowledging stale values.
+    setStepName(latestStepName);
+    setHeading(latestHeading);
+    setBodyText(latestBodyText);
+    setButtonText(latestButtonText);
+
+    // Only emit an update if there are real diffs vs the current step prop.
+    const hasChanged =
+      latestStepName !== step.title ||
+      selectedType !== step.type ||
+      latestHeading !== (step.heading || '') ||
+      latestBodyText !== (step.bodyText || '') ||
+      latestButtonText !== (step.buttonText || '') ||
+      cardColor !== (step.cardColor || 'blue') ||
+      targetObjectId !== (step.targetObjectId || '') ||
+      targetChildPath !== (step.targetChildPath || '') ||
+      JSON.stringify(endPosition) !== JSON.stringify(step.endPosition);
+
+    if (!hasChanged) return;
+
+    onUpdate(
+      createUpdatedStep({
+        title: latestStepName,
+        heading: latestHeading || undefined,
+        bodyText: latestBodyText || undefined,
+        buttonText: latestButtonText || undefined,
+        targetObjectId: targetObjectId || undefined,
+        targetChildPath: targetChildPath || undefined,
+        endPosition: endPosition || undefined,
+      })
+    );
+  }, [
+    isRecordingPosition,
+    stepName,
+    heading,
+    bodyText,
+    buttonText,
+    selectedType,
+    cardColor,
+    targetObjectId,
+    targetChildPath,
+    endPosition,
+    step,
+    onUpdate,
+    createUpdatedStep,
+  ]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flushPendingUpdates,
+    }),
+    [flushPendingUpdates]
   );
 
   // Debounced values for auto-save
@@ -1112,4 +1182,5 @@ export const StepCard: React.FC<StepCardProps> = ({
       )}
     </div>
   );
-};
+});
+StepCard.displayName = 'StepCard';

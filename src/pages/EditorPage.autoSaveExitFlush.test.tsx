@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { EditorPage } from './EditorPage';
 
 // -------- Mocks --------
 
-const saveProjectMock = vi.fn();
+const saveProjectMock = vi.fn().mockResolvedValue(undefined);
 const captureThumbnailMock = vi.fn();
 
 vi.mock('../hooks/useProjects', () => {
@@ -97,7 +98,20 @@ vi.mock('../components/MainCanvas', () => {
 });
 
 // Keep other heavy components light.
-vi.mock('../components/LeftSidebar', () => ({ LeftSidebar: () => null }));
+vi.mock('../components/LeftSidebar', () => {
+  const LeftSidebar = React.forwardRef((_props: unknown, ref: React.Ref<unknown>) => {
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        flushPendingEdits: () => {},
+      }),
+      []
+    );
+    return null;
+  });
+  LeftSidebar.displayName = 'MockLeftSidebar';
+  return { LeftSidebar };
+});
 vi.mock('../components/RightSidebar', () => ({ RightSidebar: () => null }));
 vi.mock('../components/NavigationHelp', () => ({ NavigationHelp: () => null }));
 vi.mock('../components/CameraResetButton', () => ({ CameraResetButton: () => null }));
@@ -137,7 +151,9 @@ describe('EditorPage exit flush (Home click)', () => {
 
     // Save should have been called, and capture attempted.
     // Thumbnail capture is time-boxed; in this test it resolves quickly.
-    expect(captureThumbnailMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(captureThumbnailMock).toHaveBeenCalledTimes(1);
+    });
 
     // Wait for navigation.
     expect(await screen.findByTestId('home-page')).toBeInTheDocument();

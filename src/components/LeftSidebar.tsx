@@ -1,4 +1,13 @@
-import React, { memo, useCallback, useState, useEffect, useMemo, useRef } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
 import {
   DndContext,
   closestCenter,
@@ -44,7 +53,7 @@ import {
   pathToString,
 } from '../types';
 import { OBJECT_ICONS } from '../constants';
-import { StepCard } from './StepCard';
+import { StepCard, type StepCardHandle } from './StepCard';
 import { AssetUploadButton } from './AssetUploadButton';
 import { RecentAssetsList } from './RecentAssetsList';
 // DeleteStepModal removed - now using click-twice-to-confirm in StepCard
@@ -100,6 +109,11 @@ interface LeftSidebarProps {
   recentAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onRemoveAsset?: (assetId: string) => void;
+}
+
+export interface LeftSidebarHandle {
+  /** Flush any in-progress StepCard edits (e.g. focused textarea). */
+  flushPendingEdits: () => void;
 }
 
 interface NavItemProps {
@@ -500,6 +514,7 @@ interface SortableStepItemProps {
   onUpdate: (step: SimStep) => void;
   onMinimize: () => void;
   onStepClick: (stepId: string) => void;
+  onStepCardHandleChange?: (stepId: string, handle: StepCardHandle | null) => void;
   selectedObjectId: string | null;
   objects: SceneObject[];
   onStartRecording?: () => void;
@@ -517,6 +532,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
     onUpdate,
     onMinimize,
     onStepClick,
+    onStepCardHandleChange,
     selectedObjectId,
     objects,
     onStartRecording,
@@ -559,6 +575,9 @@ const SortableStepItem = memo<SortableStepItemProps>(
           {/* Sortable Step Content */}
           <div ref={setNodeRef} style={style}>
             <StepCard
+              ref={(handle) => {
+                onStepCardHandleChange?.(step.id, handle);
+              }}
               step={step}
               isOpen={true}
               onUpdate={onUpdate}
@@ -704,7 +723,7 @@ InsertStepDivider.displayName = 'InsertStepDivider';
 // Main Component
 // ============================================================================
 
-const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
+const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   activeTab,
   setActiveTab,
   steps,
@@ -725,7 +744,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
   recentAssets = [],
   onAddRecentAsset,
   onRemoveAsset,
-}) => {
+}, ref) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
 
@@ -734,6 +753,33 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
 
   // Ref for scrollable content area (used for auto-scroll to selected item)
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const stepCardRefs = useRef<Map<string, StepCardHandle | null>>(new Map());
+
+  const handleStepCardHandleChange = useCallback(
+    (stepId: string, handle: StepCardHandle | null) => {
+      if (handle) {
+        stepCardRefs.current.set(stepId, handle);
+      } else {
+        stepCardRefs.current.delete(stepId);
+      }
+    },
+    []
+  );
+
+  const flushPendingEdits = useCallback(() => {
+    for (const handle of stepCardRefs.current.values()) {
+      handle?.flushPendingUpdates();
+    }
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flushPendingEdits,
+    }),
+    [flushPendingEdits]
+  );
 
   // Ref to track previous step count for detecting newly added steps
   const prevStepIdsRef = useRef<string[]>(steps.map((s) => s.id));
@@ -1031,6 +1077,7 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
                             onUpdate={onUpdateStep || (() => {})}
                             onMinimize={handleMinimizeStep}
                             onStepClick={handleStepClick}
+                            onStepCardHandleChange={handleStepCardHandleChange}
                             selectedObjectId={selectedObjectId}
                             objects={objects}
                             onStartRecording={
@@ -1112,7 +1159,8 @@ const LeftSidebarInner: React.FC<LeftSidebarProps> = ({
       </div>
     </div>
   );
-};
+});
+LeftSidebarInner.displayName = 'LeftSidebarInner';
 
 // Export memoized component
 export const LeftSidebar = memo(LeftSidebarInner);

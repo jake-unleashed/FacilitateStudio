@@ -9,9 +9,15 @@ export interface UseProjectAutoSaveArgs {
   name: string;
   objects: SceneObject[];
   steps: SimStep[];
-  saveProject: (project: Project) => void;
+  saveProject: (project: Project) => Promise<void>;
   captureThumbnail?: () => Promise<string | undefined>;
   debounceMs?: number;
+}
+
+interface SaveDataSnapshot {
+  name: string;
+  objects: SceneObject[];
+  steps: SimStep[];
 }
 
 export interface UseProjectAutoSaveResult {
@@ -22,7 +28,12 @@ export interface UseProjectAutoSaveResult {
   /** Call this after initial hydration to establish "saved" baseline */
   setBaseline: () => void;
   /** Immediately flush any pending save (for exit/navigation) */
-  flushSave: (opts?: { includeThumbnail?: boolean; thumbnailTimeoutMs?: number }) => Promise<void>;
+  flushSave: (opts?: {
+    includeThumbnail?: boolean;
+    thumbnailTimeoutMs?: number;
+    /** Use this data snapshot as source of truth for the save (e.g., undo/redo ref) */
+    dataOverride?: SaveDataSnapshot;
+  }) => Promise<void>;
   /** Best-effort synchronous flush (for beforeunload) */
   flushSaveNow: () => void;
 }
@@ -53,8 +64,8 @@ function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
  * Returns true if the data has changed since the last saved state.
  */
 function hasDataChanged(
-  current: { name: string; objects: SceneObject[]; steps: SimStep[] },
-  saved: { name: string; objects: SceneObject[]; steps: SimStep[] } | null
+  current: SaveDataSnapshot,
+  saved: SaveDataSnapshot | null
 ): boolean {
   if (!saved) return false; // No baseline yet
   if (current.name !== saved.name) return true;
@@ -83,11 +94,7 @@ export function useProjectAutoSave({
   const isMountedRef = useRef(true);
 
   // Track the last saved state to detect actual changes
-  const lastSavedDataRef = useRef<{
-    name: string;
-    objects: SceneObject[];
-    steps: SimStep[];
-  } | null>(null);
+  const lastSavedDataRef = useRef<SaveDataSnapshot | null>(null);
 
   // Track if we have a baseline (initial load complete)
   const hasBaselineRef = useRef(false);
@@ -117,92 +124,138 @@ export function useProjectAutoSave({
     }
   }, []);
 
-  const buildProject = useCallback((base: Project, thumbnail?: string): Project => {
+  const buildProject = useCallback((base: Project, data: SaveDataSnapshot, thumbnail?: string): Project => {
     return {
       ...base,
-      name: latestRef.current.name,
-      objects: latestRef.current.objects,
-      steps: latestRef.current.steps,
+      name: data.name,
+      objects: data.objects,
+      steps: data.steps,
       thumbnail,
       updatedAt: new Date().toISOString(),
     };
   }, []);
 
-  const saveCore = useCallback(
-    (thumbnail?: string) => {
-      const base = latestRef.current.project;
-      if (!base) return;
-      const updated = buildProject(base, thumbnail ?? base.thumbnail);
-      saveProjectRef.current(updated);
-      // Update last saved data
-      lastSavedDataRef.current = {
-        name: latestRef.current.name,
-        objects: latestRef.current.objects,
-        steps: latestRef.current.steps,
-      };
-    },
-    [buildProject]
-  );
+  // Serialize saves so flushSave can reliably wait.
+  const inFlightSaveRef = useRef<Promise<void> | null>(null);
+
+  const computeCurrentData = useCallback((override?: SaveDataSnapshot): SaveDataSnapshot => {
+    if (override) return override;
+    return {
+      name: latestRef.current.name,
+      objects: latestRef.current.objects,
+      steps: latestRef.current.steps,
+    };
+  }, []);
 
   const runSave = useCallback(
-    async (opts: { includeThumbnail: boolean; thumbnailTimeoutMs?: number }) => {
-      const base = latestRef.current.project;
-      if (!base) return;
+    async (opts: {
+      includeThumbnail: boolean;
+      thumbnailTimeoutMs?: number;
+      dataOverride?: SaveDataSnapshot;
+    }) => {
+      const queueOn = inFlightSaveRef.current ?? Promise.resolve();
 
-      if (isMountedRef.current) {
-        setStatus('saving');
-        setLastError(null);
-      }
+      const next = queueOn.then(async () => {
+        const base = latestRef.current.project;
+        if (!base) return;
 
-      // Capture thumbnail if requested with timeout
-      let preferredThumbnail: string | undefined;
-      if (opts.includeThumbnail && captureThumbnailRef.current && opts.thumbnailTimeoutMs != null) {
-        try {
-          preferredThumbnail = await withTimeout(
-            captureThumbnailRef.current(),
-            opts.thumbnailTimeoutMs
-          );
-        } catch {
-          preferredThumbnail = undefined;
+        const data = computeCurrentData(opts.dataOverride);
+        if (hasBaselineRef.current && !hasDataChanged(data, lastSavedDataRef.current)) {
+          if (isMountedRef.current) {
+            setStatus('saved');
+            setLastError(null);
+          }
+          return;
         }
-      }
 
-      // Save core data
-      try {
-        saveCore(preferredThumbnail);
-      } catch (err) {
-        const e = toError(err);
         if (isMountedRef.current) {
-          setStatus('error');
-          setLastError(e);
+          setStatus('saving');
+          setLastError(null);
         }
-        throw e;
-      }
 
-      // For background autosave, capture thumbnail after core save (non-blocking)
-      if (opts.includeThumbnail && captureThumbnailRef.current && opts.thumbnailTimeoutMs == null) {
+        // Capture thumbnail if requested with timeout
+        let preferredThumbnail: string | undefined;
+        if (
+          opts.includeThumbnail &&
+          captureThumbnailRef.current &&
+          opts.thumbnailTimeoutMs != null
+        ) {
+          try {
+            preferredThumbnail = await withTimeout(
+              captureThumbnailRef.current(),
+              opts.thumbnailTimeoutMs
+            );
+          } catch {
+            preferredThumbnail = undefined;
+          }
+        }
+
+        const updated = buildProject(base, data, preferredThumbnail ?? base.thumbnail);
+
+        // Save core data (awaitable)
         try {
-          const captured = await captureThumbnailRef.current();
-          if (captured) saveCore(captured);
-        } catch {
-          // Ignore thumbnail errors
+          await saveProjectRef.current(updated);
+          lastSavedDataRef.current = data;
+        } catch (err) {
+          const e = toError(err);
+          if (isMountedRef.current) {
+            setStatus('error');
+            setLastError(e);
+          }
+          throw e;
         }
-      }
 
-      if (isMountedRef.current) {
-        setStatus('saved');
-        setLastSavedAt(Date.now());
-      }
+        // For background autosave, capture thumbnail after core save (non-blocking)
+        if (
+          opts.includeThumbnail &&
+          captureThumbnailRef.current &&
+          opts.thumbnailTimeoutMs == null
+        ) {
+          try {
+            const captured = await captureThumbnailRef.current();
+            if (captured) {
+              const updatedWithThumb = buildProject(base, data, captured);
+              await saveProjectRef.current(updatedWithThumb);
+            }
+          } catch {
+            // Ignore thumbnail errors
+          }
+        }
+
+        if (isMountedRef.current) {
+          setStatus('saved');
+          setLastSavedAt(Date.now());
+        }
+      });
+
+      // Track the in-flight save so subsequent saves can queue behind it.
+      inFlightSaveRef.current = next;
+      // Always clear the ref after completion. Ensure we never leak an unhandled rejection
+      // from the `.finally()` wrapper when `next` rejects.
+      void next
+        .finally(() => {
+          if (inFlightSaveRef.current === next) {
+            inFlightSaveRef.current = null;
+          }
+        })
+        .catch(() => {});
+
+      return next;
     },
-    [saveCore]
+    [buildProject, computeCurrentData]
   );
 
   const flushSave = useCallback(
-    async (opts?: { includeThumbnail?: boolean; thumbnailTimeoutMs?: number }) => {
+    async (opts?: {
+      includeThumbnail?: boolean;
+      thumbnailTimeoutMs?: number;
+      dataOverride?: SaveDataSnapshot;
+    }) => {
       cancelScheduledSave();
       await runSave({
         includeThumbnail: opts?.includeThumbnail ?? false,
         thumbnailTimeoutMs: opts?.thumbnailTimeoutMs,
+        dataOverride: opts?.dataOverride,
       });
     },
     [cancelScheduledSave, runSave]
@@ -213,15 +266,16 @@ export function useProjectAutoSave({
     const base = latestRef.current.project;
     if (!base) return;
     // Check if there are actually unsaved changes
-    const currentData = {
+    const currentData: SaveDataSnapshot = {
       name: latestRef.current.name,
       objects: latestRef.current.objects,
       steps: latestRef.current.steps,
     };
     if (!hasDataChanged(currentData, lastSavedDataRef.current)) return;
     try {
-      const updated = buildProject(base, base.thumbnail);
-      saveProjectRef.current(updated);
+      const updated = buildProject(base, currentData, base.thumbnail);
+      // Best-effort only; cannot await in unload handlers.
+      void saveProjectRef.current(updated).catch(() => {});
       lastSavedDataRef.current = currentData;
     } catch {
       // Best-effort only

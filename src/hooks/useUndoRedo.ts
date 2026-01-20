@@ -362,6 +362,11 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
     // Current state
     currentState,
     setCurrentState,
+    /**
+     * Get the latest editor state synchronously (ref-backed).
+     * Useful for actions that must not race React state sync (e.g. save-before-navigation).
+     */
+    getCurrentState: () => currentStateRef.current,
 
     // Undo/Redo functions
     execute,

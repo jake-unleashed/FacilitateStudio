@@ -23,7 +23,7 @@ describe('useProjectAutoSave', () => {
     };
     mockObjects = [];
     mockSteps = [];
-    mockSaveProject = vi.fn();
+    mockSaveProject = vi.fn().mockResolvedValue(undefined);
     mockCaptureThumbnail = vi.fn().mockResolvedValue('data:image/png;base64,mock');
   });
 
@@ -417,11 +417,110 @@ describe('useProjectAutoSave', () => {
       expect(mockCaptureThumbnail).not.toHaveBeenCalled();
     });
 
-    it('should timeout thumbnail capture if too slow', async () => {
-      const slowCapture = vi.fn<() => Promise<string | undefined>>(
-        () =>
-          new Promise((resolve) => setTimeout(() => resolve('data:image/png;base64,slow'), 5000))
+    it('should prefer dataOverride snapshot for flushSave', async () => {
+      const { result, rerender } = renderHook(
+        ({ name }) =>
+          useProjectAutoSave({
+            project: mockProject,
+            name,
+            objects: mockObjects,
+            steps: mockSteps,
+            saveProject: mockSaveProject,
+          }),
+        { initialProps: { name: 'Original' } }
       );
+
+      act(() => {
+        result.current.setBaseline();
+      });
+
+      // Change name, but flush with override.
+      rerender({ name: 'New Name' });
+
+      await act(async () => {
+        await result.current.flushSave({
+          dataOverride: {
+            name: 'Override Name',
+            objects: [],
+            steps: [],
+          },
+        });
+      });
+
+      expect(mockSaveProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Override Name',
+        })
+      );
+    });
+
+    it('should serialize concurrent flushSave calls', async () => {
+      // Use `unknown` to avoid TS flow-analysis weirdness with closure assignment.
+      let resolveFirst: unknown = null;
+      let resolveSecond: unknown = null;
+
+      const save = vi.fn().mockImplementation(() => {
+        if (save.mock.calls.length === 1) {
+          return new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return new Promise<void>((resolve) => {
+          resolveSecond = resolve;
+        });
+      });
+
+      const { result } = renderHook(() =>
+        useProjectAutoSave({
+          project: mockProject,
+          name: mockProject.name,
+          objects: mockObjects,
+          steps: mockSteps,
+          saveProject: save,
+        })
+      );
+
+      act(() => {
+        result.current.setBaseline();
+      });
+
+      let flush1: Promise<void>;
+      let flush2: Promise<void>;
+
+      // Start both flushes inside act, but don't await them yet.
+      // We then await a microtask so the first queued save actually begins.
+      await act(async () => {
+        flush1 = result.current.flushSave({
+          dataOverride: { name: 'First', objects: [], steps: [] },
+        });
+        flush2 = result.current.flushSave({
+          dataOverride: { name: 'Second', objects: [], steps: [] },
+        });
+        await Promise.resolve();
+      });
+
+      // Only the first save should have been invoked so far.
+      expect(save).toHaveBeenCalledTimes(1);
+
+      // Resolve first; then second should start.
+      if (typeof resolveFirst === 'function') (resolveFirst as () => void)();
+      await act(async () => {
+        await flush1;
+        await Promise.resolve();
+      });
+
+      // After first resolves, second should now be invoked.
+      expect(save).toHaveBeenCalledTimes(2);
+
+      if (typeof resolveSecond === 'function') (resolveSecond as () => void)();
+      await act(async () => {
+        await flush2;
+      });
+    });
+
+    it('should timeout thumbnail capture if too slow', async () => {
+      // Never resolves; flushSave should proceed via thumbnail timeout.
+      const slowCapture = vi.fn<() => Promise<string | undefined>>(() => new Promise(() => {}));
 
       const { result, rerender } = renderHook(
         ({ name }) =>
@@ -442,18 +541,15 @@ describe('useProjectAutoSave', () => {
 
       rerender({ name: 'New Name' });
 
-      const flushPromise = act(async () => {
-        await result.current.flushSave({
+      await act(async () => {
+        const p = result.current.flushSave({
           includeThumbnail: true,
           thumbnailTimeoutMs: 100,
         });
+        // Trigger the timeout path.
+        await vi.advanceTimersByTimeAsync(100);
+        await p;
       });
-
-      await act(async () => {
-        vi.advanceTimersByTime(100);
-      });
-
-      await flushPromise;
 
       // Should still save, just without thumbnail
       expect(mockSaveProject).toHaveBeenCalledWith(

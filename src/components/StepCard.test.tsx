@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StepCard } from './StepCard';
+import React from 'react';
+import { StepCard, type StepCardHandle } from './StepCard';
 import { SimStep } from '../types';
 
 const DEFAULT_STEP: SimStep = {
@@ -228,6 +229,44 @@ describe('StepCard', () => {
         const asValue = screen.queryByDisplayValue('Talk to you later');
         expect(asText ?? asValue).toBeTruthy();
       });
+    });
+
+    it('should flush pending heading edits via ref without blur', async () => {
+      const user = userEvent.setup();
+      const step = {
+        ...DEFAULT_STEP,
+        type: 'info-card' as const,
+        heading: 'Original Heading',
+      };
+
+      const ref = React.createRef<StepCardHandle>();
+      render(
+        <StepCard
+          ref={ref}
+          step={step}
+          isOpen={true}
+          onUpdate={mockOnUpdate}
+          onMinimize={mockOnMinimize}
+        />
+      );
+
+      await user.click(screen.getByTitle('Edit heading'));
+      const headingTextarea = screen.getByDisplayValue('Original Heading');
+
+      await user.clear(headingTextarea);
+      await user.type(headingTextarea, 'New Heading');
+
+      // No blur; flush should persist.
+      act(() => {
+        ref.current?.flushPendingUpdates();
+      });
+
+      await waitFor(() => {
+        expect(mockOnUpdate).toHaveBeenCalled();
+      });
+
+      const lastUpdate = mockOnUpdate.mock.calls[mockOnUpdate.mock.calls.length - 1][0];
+      expect(lastUpdate.heading).toBe('New Heading');
     });
   });
 

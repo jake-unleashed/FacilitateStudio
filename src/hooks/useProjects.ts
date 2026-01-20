@@ -20,7 +20,7 @@ export interface UseProjectsResult {
   /** Get a project by ID from local state */
   getProject: (id: string) => Project | undefined;
   /** Save a project (create or update) */
-  saveProject: (project: Project) => void;
+  saveProject: (project: Project) => Promise<void>;
   /** Delete a project by ID */
   deleteProject: (id: string) => void;
   /** Create a new empty project (does not save it) */
@@ -104,7 +104,7 @@ export function useProjects(): UseProjectsResult {
    * Updates local state immediately, then persists to IndexedDB.
    */
   const saveProject = useCallback(
-    (project: Project): void => {
+    async (project: Project): Promise<void> => {
       const now = new Date().toISOString();
       const updated: Project = {
         ...project,
@@ -128,13 +128,19 @@ export function useProjects(): UseProjectsResult {
         }
       });
 
-      // Persist to IndexedDB (fire and forget with error handling)
-      persistence.saveProject(updated).catch((err) => {
+      // Persist to IndexedDB (awaitable so callers can reliably flush before navigation)
+      try {
+        await persistence.saveProject(updated);
+        if (isMountedRef.current) {
+          setError(null);
+        }
+      } catch (err) {
         console.error('[useProjects] Failed to save project to IndexedDB:', err);
         if (isMountedRef.current) {
           setError('Failed to save project. Please try again.');
         }
-      });
+        throw err;
+      }
     },
     [persistence]
   );

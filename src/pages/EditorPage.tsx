@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { TopBar } from '../components/TopBar';
-import { LeftSidebar } from '../components/LeftSidebar';
+import { LeftSidebar, type LeftSidebarHandle } from '../components/LeftSidebar';
 import { RightSidebar } from '../components/RightSidebar';
 import { MainCanvas } from '../components/MainCanvas';
 import { NavigationHelp } from '../components/NavigationHelp';
@@ -116,6 +116,7 @@ function EditorPageContent() {
     canUndo,
     canRedo,
     setCurrentState: setUndoRedoState,
+    getCurrentState,
     undoStackSize,
     redoStackSize,
   } = useUndoRedo(initialEditorState, { maxHistory: 50, enableKeyboardShortcuts: true });
@@ -265,6 +266,10 @@ function EditorPageContent() {
     errorMessage?: string;
   }>(null);
 
+  const pendingExitActionRef = useRef<(() => void) | null>(null);
+  const leftSidebarRef = useRef<LeftSidebarHandle | null>(null);
+  const stopRecordingRef = useRef<(() => void) | null>(null);
+
   // ============================================================================
   // Project Loading & Initialization
   // ============================================================================
@@ -402,35 +407,78 @@ function EditorPageContent() {
     };
   }, [isDirty, flushSaveNow]);
 
+  const requestNavigation = useCallback(
+    async (destination: { type: 'home' } | { type: 'preview'; projectId: string }) => {
+      // Flush any in-flight step edits (debounced/unblurred) BEFORE saving.
+      leftSidebarRef.current?.flushPendingEdits();
+
+      // If recording, stop it so the final endPosition command is committed before saving.
+      if (recordingPositionForStepId) {
+        stopRecordingRef.current?.();
+      }
+
+      const snapshot = getCurrentState();
+      const dataOverride = {
+        name: snapshot.simulationTitle,
+        objects: snapshot.objects,
+        steps: snapshot.steps,
+      };
+
+      const doNavigate = () => {
+        if (destination.type === 'home') {
+          navigate('/');
+        } else {
+          navigate(`/preview/${destination.projectId}`);
+        }
+      };
+
+      // Clear any prior pending action; set the new one only on error.
+      pendingExitActionRef.current = null;
+
+      // Avoid overlay flicker on fast saves: show after brief delay if still saving.
+      let didForceNavigate = false;
+      let didFinish = false;
+      const showOverlayDelay = setTimeout(() => {
+        if (didFinish) return;
+        setExitOverlay({ mode: 'saving' });
+      }, 150);
+
+      // Safety timeout: if save takes longer than 2s total, force-navigate anyway.
+      const safetyTimeout = setTimeout(() => {
+        if (didFinish) return;
+        didForceNavigate = true;
+        console.warn('[EditorPage] Save took too long; force-navigating.');
+        didFinish = true;
+        clearTimeout(showOverlayDelay);
+        setExitOverlay(null);
+        doNavigate();
+      }, 2000);
+
+      try {
+        await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600, dataOverride });
+        if (didForceNavigate) return;
+        didFinish = true;
+        clearTimeout(safetyTimeout);
+        clearTimeout(showOverlayDelay);
+        setExitOverlay(null);
+        doNavigate();
+      } catch (err) {
+        if (didForceNavigate) return;
+        didFinish = true;
+        clearTimeout(safetyTimeout);
+        clearTimeout(showOverlayDelay);
+        console.error('[EditorPage] Failed to save before navigating:', err);
+        const message = err instanceof Error ? err.message : 'Failed to save changes';
+        pendingExitActionRef.current = doNavigate;
+        setExitOverlay({ mode: 'error', errorMessage: message });
+      }
+    },
+    [flushSave, getCurrentState, navigate, recordingPositionForStepId]
+  );
+
   const handleRequestHome = useCallback(async () => {
-    if (!isDirty) {
-      navigate('/');
-      return;
-    }
-
-    setExitOverlay({ mode: 'saving' });
-
-    // Safety timeout: if save takes longer than 2s total, force-navigate anyway.
-    const safetyTimeout = setTimeout(() => {
-      console.warn('[EditorPage] Save took too long; force-navigating Home.');
-      setExitOverlay(null);
-      navigate('/');
-    }, 2000);
-
-    try {
-      // Ensure thumbnail is as fresh as possible before returning Home,
-      // but never let this hang indefinitely.
-      await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600 });
-      clearTimeout(safetyTimeout);
-      setExitOverlay(null);
-      navigate('/');
-    } catch (err) {
-      clearTimeout(safetyTimeout);
-      console.error('[EditorPage] Failed to save before navigating Home:', err);
-      const message = err instanceof Error ? err.message : 'Failed to save changes';
-      setExitOverlay({ mode: 'error', errorMessage: message });
-    }
-  }, [flushSave, isDirty, navigate]);
+    await requestNavigation({ type: 'home' });
+  }, [requestNavigation]);
 
   const handleExitStay = useCallback(() => {
     setExitOverlay(null);
@@ -438,36 +486,65 @@ function EditorPageContent() {
 
   const handleExitLeaveAnyway = useCallback(() => {
     setExitOverlay(null);
+    const action = pendingExitActionRef.current;
+    pendingExitActionRef.current = null;
+    if (action) {
+      action();
+      return;
+    }
     navigate('/');
   }, [navigate]);
 
   const handleManualSave = useCallback(async () => {
-    console.log('[EditorPage] Manual save clicked. isDirty:', isDirty, 'status:', status);
-    if (!isDirty) {
-      console.log('[EditorPage] Already saved, skipping.');
-      return;
-    }
     try {
-      console.log('[EditorPage] Calling flushSave...');
-      await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600 });
-      console.log('[EditorPage] Manual save completed. New status should be "saved"');
+      const snapshot = getCurrentState();
+      await flushSave({
+        includeThumbnail: true,
+        thumbnailTimeoutMs: 600,
+        dataOverride: {
+          name: snapshot.simulationTitle,
+          objects: snapshot.objects,
+          steps: snapshot.steps,
+        },
+      });
     } catch (err) {
       console.error('[EditorPage] Manual save failed:', err);
+      const message = err instanceof Error ? err.message : 'Failed to save changes';
+      showPopup(createErrorPopup('Save failed', message));
     }
-  }, [flushSave, isDirty, status]);
+  }, [flushSave, getCurrentState, showPopup]);
 
   const handlePublishClick = useCallback(async () => {
     if (!currentProject) return;
     try {
-      // Ensure the project is persisted before generating a link that loads from IndexedDB.
-      await flushSave({ includeThumbnail: true, thumbnailTimeoutMs: 600 });
+      // Flush any in-flight step edits before saving for publish.
+      leftSidebarRef.current?.flushPendingEdits();
+      if (recordingPositionForStepId) {
+        stopRecordingRef.current?.();
+      }
+      const snapshot = getCurrentState();
+      await flushSave({
+        includeThumbnail: true,
+        thumbnailTimeoutMs: 600,
+        dataOverride: {
+          name: snapshot.simulationTitle,
+          objects: snapshot.objects,
+          steps: snapshot.steps,
+        },
+      });
       setIsPublishModalOpen(true);
     } catch (err) {
       console.error('[EditorPage] Failed to save before publishing:', err);
       const message = err instanceof Error ? err.message : 'Failed to save changes';
       showPopup(createErrorPopup('Publish failed', message));
     }
-  }, [currentProject, flushSave, showPopup]);
+  }, [
+    currentProject,
+    flushSave,
+    getCurrentState,
+    recordingPositionForStepId,
+    showPopup,
+  ]);
 
   // ============================================================================
   // Memoized Callbacks - Stable references for child components
@@ -1542,6 +1619,12 @@ function EditorPageContent() {
     endBatch();
   }, [endBatch, recordingPositionForStepId, undoRedoState.steps, steps, objects, executeCommand]);
 
+  // Expose stop-recording as a ref so navigation handlers can call it safely
+  // without depending on its declaration order.
+  useEffect(() => {
+    stopRecordingRef.current = handleStopRecordingPosition;
+  }, [handleStopRecordingPosition]);
+
   // ============================================================================
   // Memoized Derived State
   // ============================================================================
@@ -1711,11 +1794,19 @@ function EditorPageContent() {
         onRedo={redo}
         canUndo={canUndo}
         canRedo={canRedo}
+        onPreviewClick={
+          projectId
+            ? () => {
+                void requestNavigation({ type: 'preview', projectId });
+              }
+            : undefined
+        }
         onPublishClick={handlePublishClick}
         projectId={projectId}
       />
 
       <LeftSidebar
+        ref={leftSidebarRef}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         steps={steps}
