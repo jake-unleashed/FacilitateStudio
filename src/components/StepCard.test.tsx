@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StepCard } from './StepCard';
 import { SimStep } from '../types';
@@ -190,6 +190,44 @@ describe('StepCard', () => {
       const textarea = screen.getByDisplayValue('Original Heading');
       expect(textarea).toBeInTheDocument();
       expect(textarea.tagName).toBe('TEXTAREA');
+    });
+
+    it('should persist heading when switching quickly to body field', async () => {
+      const user = userEvent.setup();
+      const step = {
+        ...DEFAULT_STEP,
+        type: 'info-card' as const,
+        heading: '',
+        bodyText: '',
+        buttonText: '',
+      };
+
+      render(
+        <StepCard step={step} isOpen={true} onUpdate={mockOnUpdate} onMinimize={mockOnMinimize} />
+      );
+
+      await user.click(screen.getByTitle('Edit heading'));
+
+      const headingTextarea = screen.getByPlaceholderText('Enter heading...');
+      await user.type(headingTextarea, 'Talk to you later');
+      expect(headingTextarea).toHaveValue('Talk to you later');
+
+      // Force blur (jsdom doesn't always blur on non-input clicks)
+      fireEvent.blur(headingTextarea);
+
+      await waitFor(() => {
+        expect(mockOnUpdate).toHaveBeenCalled();
+      });
+
+      const lastUpdate = mockOnUpdate.mock.calls[mockOnUpdate.mock.calls.length - 1][0];
+      expect(lastUpdate.heading).toBe('Talk to you later');
+
+      // Heading should still be present in the UI (either as text or as textarea value)
+      await waitFor(() => {
+        const asText = screen.queryByText('Talk to you later');
+        const asValue = screen.queryByDisplayValue('Talk to you later');
+        expect(asText ?? asValue).toBeTruthy();
+      });
     });
   });
 

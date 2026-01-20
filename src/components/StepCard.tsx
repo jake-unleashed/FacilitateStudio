@@ -102,7 +102,18 @@ const COLOR_THEMES: Record<
   },
 };
 
-// Custom debounce hook
+/**
+ * Custom hook that debounces a value by a specified delay.
+ * Returns the value after it has remained unchanged for the delay period.
+ * 
+ * @template T - The type of value to debounce
+ * @param value - The value to debounce
+ * @param delay - The delay in milliseconds
+ * @returns The debounced value
+ * 
+ * @example
+ * const debouncedSearchTerm = useDebounce(searchTerm, 300);
+ */
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
@@ -119,6 +130,20 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+/**
+ * StepCard - Editable card for simulation steps
+ * 
+ * Supports two step types:
+ * - Info Card: Display information to trainees with heading, body text, and button
+ * - Move Item: Guide trainees to move an object in the 3D scene
+ * 
+ * Features:
+ * - Auto-save with debouncing (400ms)
+ * - Uncontrolled inputs during editing for reliable text persistence
+ * - Inline editing for Info Card fields
+ * - Real-time preview of Info Card appearance
+ * - Drag-to-reorder support (when minimized)
+ */
 export const StepCard: React.FC<StepCardProps> = ({
   step,
   isOpen,
@@ -157,34 +182,36 @@ export const StepCard: React.FC<StepCardProps> = ({
   const [editingField, setEditingField] = useState<'heading' | 'bodyText' | 'buttonText' | null>(
     null
   );
+  const editingFieldRef = useRef<typeof editingField>(null);
+  editingFieldRef.current = editingField;
 
   // Delete confirmation state (click twice to confirm)
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  // Refs for DOM inputs - allows reading actual typed value on blur (bypasses React state timing)
   const stepNameTextareaRef = useRef<HTMLTextAreaElement>(null);
   const headingTextareaRef = useRef<HTMLTextAreaElement>(null);
   const bodyTextTextareaRef = useRef<HTMLTextAreaElement>(null);
   const buttonTextInputRef = useRef<HTMLInputElement>(null);
 
   // Sync local state when step prop changes
-  // Use individual properties to ensure we catch all changes
   useEffect(() => {
     setStepName(step.title);
     setSelectedType(step.type ?? null);
     setShowTypeSelection(step.type === null || step.type === undefined);
-    setHeading(step.heading || '');
-    setBodyText(step.bodyText || '');
-    setButtonText(step.buttonText || '');
+    
+    // Don't sync text fields while actively editing - uncontrolled inputs are source of truth
+    if (editingFieldRef.current !== 'heading') setHeading(step.heading || '');
+    if (editingFieldRef.current !== 'bodyText') setBodyText(step.bodyText || '');
+    if (editingFieldRef.current !== 'buttonText') setButtonText(step.buttonText || '');
+    
     setCardColor(step.cardColor || 'blue');
-    // Always sync from step prop - it's the source of truth
     setTargetObjectId(step.targetObjectId || '');
     setTargetChildPath(step.targetChildPath || '');
 
     // Check if endPosition changed from props (e.g., after recording)
     if (JSON.stringify(step.endPosition) !== JSON.stringify(endPosition)) {
       setEndPosition(step.endPosition);
-      // Mark that endPosition was just updated from props
-      // This prevents the auto-save effect from immediately overwriting it
       endPositionJustUpdatedFromPropsRef.current = true;
     }
   }, [
@@ -253,6 +280,19 @@ export const StepCard: React.FC<StepCardProps> = ({
 
   // Auto-save when debounced values change
   useEffect(() => {
+    // CRITICAL: If debounced values haven't caught up to local state yet, skip.
+    // This prevents stale debounced values from overwriting freshly-saved edits
+    // (e.g., when user types fast then blurs, blur saves immediately, but debounce
+    // is still holding old value and would overwrite the new save).
+    if (
+      debouncedStepName !== stepName ||
+      debouncedHeading !== heading ||
+      debouncedBodyText !== bodyText ||
+      debouncedButtonText !== buttonText
+    ) {
+      return;
+    }
+
     // Skip if values haven't actually changed from the step's current values
     const hasChanged =
       debouncedStepName !== step.title ||
@@ -266,14 +306,12 @@ export const StepCard: React.FC<StepCardProps> = ({
       JSON.stringify(debouncedEndPosition) !== JSON.stringify(step.endPosition);
 
     // If endPosition was just updated from props, skip this auto-save cycle
-    // to prevent overwriting the value that was just set externally (e.g., from recording)
     if (endPositionJustUpdatedFromPropsRef.current) {
       endPositionJustUpdatedFromPropsRef.current = false;
       return;
     }
 
-    // If we're currently recording, skip auto-save entirely to prevent interference
-    // The recording system manages endPosition updates directly
+    // If we're currently recording, skip auto-save entirely
     if (isRecordingPosition) {
       return;
     }
@@ -298,6 +336,10 @@ export const StepCard: React.FC<StepCardProps> = ({
     debouncedHeading,
     debouncedBodyText,
     debouncedButtonText,
+    stepName,
+    heading,
+    bodyText,
+    buttonText,
     cardColor,
     targetObjectId,
     targetChildPath,
@@ -308,21 +350,39 @@ export const StepCard: React.FC<StepCardProps> = ({
     isRecordingPosition,
   ]);
 
-  // Auto-save on blur for immediate feedback
-  const handleBlur = useCallback(() => {
-    onUpdate(createUpdatedStep());
-    setEditingField(null);
-  }, [createUpdatedStep, onUpdate]);
+  const handleStepNameChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setStepName(e.target.value);
+  }, []);
+
+  const handleFieldBlur = useCallback(
+    (field: 'stepName' | 'heading' | 'bodyText' | 'buttonText', value: string) => {
+      // Read actual DOM value and save immediately.
+      // Using uncontrolled inputs (defaultValue) ensures the DOM value is always
+      // authoritative, eliminating React state timing issues when typing fast.
+      if (field === 'stepName') setStepName(value);
+      if (field === 'heading') setHeading(value);
+      if (field === 'bodyText') setBodyText(value);
+      if (field === 'buttonText') setButtonText(value);
+
+      const overrides: Partial<SimStep> =
+        field === 'stepName'
+          ? { title: value }
+          : field === 'heading'
+            ? { heading: value || undefined }
+            : field === 'bodyText'
+              ? { bodyText: value || undefined }
+              : { buttonText: value || undefined };
+
+      onUpdate(createUpdatedStep(overrides));
+      if (field !== 'stepName') setEditingField(null);
+    },
+    [createUpdatedStep, onUpdate]
+  );
 
   // Handle starting edit mode
   const handleStartEdit = useCallback((field: 'heading' | 'bodyText' | 'buttonText') => {
     setEditingField(field);
   }, []);
-
-  // Handle saving and exiting edit mode
-  const handleSaveEdit = useCallback(() => {
-    handleBlur();
-  }, [handleBlur]);
 
   // Handle Escape key to cancel edit
   useEffect(() => {
@@ -550,8 +610,8 @@ export const StepCard: React.FC<StepCardProps> = ({
             id={`step-name-input-${step.id}`}
             ref={stepNameTextareaRef}
             value={stepName}
-            onChange={(e) => setStepName(e.target.value)}
-            onBlur={handleBlur}
+            onChange={handleStepNameChange}
+            onBlur={(e) => handleFieldBlur('stepName', e.currentTarget.value)}
             placeholder="Enter step name..."
             maxLength={200}
             rows={1}
@@ -720,13 +780,12 @@ export const StepCard: React.FC<StepCardProps> = ({
               {editingField === 'heading' ? (
                 <textarea
                   ref={headingTextareaRef}
-                  value={heading}
-                  onChange={(e) => setHeading(e.target.value)}
-                  onBlur={handleSaveEdit}
+                  defaultValue={heading}
+                  onBlur={(e) => handleFieldBlur('heading', e.currentTarget.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      handleSaveEdit();
+                      handleFieldBlur('heading', headingTextareaRef.current?.value ?? '');
                     }
                   }}
                   placeholder="Enter heading..."
@@ -752,8 +811,9 @@ export const StepCard: React.FC<StepCardProps> = ({
                     }}
                     className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-[8px] bg-white/20 text-white opacity-70 transition-all hover:bg-white/30 hover:opacity-100"
                     title="Edit heading"
+                    aria-label="Edit heading"
                   >
-                    <Pencil size={12} />
+                    <Pencil size={12} aria-hidden="true" />
                   </button>
                 </>
               )}
@@ -764,9 +824,8 @@ export const StepCard: React.FC<StepCardProps> = ({
               {editingField === 'bodyText' ? (
                 <textarea
                   ref={bodyTextTextareaRef}
-                  value={bodyText}
-                  onChange={(e) => setBodyText(e.target.value)}
-                  onBlur={handleSaveEdit}
+                  defaultValue={bodyText}
+                  onBlur={(e) => handleFieldBlur('bodyText', e.currentTarget.value)}
                   placeholder="Enter body text..."
                   rows={4}
                   className="w-full resize-none border-0 bg-transparent p-0 text-sm leading-relaxed text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-0"
@@ -786,8 +845,9 @@ export const StepCard: React.FC<StepCardProps> = ({
                     }}
                     className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-[8px] bg-white/80 text-slate-400 opacity-70 transition-all hover:bg-white hover:text-slate-600 hover:opacity-100"
                     title="Edit body text"
+                    aria-label="Edit body text"
                   >
-                    <Pencil size={12} />
+                    <Pencil size={12} aria-hidden="true" />
                   </button>
                 </>
               )}
@@ -799,13 +859,12 @@ export const StepCard: React.FC<StepCardProps> = ({
                 <input
                   ref={buttonTextInputRef}
                   type="text"
-                  value={buttonText}
-                  onChange={(e) => setButtonText(e.target.value)}
-                  onBlur={handleSaveEdit}
+                  defaultValue={buttonText}
+                  onBlur={(e) => handleFieldBlur('buttonText', e.currentTarget.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      handleSaveEdit();
+                      handleFieldBlur('buttonText', buttonTextInputRef.current?.value ?? '');
                     }
                   }}
                   placeholder="OK"
@@ -831,8 +890,9 @@ export const StepCard: React.FC<StepCardProps> = ({
                     }}
                     className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-slate-400 opacity-70 shadow-sm transition-all hover:bg-blue-50 hover:text-blue-600 hover:opacity-100"
                     title="Edit button text"
+                    aria-label="Edit button text"
                   >
-                    <Pencil size={10} />
+                    <Pencil size={10} aria-hidden="true" />
                   </button>
                 </div>
               )}
