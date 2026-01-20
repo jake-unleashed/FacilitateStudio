@@ -47,13 +47,16 @@ export const SOURCE_SMOOTHING_FACTOR = 0.15;
 /**
  * Height value constraints (in internal units, where 100 = 1 world unit/meter).
  *
- * HEIGHT_MIN: Minimum Y value for ROOT objects only. Child objects can have
- * negative localTransform.y values to move below their default position within
- * the model (while still respecting ground constraint).
+ * The height handle allows negative values for BOTH root and child selections:
+ * - Root `transform.y` can be negative (especially after scaling down) because we
+ *   offset Y to keep the model grounded (see `calculateScaleAdjustedY(...)` usage).
+ * - Child `localTransform.y` can be negative relative to the child's default pose.
+ *
+ * Grounding is enforced separately via the `minWorldY` clamp during dragging
+ * (mesh lowest point must stay >= 0), not by a hard "Y >= 0" value constraint.
  *
  * HEIGHT_MAX: Maximum Y value (500 internal units = 5 meters above ground).
  */
-export const HEIGHT_MIN = 0;
 export const HEIGHT_MAX = 500;
 
 /**

@@ -9,7 +9,7 @@ import { ArrowUpDown } from 'lucide-react';
 import * as THREE from 'three';
 
 import { HeightHandleProps, HeightDragState } from './types';
-import { DRAG_THRESHOLD_PX, HEIGHT_MIN, HEIGHT_MAX } from './constants';
+import { DRAG_THRESHOLD_PX, HEIGHT_MAX } from './constants';
 import { INTERNAL_TO_WORLD } from '../../../constants';
 import { clamp, getHandleClasses } from './utils';
 import { useTooltip } from './useTooltip';
@@ -135,11 +135,17 @@ export const HeightHandle = memo<HeightHandleProps>(function HeightHandle({
         clampedInternalDelta = Math.max(internalDelta, maxDownDelta);
       }
 
-      // Calculate effective height minimum based on object type:
-      // - Root objects: HEIGHT_MIN (0) - their Y value represents ground level
-      // - Child objects: -Infinity - their localTransform.y is relative to default position,
-      //   so negative values are valid (ground constraint above prevents going below ground)
-      const effectiveHeightMin = isChild ? -Infinity : HEIGHT_MIN;
+      // Height values are allowed to go negative for BOTH root and child selections.
+      //
+      // Why:
+      // - Root objects can legitimately have negative `transform.y` (internal units) after scaling
+      //   down (< 1) because `calculateScaleAdjustedY(...)` offsets Y to keep the model grounded.
+      // - Child objects can have negative `localTransform.y` relative to their default pose.
+      //
+      // Safety:
+      // - The true "don't go below ground" behavior is enforced above via the `minWorldY` clamp
+      //   (mesh lowest point must stay >= 0).
+      const effectiveHeightMin = -Infinity;
       const newValue = clamp(
         state.initialValue + clampedInternalDelta,
         effectiveHeightMin,

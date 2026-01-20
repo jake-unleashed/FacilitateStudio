@@ -1043,8 +1043,8 @@ describe('TransformGizmo', () => {
   // ==========================================================================
 
   describe('Height Value Clamping', () => {
-    it('should clamp height to minimum 0', () => {
-      // Start with low height
+    it('should prevent dragging an object below the ground plane', () => {
+      // Start close to the ground; the test scene mesh is already grounded (minWorldY = 0)
       const lowObject = {
         ...testObject,
         transform: { ...testObject.transform, y: 10 },
@@ -1064,14 +1064,55 @@ describe('TransformGizmo', () => {
 
       const heightHandle = screen.getByTestId('handle-height');
 
-      // Drag down significantly (would result in negative if not clamped)
+      // Drag down significantly (would push below ground if not constrained)
       fireEvent.pointerDown(heightHandle, { clientY: 300 });
       fireEvent(window, new PointerEvent('pointermove', { clientY: 1000, bubbles: true }));
 
       if (mockOnUpdateObject.mock.calls.length > 0) {
         const lastCall = mockOnUpdateObject.mock.calls[mockOnUpdateObject.mock.calls.length - 1][0];
+        // We should never be able to move the mesh below ground.
+        // For this test setup, that means Y stays at or above 0.
         expect(lastCall.transform.y).toBeGreaterThanOrEqual(0);
       }
+    });
+
+    it('should not snap a negative root height up to 0 when dragging (scaled-down grounded models)', async () => {
+      // Root objects can legitimately have negative Y after scaling down, because scaling logic
+      // offsets transform.y to keep the model grounded.
+      const negativeHeightObject = {
+        ...testObject,
+        transform: { ...testObject.transform, y: -50, scaleX: 0.5, scaleY: 0.5, scaleZ: 0.5 },
+      };
+
+      render(
+        <TransformGizmo
+          object={negativeHeightObject}
+          selectedChildPath={null}
+          onUpdateObject={mockOnUpdateObject}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+        />
+      );
+
+      // Flush the frame-driven state updates (including currentHeight) into React.
+      await act(async () => {
+        runFrame();
+      });
+
+      const heightHandle = screen.getByTestId('handle-height');
+
+      // Drag down (attempting to go below ground). The ground constraint should prevent movement,
+      // but the value should remain negative (no "jump to 0").
+      await act(async () => {
+        fireEvent.pointerDown(heightHandle, { clientY: 300 });
+      });
+      await act(async () => {
+        fireEvent(window, new PointerEvent('pointermove', { clientY: 1000, bubbles: true }));
+      });
+
+      expect(mockOnUpdateObject).toHaveBeenCalled();
+      const lastCall = mockOnUpdateObject.mock.calls[mockOnUpdateObject.mock.calls.length - 1][0];
+      expect(lastCall.transform.y).toBe(-50);
     });
   });
 
@@ -1082,8 +1123,8 @@ describe('TransformGizmo', () => {
   describe('Child Height Constraint', () => {
     /**
      * These tests verify that:
-     * 1. Root objects: Y value cannot go below 0 (HEIGHT_MIN)
-     * 2. Child objects: Y value CAN go negative (allowing children to reach ground)
+     * 1. Root objects: `transform.y` CAN be negative (e.g. after scaling down to stay grounded)
+     * 2. Child objects: `localTransform.y` CAN be negative (relative to default pose)
      * 3. Both respect the ground constraint (mesh lowest point >= 0)
      */
 
