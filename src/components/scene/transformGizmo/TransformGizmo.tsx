@@ -16,7 +16,7 @@
  * @module TransformGizmo
  */
 
-import React, { useCallback, useRef, memo } from 'react';
+import { useCallback, useRef, memo } from 'react';
 import { Html } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { pathToString } from '../../../types';
 import { INTERNAL_TO_WORLD } from '../../../constants';
 
-import { TransformGizmoProps, ViewMode } from './types';
+import { TransformGizmoProps } from './types';
 import { HeightHandle } from './HeightHandle';
 import { XZHandle } from './XZHandle';
 import { LeftRightHandle } from './LeftRightHandle';
@@ -41,7 +41,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
   onDragEnd,
   isDragging = false,
 }) => {
-  const { camera, gl, scene } = useThree();
+  const { camera, gl } = useThree();
 
   const {
     heightHandlePosition,
@@ -145,7 +145,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
       childDragStartLocalRef.current = null;
     }
     onDragStart?.();
-  }, [onDragStart, selectedChildPath, childMesh, selectedChild]);
+  }, [onDragStart, selectedChildPath, childMesh, selectedChild, setIsAnyHandleDragging]);
 
   const handleDragEnd = useCallback(() => {
     setIsAnyHandleDragging(false);
@@ -153,7 +153,7 @@ const TransformGizmoInner: React.FC<TransformGizmoProps> = ({
     childDragStartWorldPosRef.current = null;
     childDragStartLocalRef.current = null;
     onDragEnd?.();
-  }, [onDragEnd]);
+  }, [onDragEnd, setIsAnyHandleDragging]);
 
   // Determine which handles to show based on view mode
   const showHeightHandle = viewMode !== 'topdown';

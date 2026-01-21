@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { Plus } from 'lucide-react';
 import type { SimStep } from '../../types';
 import { EMPTY_NEW_STEP } from './constants';

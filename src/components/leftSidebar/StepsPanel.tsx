@@ -1,4 +1,3 @@
-import React from 'react';
 import { Plus } from 'lucide-react';
 import type { DragEndEvent, SensorDescriptor, SensorOptions } from '@dnd-kit/core';
 import { DndContext, closestCenter, MeasuringStrategy } from '@dnd-kit/core';

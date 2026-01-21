@@ -13,6 +13,7 @@
 
 import React, { useRef, useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
 import { SelectObject } from './SelectionOutline';
 import { LoadingPlaceholder } from './importedModel/LoadingPlaceholder';
 import type { ImportedModelProps } from './importedModel/types';
@@ -200,7 +201,11 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
           onDoubleClick={handleDoubleClick}
           onPointerOver={onHoverStart}
           onPointerOut={handlePointerOut}
-          onPointerMove={handlePointerMove}
+          onPointerMove={(e: ThreeEvent<PointerEvent>) => {
+            handlePointerMove(e);
+            // Keep hover hit-testing updated as the cursor moves across different child meshes.
+            onHoverStart(e);
+          }}
         />
 
         {/* Post-processing outline for selected child mesh */}

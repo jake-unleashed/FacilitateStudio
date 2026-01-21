@@ -1,6 +1,5 @@
-import React from 'react';
 import type { SimStep } from '../../types';
-import type { StepCardController } from './StepCardController';
+import type { StepCardController } from './StepCardController.types';
 import { StepCardHeader } from './StepCardHeader';
 import { StepTypeSection } from './StepTypeSection';
 import { InfoCardSection } from './InfoCardSection';

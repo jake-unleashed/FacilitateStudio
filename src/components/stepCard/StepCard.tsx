@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle } from 'react';
+import { forwardRef, useImperativeHandle } from 'react';
 import type { StepCardHandle } from './publicTypes';
 import { useStepCardController } from './StepCardController';
 import type { StepCardProps } from './types';

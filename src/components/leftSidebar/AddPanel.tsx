@@ -1,4 +1,3 @@
-import React from 'react';
 import { Clock, Upload } from 'lucide-react';
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import { AssetUploadButton } from '../AssetUploadButton';

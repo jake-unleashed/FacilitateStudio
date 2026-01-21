@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { Menu, MonitorPlay, Share2 } from 'lucide-react';
 import { Button } from '../Button';
 

@@ -1,4 +1,3 @@
-import React from 'react';
 import { CheckCircle, CheckCircle2, Circle, HelpCircle, Info, X } from 'lucide-react';
 import type { SceneObject, SimStep } from '../../types';
 import { OBJECT_ICONS } from '../../constants';

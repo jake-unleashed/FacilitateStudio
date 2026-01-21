@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import { memo, useCallback } from 'react';
 import { AlertTriangle, Check, Loader2, Redo, Save, Undo } from 'lucide-react';
 import { Button } from '../Button';
 import type { SaveStatus } from '../../hooks/useProjectAutoSave';

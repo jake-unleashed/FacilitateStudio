@@ -1,4 +1,4 @@
-import React from 'react';
+import type { RefObject } from 'react';
 import { HelpCircle, Pencil } from 'lucide-react';
 import type { SimStep } from '../../types';
 import { COLOR_THEMES } from './constants';
@@ -16,33 +16,31 @@ export interface InfoCardSectionProps {
   cardColor: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
   currentTheme: (typeof COLOR_THEMES)[keyof typeof COLOR_THEMES];
 
-  headingTextareaRef: React.RefObject<HTMLTextAreaElement>;
-  bodyTextTextareaRef: React.RefObject<HTMLTextAreaElement>;
-  buttonTextInputRef: React.RefObject<HTMLInputElement>;
+  headingTextareaRef: RefObject<HTMLTextAreaElement>;
+  bodyTextTextareaRef: RefObject<HTMLTextAreaElement>;
+  buttonTextInputRef: RefObject<HTMLInputElement>;
 
   onStartEdit: (field: 'heading' | 'bodyText' | 'buttonText') => void;
   onFieldBlur: (field: 'heading' | 'bodyText' | 'buttonText', value: string) => void;
   onSetCardColor: (color: 'blue' | 'green' | 'yellow' | 'red' | 'gray') => void;
 }
 
-export function InfoCardSection({
-  step,
-  stepName,
-  selectedType,
-  isVisible,
-  editingField,
-  heading,
-  bodyText,
-  buttonText,
-  cardColor,
-  currentTheme,
-  headingTextareaRef,
-  bodyTextTextareaRef,
-  buttonTextInputRef,
-  onStartEdit,
-  onFieldBlur,
-  onSetCardColor,
-}: InfoCardSectionProps): JSX.Element | null {
+export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null {
+  const {
+    isVisible,
+    editingField,
+    heading,
+    bodyText,
+    buttonText,
+    cardColor,
+    currentTheme,
+    headingTextareaRef,
+    bodyTextTextareaRef,
+    buttonTextInputRef,
+    onStartEdit,
+    onFieldBlur,
+    onSetCardColor,
+  } = props;
   if (!isVisible) return null;
 
   return (

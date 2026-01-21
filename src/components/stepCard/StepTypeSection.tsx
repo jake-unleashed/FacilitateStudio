@@ -1,4 +1,3 @@
-import React from 'react';
 import { HelpCircle, RefreshCw } from 'lucide-react';
 import type { StepType } from '../../types';
 import { STEP_TYPES, type StepTypeConfig } from './constants';

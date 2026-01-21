@@ -20,8 +20,8 @@ export interface IndustrialPrimitiveProps {
   onDoubleClick: (obj: SceneObject) => void;
   isDragging: boolean;
   isHovered: boolean;
-  onHoverStart: () => void;
-  onHoverEnd: () => void;
+  onHoverStart: (e: ThreeEvent<PointerEvent>) => void;
+  onHoverEnd: (e: ThreeEvent<PointerEvent>) => void;
   isGhost?: boolean;
   /** If true, this is the actual reference object during recording (very transparent). If false but isGhost=true, it's the draggable ghost. */
   isActualReference?: boolean;
@@ -85,7 +85,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   const handlePointerEnter = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      onHoverStart();
+      onHoverStart(e);
     },
     [onHoverStart]
   );
@@ -93,7 +93,7 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
   const handlePointerLeave = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      onHoverEnd();
+      onHoverEnd(e);
     },
     [onHoverEnd]
   );
@@ -123,8 +123,9 @@ const IndustrialPrimitiveInner: React.FC<IndustrialPrimitiveProps> = ({
       scale={scale}
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
+      // Fiber hover events are most reliable with over/out.
+      onPointerOver={handlePointerEnter}
+      onPointerOut={handlePointerLeave}
     >
       {/* eslint-disable-next-line react/no-unknown-property */}
       <mesh ref={meshRef} geometry={sharedBoxGeometry}>

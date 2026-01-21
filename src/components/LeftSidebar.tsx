@@ -16,6 +16,8 @@ import { AddPanel } from './leftSidebar/AddPanel';
 import { StepsPanel } from './leftSidebar/StepsPanel';
 import { ObjectsPanel } from './leftSidebar/ObjectsPanel';
 
+export type { LeftSidebarHandle } from './leftSidebar/types';
+
 // ============================================================================
 // Main Component
 // ============================================================================

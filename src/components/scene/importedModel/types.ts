@@ -1,5 +1,5 @@
 import type { ThreeEvent } from '@react-three/fiber';
-import type { ChildMesh, SceneObject } from '../../../types';
+import type { SceneObject } from '../../../types';
 
 export interface ImportedModelProps {
   obj: SceneObject;
@@ -25,7 +25,7 @@ export interface ImportedModelProps {
   onDoubleClick: (obj: SceneObject) => void;
   isDragging: boolean;
   isHovered: boolean;
-  onHoverStart: () => void;
+  onHoverStart: (e: ThreeEvent<PointerEvent>) => void;
   onHoverEnd: () => void;
   isGhost?: boolean;
   /** If true, this is the actual reference object during recording (very transparent). If false but isGhost=true, it's the draggable ghost. */

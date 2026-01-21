@@ -1,4 +1,5 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
+import type { MutableRefObject, RefObject } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { CameraControls, Environment, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
@@ -54,8 +55,8 @@ export interface SceneContentViewProps {
   onPreviewStepComplete?: () => void;
   onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
 
-  controlsRef: React.RefObject<CameraControlsImpl | null>;
-  isPositioningCameraRef: React.MutableRefObject<boolean>;
+  controlsRef: RefObject<CameraControlsImpl>;
+  isPositioningCameraRef: MutableRefObject<boolean>;
 
   recordingPositionForStepId?: string | null;
   targetObjectId: string | null;
@@ -64,8 +65,10 @@ export interface SceneContentViewProps {
   ghostObject: SceneObject | null;
 
   dragState: DragState | null;
-  hasMovedRef: React.MutableRefObject<boolean>;
+  hasMovedRef: MutableRefObject<boolean>;
   hoveredObjectId: string | null;
+  /** Whether the cursor should show a pointer (finger) over the canvas */
+  isCursorHovering: boolean;
   isRecentlyDragged: boolean;
 
   onUpdateObject: (obj: SceneObject) => void;
@@ -80,7 +83,7 @@ export interface SceneContentViewProps {
     dragChildPath?: string | null
   ) => void;
   handleDoubleClick: (_obj: SceneObject) => void;
-  handleHoverStart: (objectId: string) => void;
+  handleHoverStart: (objectId: string, e: ThreeEvent<PointerEvent>) => void;
   handleHoverEnd: (objectId: string) => void;
 
   handleDragEnd: (wasDrag: boolean) => void;
@@ -88,6 +91,7 @@ export interface SceneContentViewProps {
 }
 
 export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
+  const ghostObject = props.ghostObject;
   return (
     <>
       {IS_DEV && <ContactShadowDebugger />}
@@ -172,7 +176,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
                         onDoubleClick={props.handleDoubleClick}
                         isDragging={props.dragState?.objectId === obj.id && props.dragState.hasMoved}
                         isHovered={props.hoveredObjectId === obj.id}
-                        onHoverStart={() => props.handleHoverStart(obj.id)}
+                        onHoverStart={(e) => props.handleHoverStart(obj.id, e)}
                         onHoverEnd={() => props.handleHoverEnd(obj.id)}
                       />
                     ) : (
@@ -183,8 +187,8 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
                         onDoubleClick={props.handleDoubleClick}
                         isDragging={props.dragState?.objectId === obj.id && props.dragState.hasMoved}
                         isHovered={props.hoveredObjectId === obj.id}
-                        onHoverStart={() => props.handleHoverStart(obj.id)}
-                        onHoverEnd={() => props.handleHoverEnd(obj.id)}
+                        onHoverStart={(e) => props.handleHoverStart(obj.id, e)}
+                        onHoverEnd={(_e) => props.handleHoverEnd(obj.id)}
                       />
                     )}
                   </Select>
@@ -203,7 +207,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
                   onDoubleClick={() => {}}
                   isDragging={false}
                   isHovered={false}
-                  onHoverStart={() => {}}
+                  onHoverStart={(_e) => {}}
                   onHoverEnd={() => {}}
                   isGhost={true}
                   isActualReference={true}
@@ -217,39 +221,39 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
                   onDoubleClick={() => {}}
                   isDragging={false}
                   isHovered={false}
-                  onHoverStart={() => {}}
-                  onHoverEnd={() => {}}
+                  onHoverStart={(_e) => {}}
+                  onHoverEnd={(_e) => {}}
                   isGhost={true}
                   isActualReference={true}
                 />
               ))}
 
-            {props.recordingPositionForStepId && props.ghostObject && props.ghostObject.properties.visible && (
-              <Select key={`ghost-${props.ghostObject.id}`} enabled={props.selectedParentId === props.ghostObject.id}>
-                {props.ghostObject.properties.modelAssetId ? (
+            {props.recordingPositionForStepId && ghostObject && ghostObject.properties.visible && (
+              <Select key={`ghost-${ghostObject.id}`} enabled={props.selectedParentId === ghostObject.id}>
+                {ghostObject.properties.modelAssetId ? (
                   <ImportedModel
-                    obj={props.ghostObject}
-                    isSelected={props.selectedParentId === props.ghostObject.id}
-                    selectedChildPath={props.selectedParentId === props.ghostObject.id ? props.selectedChildPath : null}
+                    obj={ghostObject}
+                    isSelected={props.selectedParentId === ghostObject.id}
+                    selectedChildPath={props.selectedParentId === ghostObject.id ? props.selectedChildPath : null}
                     onPointerDown={props.handleObjectPointerDown}
                     onDoubleClick={props.handleDoubleClick}
-                    isDragging={props.dragState?.objectId === props.ghostObject.id && props.dragState.hasMoved}
-                    isHovered={props.hoveredObjectId === props.ghostObject.id}
-                    onHoverStart={() => props.handleHoverStart(props.ghostObject.id)}
-                    onHoverEnd={() => props.handleHoverEnd(props.ghostObject.id)}
+                    isDragging={props.dragState?.objectId === ghostObject.id && props.dragState.hasMoved}
+                    isHovered={props.hoveredObjectId === ghostObject.id}
+                    onHoverStart={(e) => props.handleHoverStart(ghostObject.id, e)}
+                    onHoverEnd={() => props.handleHoverEnd(ghostObject.id)}
                     isGhost={true}
                     highlightOnlyChild={!!props.recordingStep?.targetChildPath}
                   />
                 ) : (
                   <IndustrialPrimitive
-                    obj={props.ghostObject}
-                    isSelected={props.selectedParentId === props.ghostObject.id}
+                    obj={ghostObject}
+                    isSelected={props.selectedParentId === ghostObject.id}
                     onPointerDown={props.handleObjectPointerDown}
                     onDoubleClick={props.handleDoubleClick}
-                    isDragging={props.dragState?.objectId === props.ghostObject.id && props.dragState.hasMoved}
-                    isHovered={props.hoveredObjectId === props.ghostObject.id}
-                    onHoverStart={() => props.handleHoverStart(props.ghostObject.id)}
-                    onHoverEnd={() => props.handleHoverEnd(props.ghostObject.id)}
+                    isDragging={props.dragState?.objectId === ghostObject.id && props.dragState.hasMoved}
+                    isHovered={props.hoveredObjectId === ghostObject.id}
+                    onHoverStart={(e) => props.handleHoverStart(ghostObject.id, e)}
+                    onHoverEnd={(_e) => props.handleHoverEnd(ghostObject.id)}
                     isGhost={true}
                   />
                 )}
@@ -317,7 +321,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         onMarkAsDrag={props.handleMarkAsDrag}
       />
 
-      <CursorManager isHovering={props.hoveredObjectId !== null} isDragging={props.dragState?.hasMoved ?? false} />
+      <CursorManager isHovering={props.isCursorHovering} isDragging={props.dragState?.hasMoved ?? false} />
 
       <KeyboardNavigator
         controlsRef={props.controlsRef}
