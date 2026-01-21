@@ -16,9 +16,19 @@ import { formatRelativeDate } from '../utils/formatRelativeDate';
  * Uses a slate-at-rest appearance with color reveal on hover to establish
  * clear visual hierarchy where the CTA button is the primary focal point.
  */
-const HomeBranding = memo(function HomeBranding() {
+interface HomeBrandingProps {
+  /**
+   * Enables the hover color-reveal effect for the home page branding.
+   *
+   * This is intentionally opt-in so the home page can keep a stable, non-interactive
+   * brand mark (while the editor's top-left logo can remain interactive).
+   */
+  enableHover?: boolean;
+}
+
+const HomeBranding = memo(function HomeBranding({ enableHover = false }: HomeBrandingProps) {
   return (
-    <div className="group flex select-none flex-col items-center">
+    <div className={`${enableHover ? 'group ' : ''}flex select-none flex-col items-center`}>
       <div className="relative">
         {/* Glow layer - fades in on hover */}
         <div
@@ -267,7 +277,7 @@ export function HomePage(): JSX.Element {
       <main className="relative z-10 mx-auto w-full max-w-4xl px-6 py-16 sm:py-24">
         {/* Hero section */}
         <section className="flex flex-col items-center">
-          <HomeBranding />
+          <HomeBranding enableHover={false} />
 
           <p className="mt-8 text-center text-sm leading-relaxed text-slate-400">
             Create immersive training simulations for your team
