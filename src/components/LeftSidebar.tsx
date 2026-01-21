@@ -164,7 +164,7 @@ const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClick }) =>
         strokeWidth={isActive ? 2.5 : 2}
         className="transition-transform duration-300 group-hover:scale-110"
       />
-      <span className="text-[10px] font-semibold tracking-tight">{label}</span>
+      <span className="text-xs font-semibold tracking-tight">{label}</span>
     </button>
   );
 });
@@ -569,7 +569,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
       return (
         <div className="flex flex-col gap-1" data-step-id={step.id}>
           {/* Static slot label - stays in place */}
-          <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Step {stepNumber}
           </span>
           {/* Sortable Step Content */}
@@ -598,7 +598,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
     return (
       <div className="flex flex-col gap-1" data-step-id={step.id}>
         {/* Static slot label - stays in place */}
-        <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <span className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
           Step {stepNumber}
         </span>
 
@@ -640,7 +640,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
                   `}
                 >
                   <stepTypeConfig.icon size={12} className={stepTypeConfig.color} />
-                  <span className="text-[10px] font-medium text-slate-600">
+                  <span className="text-xs font-medium text-slate-600">
                     {stepTypeConfig.label}
                   </span>
                 </div>
@@ -648,7 +648,7 @@ const SortableStepItem = memo<SortableStepItemProps>(
                 /* No Type Badge - shown when step type is not selected */
                 <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border border-slate-200/60 bg-gradient-to-br from-slate-50/60 to-slate-100/30 px-2 py-0.5">
                   <CircleDashed size={12} className="text-slate-400" />
-                  <span className="text-[10px] font-medium text-slate-400">No Type</span>
+                  <span className="text-xs font-medium text-slate-400">No Type</span>
                 </div>
               )}
             </div>

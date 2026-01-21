@@ -255,12 +255,12 @@ const ScaleSection = memo<ScaleSectionProps>(
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Scaling size={12} className="text-slate-500" />
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
               Scale
             </label>
           </div>
           <span
-            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
+            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-500 shadow-sm"
             data-testid="scale-value"
           >
             {currentScale.toFixed(2)}x
@@ -281,7 +281,7 @@ const ScaleSection = memo<ScaleSectionProps>(
           aria-label="Scale slider"
           data-testid="scale-slider"
         />
-        <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
+        <div className="mt-1 flex justify-between text-xs font-medium text-slate-400">
           <span>0.1x</span>
           <span>3.0x</span>
         </div>
@@ -366,10 +366,10 @@ const AxisSlider = memo<{
     <div className="space-y-1">
       {showLabel && (
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             {label || axis.toUpperCase()}
           </span>
-          <span className="font-mono text-[9px] font-medium text-slate-400">
+          <span className="font-mono text-xs font-medium text-slate-400">
             {Math.round(displayRotation)}°
           </span>
         </div>
@@ -491,12 +491,12 @@ const RotationSection = memo<RotationSectionProps>(
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Rotate3d size={12} className="text-slate-500" />
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
               Rotation
             </label>
           </div>
           <span
-            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 shadow-sm"
+            className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-500 shadow-sm"
             data-testid="rotation-value"
           >
             {Math.round(displayRotationY)}°
@@ -536,7 +536,7 @@ const RotationSection = memo<RotationSectionProps>(
             data-testid="rotation-slider"
           />
         </div>
-        <div className="mt-1 flex justify-between text-[9px] font-medium text-slate-400">
+        <div className="mt-1 flex justify-between text-xs font-medium text-slate-400">
           <span>-180°</span>
           <span className="text-slate-300">0°</span>
           <span>180°</span>
@@ -545,7 +545,7 @@ const RotationSection = memo<RotationSectionProps>(
         {/* Expandable Advanced Options */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1 rounded-[10px] py-1.5 text-[10px] font-medium text-slate-400 transition-all hover:bg-white/50 hover:text-slate-600"
+          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1 rounded-[10px] py-1.5 text-xs font-medium text-slate-400 transition-all hover:bg-white/50 hover:text-slate-600"
           aria-expanded={isExpanded}
           data-testid="rotation-expand-button"
         >
@@ -617,7 +617,7 @@ const HelpTooltip = memo<{ targetRef: React.RefObject<HTMLDivElement | null>; sh
 
     return createPortal(
       <div
-        className="pointer-events-none fixed z-[100] w-52 -translate-x-1/2 -translate-y-full rounded-lg border border-white/40 bg-slate-800/95 px-3 py-2 text-center text-[11px] leading-relaxed text-white shadow-lg backdrop-blur-sm"
+        className="pointer-events-none fixed z-[100] w-52 -translate-x-1/2 -translate-y-full rounded-lg border border-white/40 bg-slate-800/95 px-3 py-2 text-center text-xs leading-relaxed text-white shadow-lg backdrop-blur-sm"
         style={{ top: position.top, left: position.left }}
       >
         <div className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-white/40 bg-slate-800/95" />

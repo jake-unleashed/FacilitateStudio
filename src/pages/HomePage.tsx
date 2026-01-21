@@ -133,7 +133,7 @@ const ProjectCard = memo(function ProjectCard({ project, onOpen, onDelete }: Pro
       <h3 className="truncate text-sm font-bold text-slate-700 transition-colors group-hover:text-slate-900">
         {project.name}
       </h3>
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+      <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
         <Clock size={10} aria-hidden="true" />
         <time dateTime={project.updatedAt}>{formatRelativeDate(project.updatedAt)}</time>
       </div>

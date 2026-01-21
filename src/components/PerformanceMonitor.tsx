@@ -110,7 +110,7 @@ const StatsDisplay = memo<StatsDisplayProps>(({ stats, onClose, position }) => {
             <div className="flex h-5 w-5 items-center justify-center rounded-[8px] bg-emerald-500/20 text-emerald-400">
               <Activity size={10} />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Performance
             </span>
           </div>
@@ -141,14 +141,14 @@ const StatsDisplay = memo<StatsDisplayProps>(({ stats, onClose, position }) => {
 
           {/* Draw Calls */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-500">▶</span>
+            <span className="text-xs text-slate-500">▶</span>
             <span className="text-slate-400">Draws</span>
           </div>
           <span className="text-right font-medium text-slate-300">{stats.drawCalls}</span>
 
           {/* Triangles */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-500">△</span>
+            <span className="text-xs text-slate-500">△</span>
             <span className="text-slate-400">Tris</span>
           </div>
           <span className="text-right font-medium text-slate-300">
@@ -159,7 +159,7 @@ const StatsDisplay = memo<StatsDisplayProps>(({ stats, onClose, position }) => {
           {stats.memory > 0 && (
             <>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-slate-500">⬢</span>
+                <span className="text-xs text-slate-500">⬢</span>
                 <span className="text-slate-400">Mem</span>
               </div>
               <span className="text-right font-medium text-slate-300">{stats.memory}MB</span>

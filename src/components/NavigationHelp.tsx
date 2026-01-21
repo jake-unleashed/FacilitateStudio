@@ -17,7 +17,7 @@ interface NavigationHelpProps {
 
 // Memoized keyboard shortcut badge component
 const KeyBadge = memo<{ children: React.ReactNode }>(({ children }) => (
-  <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded bg-slate-200/80 px-1 py-0.5 text-[8px] font-bold text-slate-500">
+  <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded bg-slate-200/80 px-1 py-0.5 text-xs font-bold leading-none text-slate-500">
     {children}
   </span>
 ));
@@ -47,7 +47,7 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
             p-4 shadow-glass backdrop-blur-xl duration-300
           "
         >
-          <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
             Navigation
           </h3>
 
@@ -58,8 +58,8 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                 <Rotate3d size={14} />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-semibold text-slate-700">Orbit</span>
-                <span className="text-[9px] text-slate-400">Left Click + Drag</span>
+                <span className="text-xs font-semibold text-slate-700">Orbit</span>
+                <span className="text-xs text-slate-400">Left Click + Drag</span>
               </div>
             </div>
 
@@ -69,8 +69,8 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                 <Move size={14} />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-semibold text-slate-700">Pan</span>
-                <span className="text-[9px] text-slate-400">Right Click + Drag</span>
+                <span className="text-xs font-semibold text-slate-700">Pan</span>
+                <span className="text-xs text-slate-400">Right Click + Drag</span>
               </div>
             </div>
 
@@ -80,8 +80,8 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                 <ZoomIn size={14} />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-semibold text-slate-700">Zoom</span>
-                <span className="text-[9px] text-slate-400">Scroll Wheel</span>
+                <span className="text-xs font-semibold text-slate-700">Zoom</span>
+                <span className="text-xs text-slate-400">Scroll Wheel</span>
               </div>
             </div>
 
@@ -89,7 +89,7 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
             <div className="mt-3 border-t border-slate-200/50 pt-2">
               <button
                 onClick={toggleKeyboard}
-                className="flex w-full items-center justify-between py-1 text-[9px] font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-600"
+                className="flex w-full items-center justify-between py-1 text-xs font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-600"
               >
                 <span>Keyboard Shortcuts</span>
                 <ChevronDown
@@ -104,7 +104,7 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Keyboard size={10} className="text-emerald-500" />
-                      <span className="text-[9px] text-slate-600">Move</span>
+                      <span className="text-xs text-slate-600">Move</span>
                     </div>
                     <div className="flex gap-0.5">
                       <KeyBadge>W</KeyBadge>
@@ -118,7 +118,7 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Rotate3d size={10} className="text-cyan-500" />
-                      <span className="text-[9px] text-slate-600">Rotate</span>
+                      <span className="text-xs text-slate-600">Rotate</span>
                     </div>
                     <div className="flex gap-0.5">
                       <KeyBadge>Q</KeyBadge>
@@ -130,7 +130,7 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Focus size={10} className="text-pink-500" />
-                      <span className="text-[9px] text-slate-600">Focus Object</span>
+                      <span className="text-xs text-slate-600">Focus Object</span>
                     </div>
                     <KeyBadge>F</KeyBadge>
                   </div>
@@ -139,7 +139,7 @@ const NavigationHelpInner: React.FC<NavigationHelpProps> = ({ offsetForSidebar =
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Scan size={10} className="text-orange-500" />
-                      <span className="text-[9px] text-slate-600">Reset View</span>
+                      <span className="text-xs text-slate-600">Reset View</span>
                     </div>
                     <KeyBadge>0</KeyBadge>
                   </div>

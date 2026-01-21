@@ -824,7 +824,7 @@ export const StepCard = forwardRef<StepCardHandle, StepCardProps>(({
 
                     {/* Description - hidden by default, fades in on hover */}
                     <div className="absolute inset-0 flex items-center justify-center px-6 opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100">
-                      <p className="text-center text-[11px] font-medium leading-relaxed text-slate-600">
+                      <p className="text-center text-xs font-medium leading-relaxed text-slate-600">
                         {stepType.description}
                       </p>
                     </div>

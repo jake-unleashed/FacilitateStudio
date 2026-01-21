@@ -62,7 +62,7 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
 
             {/* Debug Actions */}
             <div className="flex flex-col gap-2">
-              <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <p className="pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
                 Add Objects
               </p>
               <Button
@@ -76,7 +76,7 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
               </Button>
               {onPopulateTestSteps && (
                 <>
-                  <p className="mt-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  <p className="mt-2 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
                     Testing
                   </p>
                   <Button

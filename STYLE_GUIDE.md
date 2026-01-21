@@ -16,6 +16,9 @@ A comprehensive reference for all visual and styling patterns used in this appli
 
 ## 2. Typography
 
+### Accessibility baseline (minimum readable text)
+- **Minimum readable UI text size**: `text-xs` (12px). See `ACCESSIBILITY_DECISIONS.md`.
+
 ### Font Families
 
 | Purpose | Font | Tailwind Class |
@@ -39,11 +42,11 @@ A comprehensive reference for all visual and styling patterns used in this appli
 | Element | Size | Weight | Tracking | Additional |
 |---------|------|--------|----------|------------|
 | Brand title | text-xl | font-black | tracking-tight | leading-none |
-| Brand subtitle | text-[9px] | font-bold | tracking-[0.35em] | uppercase |
+| Brand subtitle | text-[9px] | font-bold | tracking-[0.35em] | uppercase (approved exception; see `ACCESSIBILITY_DECISIONS.md`) |
 | Panel headings | text-lg | font-bold | tracking-tight | — |
-| Section labels | text-xs or text-[10px] | font-bold | tracking-widest | uppercase, text-slate-400 |
+| Section labels | text-xs | font-bold | tracking-widest | uppercase, text-slate-400 |
 | Body text | text-sm | font-medium | — | text-slate-700 |
-| Small labels | text-[10px] | font-semibold or font-medium | tracking-tight | — |
+| Small labels | text-xs | font-semibold or font-medium | tracking-tight | — |
 | Monospace values | text-xs | font-bold | — | font-mono |
 
 ---
@@ -193,7 +196,7 @@ disabled:opacity-50 disabled:cursor-not-allowed
 
 ```
 Container: flex flex-col gap-2
-Label: pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-500
+Label: pl-1 text-xs font-bold uppercase tracking-widest text-slate-500
 Input: rounded-[20px] border border-transparent bg-slate-100/50 px-4 py-2.5 text-sm
 ```
 
@@ -503,7 +506,7 @@ hover:bg-white hover:shadow-md
 
 **Step Number Badge:**
 ```
-h-6 w-6 rounded-full text-[10px] font-bold shadow-sm
+h-6 w-6 rounded-full text-xs font-bold shadow-sm
 Completed: bg-blue-500 text-white
 Incomplete: bg-slate-200 text-slate-500
 ```
@@ -548,7 +551,7 @@ hover:accent-blue-500
 
 **Range Labels:**
 ```
-text-[10px] font-medium text-slate-400
+text-xs font-medium text-slate-400
 ```
 
 ---

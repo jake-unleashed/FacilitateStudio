@@ -247,7 +247,7 @@ export function PublishedSimulationPage(): JSX.Element {
         }}
       />
 
-      <div className="pointer-events-none fixed bottom-4 right-4 z-30 rounded-full border border-slate-200/60 bg-white/90 px-3 py-1 text-[9px] font-medium text-slate-500 shadow-sm backdrop-blur-sm">
+      <div className="pointer-events-none fixed bottom-4 right-4 z-30 rounded-full border border-slate-200/60 bg-white/90 px-3 py-1 text-xs font-medium text-slate-500 shadow-sm backdrop-blur-sm">
         Powered by Facilitate
       </div>
     </div>

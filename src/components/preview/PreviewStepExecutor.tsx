@@ -29,7 +29,7 @@ const DEFAULT_MOVE_ITEM_LABEL = 'Move Item';
 const PROGRESS_BAR_CONTAINER_CLASSES =
   'flex w-72 items-center gap-2.5 rounded-[20px] border border-white/40 bg-white/70 px-4 py-2.5 shadow-glass backdrop-blur-xl sm:w-80';
 const PROGRESS_TEXT_CLASSES =
-  'whitespace-nowrap text-[10px] font-semibold leading-none tracking-tight text-slate-700';
+  'whitespace-nowrap text-xs font-semibold leading-none tracking-tight text-slate-700';
 const PROGRESS_BAR_TRACK_CLASSES =
   'h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200/30 ring-1 ring-white/30';
 const PROGRESS_BAR_FILL_CLASSES =

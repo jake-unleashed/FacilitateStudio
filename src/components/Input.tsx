@@ -9,7 +9,7 @@ export const Input: React.FC<InputProps> = ({ label, mono, className = '', ...pr
   return (
     <div className="flex flex-col gap-2">
       {label && (
-        <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+        <label className="pl-1 text-xs font-bold uppercase tracking-widest text-slate-500">
           {label}
         </label>
       )}
@@ -24,7 +24,7 @@ export const Input: React.FC<InputProps> = ({ label, mono, className = '', ...pr
           hover:bg-slate-100/80 focus:border-blue-400/50 focus:bg-white
           focus:outline-none focus:ring-4
           focus:ring-blue-500/10
-          ${mono ? 'font-mono text-xs' : 'font-sans'}
+          ${mono ? 'font-mono' : 'font-sans'}
           ${className}
         `}
         {...props}
