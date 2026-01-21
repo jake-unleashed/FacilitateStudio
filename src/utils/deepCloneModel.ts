@@ -33,12 +33,10 @@ import * as THREE from 'three';
  */
 export function deepCloneModel(source: THREE.Object3D): THREE.Object3D {
   // Clone the object hierarchy
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cloned = (source as any).clone(true) as THREE.Object3D;
+  const cloned = source.clone(true);
 
   // Deep-clone all materials to prevent shared state issues
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (cloned as any).traverse((child: THREE.Object3D) => {
+  cloned.traverse((child: THREE.Object3D) => {
     if (child instanceof THREE.Mesh && child.material) {
       child.material = cloneMaterial(child.material);
     }

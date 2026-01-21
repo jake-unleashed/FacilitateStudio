@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -6,14 +6,21 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input: React.FC<InputProps> = ({ label, mono, className = '', ...props }) => {
+  const generatedId = useId();
+  const inputId = props.id ?? generatedId;
+
   return (
     <div className="flex flex-col gap-2">
       {label && (
-        <label className="pl-1 text-xs font-bold uppercase tracking-widest text-slate-500">
+        <label
+          htmlFor={inputId}
+          className="pl-1 text-xs font-bold uppercase tracking-widest text-slate-500"
+        >
           {label}
         </label>
       )}
       <input
+        id={inputId}
         className={`
           w-full rounded-[20px] border border-transparent bg-slate-100/50 
           px-4 py-2.5 text-sm

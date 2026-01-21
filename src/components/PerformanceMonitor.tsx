@@ -28,6 +28,7 @@ const StatsCollector: React.FC<StatsCollectorProps> = ({ onStats }) => {
   const lastTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
   const updateIntervalRef = useRef(0);
+  type PerformanceWithMemory = Performance & { memory?: { usedJSHeapSize: number } };
 
   useFrame(() => {
     const now = performance.now();
@@ -55,8 +56,8 @@ const StatsCollector: React.FC<StatsCollectorProps> = ({ onStats }) => {
       const triangles = info.render.triangles;
 
       // Get memory usage (if available)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const memory = (performance as any).memory?.usedJSHeapSize / 1024 / 1024 || 0;
+      const memoryBytes = (performance as PerformanceWithMemory).memory?.usedJSHeapSize;
+      const memory = memoryBytes ? memoryBytes / 1024 / 1024 : 0;
 
       onStats({
         fps: Math.round(fps),

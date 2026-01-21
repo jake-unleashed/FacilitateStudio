@@ -23,8 +23,7 @@ import { enhanceMaterial, guessMaterialCategory, MaterialCategory } from './smar
 // Development Mode Detection
 // =============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const IS_DEV = (import.meta as any).env?.DEV ?? process.env.NODE_ENV === 'development';
+const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
 
 // =============================================================================
 // Texture Detection
@@ -65,8 +64,7 @@ const LINEAR_TEXTURE_PROPERTIES = [
  */
 function hasValidTextures(material: THREE.Material): boolean {
   for (const prop of TEXTURE_PROPERTIES) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const texture = (material as any)[prop];
+    const texture = (material as unknown as Record<string, unknown>)[prop];
     if (texture instanceof THREE.Texture) {
       // Texture exists - check if it has image data
       if (texture.image) {
@@ -83,8 +81,7 @@ function hasValidTextures(material: THREE.Material): boolean {
  */
 function hasAnyTextures(material: THREE.Material): boolean {
   for (const prop of TEXTURE_PROPERTIES) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const texture = (material as any)[prop];
+    const texture = (material as unknown as Record<string, unknown>)[prop];
     if (texture instanceof THREE.Texture) {
       return true;
     }
@@ -102,8 +99,7 @@ function hasAnyTextures(material: THREE.Material): boolean {
 function fixTextureColorSpace(material: THREE.Material): void {
   // Fix SRGB textures (color data)
   for (const prop of SRGB_TEXTURE_PROPERTIES) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const texture = (material as any)[prop];
+    const texture = (material as unknown as Record<string, unknown>)[prop];
     if (texture instanceof THREE.Texture) {
       // Only set if not already correct (avoid unnecessary updates)
       if (texture.colorSpace !== THREE.SRGBColorSpace) {
@@ -115,8 +111,7 @@ function fixTextureColorSpace(material: THREE.Material): void {
 
   // Fix Linear textures (data, not color)
   for (const prop of LINEAR_TEXTURE_PROPERTIES) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const texture = (material as any)[prop];
+    const texture = (material as unknown as Record<string, unknown>)[prop];
     if (texture instanceof THREE.Texture) {
       // Only set if not already correct
       if (texture.colorSpace !== THREE.LinearSRGBColorSpace) {
@@ -133,8 +128,7 @@ function fixTextureColorSpace(material: THREE.Material): void {
 function getTextureTypes(material: THREE.Material): string[] {
   const types: string[] = [];
   for (const prop of TEXTURE_PROPERTIES) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const texture = (material as any)[prop];
+    const texture = (material as unknown as Record<string, unknown>)[prop];
     if (texture instanceof THREE.Texture && texture.image) {
       types.push(prop);
     }

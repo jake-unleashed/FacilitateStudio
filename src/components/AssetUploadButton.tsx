@@ -10,8 +10,16 @@
 
 import React, { useRef, useState, useCallback, useMemo, DragEvent } from 'react';
 import { Upload, Loader2, CheckCircle2, AlertTriangle, FileBox } from 'lucide-react';
-import { UploadProgress, UploadStage, validateModelFile, FILE_TYPE_LABELS } from '../types/model';
+import { UploadProgress, validateModelFile } from '../types/model';
 import { usePopup } from '../contexts/PopupContext';
+import {
+  ACCEPTED_EXTENSIONS,
+  ACCEPTED_FORMATS,
+  STAGE_CONFIG,
+  SUCCESS_DISPLAY_DURATION,
+  SUPPORTED_FORMATS_TEXT,
+} from './assetUpload/constants';
+import type { InternalState } from './assetUpload/types';
 
 // =============================================================================
 // Types
@@ -27,37 +35,6 @@ interface AssetUploadButtonProps {
   /** External progress state from useModelUpload hook */
   uploadProgress?: UploadProgress;
 }
-
-interface InternalState {
-  isUploading: boolean;
-  error: string | null;
-  fileName: string | null;
-  stage: UploadStage;
-}
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const ACCEPTED_FORMATS = '.obj,.fbx,.glb';
-const ACCEPTED_EXTENSIONS = new Set<string>(['obj', 'fbx', 'glb']);
-
-/** Display configuration for each upload stage */
-const STAGE_CONFIG: Record<UploadStage, { label: string; progress: number }> = {
-  idle: { label: 'Upload 3D Model', progress: 0 },
-  validating: { label: 'Validating...', progress: 10 },
-  storing: { label: 'Storing...', progress: 25 },
-  processing: { label: 'Processing model...', progress: 50 },
-  adding: { label: 'Adding to scene...', progress: 85 },
-  complete: { label: 'Complete!', progress: 100 },
-  error: { label: 'Upload failed', progress: 0 },
-};
-
-/** Time to show success message before resetting (ms) */
-const SUCCESS_DISPLAY_DURATION = 1500;
-
-/** Supported file types for display */
-const SUPPORTED_FORMATS_TEXT = Object.values(FILE_TYPE_LABELS).join(', ');
 
 // =============================================================================
 // Component

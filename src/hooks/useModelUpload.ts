@@ -10,8 +10,8 @@
  * Designed for clean separation between storage/processing and scene logic.
  */
 
-import { useCallback, useState, useRef, useEffect } from 'react';
-import { SceneObject } from '../types';
+import { useCallback, useState, useRef } from 'react';
+import type { SceneObject } from '../types';
 import {
   AssetMetadata,
   ModelMetrics,
@@ -25,14 +25,16 @@ import {
   getRecentAssets,
   updateAssetMetadata,
   deleteAsset,
-  migrateLegacyAssets,
-  hasLegacyAssets,
   blobToArrayBuffer,
 } from '../utils/modelAssetStore';
 import { loadAndPreprocessModelFromArrayBuffer, extractChildMeshes } from '../utils/modelLoaders';
 import { cachePreprocessedModel } from '../utils/modelCache';
 import { ChildMesh } from '../types';
-import { MODEL_POSITION_SPACING } from '../constants';
+import { calculateOptimalPosition, generateUniqueName } from './modelUpload/positioning';
+import { createSceneObject } from './modelUpload/sceneObject';
+import { serializeMetrics } from './modelUpload/metrics';
+import { useModelUploadInit } from './modelUpload/useModelUploadInit';
+import { useAutoResetProgress } from './modelUpload/useAutoResetProgress';
 
 // Re-export types for convenience
 export type { UploadProgress };
@@ -80,161 +82,6 @@ interface UseModelUploadReturn {
 }
 
 // =============================================================================
-// Positioning Utilities
-// =============================================================================
-
-/**
- * Calculate optimal position for a new model to avoid overlapping existing objects.
- * Uses a spiral pattern to find an empty spot.
- */
-function calculateOptimalPosition(
-  modelMetrics: ModelMetrics,
-  existingObjects: SceneObject[]
-): { x: number; y: number; z: number } {
-  if (existingObjects.length === 0) {
-    return { x: 0, y: 0, z: 0 };
-  }
-
-  const spacing = Math.max(MODEL_POSITION_SPACING, modelMetrics.maxDimension * 1.5);
-
-  // Spiral outward to find non-overlapping position
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const angle = attempt * 0.5 * Math.PI;
-    const radius = spacing * (1 + Math.floor(attempt / 4));
-    const x = Math.round(Math.cos(angle) * radius * 100) / 100;
-    const z = Math.round(Math.sin(angle) * radius * 100) / 100;
-
-    const hasOverlap = existingObjects.some((obj) => {
-      const dx = obj.transform.x / 100 - x;
-      const dz = obj.transform.z / 100 - z;
-      return Math.sqrt(dx * dx + dz * dz) < spacing;
-    });
-
-    if (!hasOverlap) {
-      return { x, y: 0, z };
-    }
-  }
-
-  // Fallback: return last calculated position
-  return { x: spacing * 5, y: 0, z: spacing * 5 };
-}
-
-/**
- * Generate a unique name for the model, avoiding duplicates.
- */
-function generateUniqueName(baseName: string, existingObjects: SceneObject[]): string {
-  // Sanitize: remove extension, special chars, trim
-  let name = baseName
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[^a-zA-Z0-9\s\-_]/g, '')
-    .trim()
-    .substring(0, 50);
-
-  if (!name) name = 'Uploaded Model';
-
-  const existingNames = new Set(existingObjects.map((obj) => obj.name));
-
-  if (!existingNames.has(name)) return name;
-
-  // Append incrementing number
-  let counter = 2;
-  while (existingNames.has(`${name} ${counter}`)) {
-    counter++;
-  }
-
-  return `${name} ${counter}`;
-}
-
-/**
- * Create a SceneObject from asset metadata and metrics.
- */
-function createSceneObject(
-  assetId: string,
-  name: string,
-  position: { x: number; y: number; z: number },
-  metrics: ModelMetrics,
-  children?: ChildMesh[]
-): SceneObject {
-  // Create the initial transform
-  const transform = {
-    x: Math.round(position.x * 100),
-    y: Math.round(position.y * 100),
-    z: Math.round(position.z * 100),
-    rotationX: 0,
-    rotationY: 0,
-    rotationZ: 0,
-    scaleX: 1,
-    scaleY: 1,
-    scaleZ: 1,
-  };
-
-  return {
-    id: crypto.randomUUID(),
-    name,
-    type: 'mesh',
-    transform,
-    // Store original transform for restore functionality
-    originalTransform: { ...transform },
-    properties: {
-      visible: true,
-      modelAssetId: assetId,
-      // Store model dimensions for accurate ground height calculations during scale/rotation
-      // This is the preprocessed model's height in world units (before any scale applied)
-      modelHeight: metrics.size.y,
-      // Store the base scale factor applied during preprocessing to normalize the model.
-      // This is useful for debugging and potential future features like "show original size".
-      // The user's scale controls (scaleX/Y/Z) multiply on top of this base scale.
-      baseScale: metrics.originalScale,
-    },
-    children: children && children.length > 0 ? children : undefined,
-  };
-}
-
-/**
- * Serialize THREE.js metrics to plain JSON objects.
- *
- * @param metrics - The metrics from preprocessing (may contain THREE.js Vector3/Box3)
- * @param originalScale - The scale factor applied during preprocessing to normalize the model
- */
-function serializeMetrics(
-  metrics: {
-    boundingBox: {
-      min: { x: number; y: number; z: number };
-      max: { x: number; y: number; z: number };
-    };
-    center: { x: number; y: number; z: number };
-    size: { x: number; y: number; z: number };
-    bottomY: number;
-    topY: number;
-    maxDimension: number;
-    triangleCount?: number;
-  },
-  originalScale?: number
-): ModelMetrics {
-  return {
-    boundingBox: {
-      min: {
-        x: metrics.boundingBox.min.x,
-        y: metrics.boundingBox.min.y,
-        z: metrics.boundingBox.min.z,
-      },
-      max: {
-        x: metrics.boundingBox.max.x,
-        y: metrics.boundingBox.max.y,
-        z: metrics.boundingBox.max.z,
-      },
-    },
-    center: { x: metrics.center.x, y: metrics.center.y, z: metrics.center.z },
-    size: { x: metrics.size.x, y: metrics.size.y, z: metrics.size.z },
-    bottomY: metrics.bottomY,
-    topY: metrics.topY,
-    maxDimension: metrics.maxDimension,
-    triangleCount: metrics.triangleCount,
-    originalScale,
-  };
-}
-
-// =============================================================================
 // Hook Implementation
 // =============================================================================
 
@@ -247,37 +94,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   // This allows the button to stay usable while showing the error
   const [lastError, setLastError] = useState<string | null>(null);
   const hasMigratedRef = useRef(false);
-  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useModelUploadInit({ setRecentAssets, hasMigratedRef });
 
-  // ---------------------------------------------------------------------------
-  // Initialization: Migrate legacy assets and load recent assets
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    const init = async () => {
-      // Run migration once
-      if (!hasMigratedRef.current && hasLegacyAssets()) {
-        hasMigratedRef.current = true;
-        try {
-          const count = await migrateLegacyAssets();
-          if (count > 0) {
-            console.log(`[useModelUpload] Migrated ${count} legacy assets`);
-          }
-        } catch (error) {
-          console.error('[useModelUpload] Migration failed:', error);
-        }
-      }
-
-      // Load recent assets
-      try {
-        setRecentAssets(await getRecentAssets(20));
-      } catch (error) {
-        console.error('[useModelUpload] Failed to load recent assets:', error);
-      }
-    };
-
-    init();
-  }, []);
+  // (init behavior extracted to useModelUploadInit)
 
   // ---------------------------------------------------------------------------
   // Progress Helpers
@@ -320,32 +139,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   // Auto-reset progress after successful upload
   // ---------------------------------------------------------------------------
 
-  // Auto-reset delay: Time to show "Added to scene" message before resetting to "Upload 3D Model"
-  const AUTO_RESET_DELAY_MS = 2500;
-
-  useEffect(() => {
-    // Clear any existing timeout when stage changes
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-
-    // If upload completes successfully, auto-reset after delay
-    if (uploadProgress.stage === 'complete') {
-      resetTimeoutRef.current = setTimeout(() => {
-        resetProgress();
-        resetTimeoutRef.current = null;
-      }, AUTO_RESET_DELAY_MS);
-    }
-
-    // Cleanup: clear timeout on unmount or when stage changes
-    return () => {
-      if (resetTimeoutRef.current) {
-        clearTimeout(resetTimeoutRef.current);
-        resetTimeoutRef.current = null;
-      }
-    };
-  }, [uploadProgress.stage, resetProgress]);
+  useAutoResetProgress({ stage: uploadProgress.stage, resetProgress });
 
   // ---------------------------------------------------------------------------
   // Refresh Recent Assets

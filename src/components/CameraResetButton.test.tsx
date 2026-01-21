@@ -22,9 +22,8 @@ describe('CameraResetButton', () => {
   });
 
   it('calls setLookAt with correct parameters when clicked', () => {
-    const mockControls = createMockCameraControls();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockRef = { current: mockControls as any };
+    const mockControls = createMockCameraControls() as unknown as import('camera-controls').default;
+    const mockRef = { current: mockControls };
 
     render(<CameraResetButton cameraControlsRef={mockRef} />);
 
@@ -38,9 +37,8 @@ describe('CameraResetButton', () => {
   });
 
   it('calls setLookAt only once per click', () => {
-    const mockControls = createMockCameraControls();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockRef = { current: mockControls as any };
+    const mockControls = createMockCameraControls() as unknown as import('camera-controls').default;
+    const mockRef = { current: mockControls };
 
     render(<CameraResetButton cameraControlsRef={mockRef} />);
 

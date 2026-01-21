@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Project } from '../types/project';
 import type { SceneObject, SimStep } from '../types';
+import { hasSerializedChanged, serializeSnapshot, type SaveDataSnapshot, type SerializedSnapshot } from './projectAutoSave/utils';
+import { createRunSave } from './projectAutoSave/createRunSave';
 
 export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
@@ -12,12 +14,6 @@ export interface UseProjectAutoSaveArgs {
   saveProject: (project: Project) => Promise<void>;
   captureThumbnail?: () => Promise<string | undefined>;
   debounceMs?: number;
-}
-
-interface SaveDataSnapshot {
-  name: string;
-  objects: SceneObject[];
-  steps: SimStep[];
 }
 
 export interface UseProjectAutoSaveResult {
@@ -36,61 +32,6 @@ export interface UseProjectAutoSaveResult {
   }) => Promise<void>;
   /** Best-effort synchronous flush (for beforeunload) */
   flushSaveNow: () => void;
-}
-
-function toError(err: unknown): Error {
-  if (err instanceof Error) return err;
-  return new Error(typeof err === 'string' ? err : 'Unknown save error');
-}
-
-function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('Timed out')), timeoutMs);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
-
-/**
- * Pre-serialized snapshot for efficient comparisons.
- *
- * We store the JSON strings so we don't repeatedly `JSON.stringify` the saved baseline
- * when checking for dirty state.
- */
-interface SerializedSnapshot {
-  name: string;
-  objectsLen: number;
-  stepsLen: number;
-  objectsJson: string;
-  stepsJson: string;
-}
-
-function serializeSnapshot(data: SaveDataSnapshot): SerializedSnapshot {
-  return {
-    name: data.name,
-    objectsLen: data.objects.length,
-    stepsLen: data.steps.length,
-    objectsJson: JSON.stringify(data.objects),
-    stepsJson: JSON.stringify(data.steps),
-  };
-}
-
-function hasSerializedChanged(current: SerializedSnapshot, saved: SerializedSnapshot | null): boolean {
-  if (!saved) return false; // No baseline yet
-  if (current.name !== saved.name) return true;
-  if (current.objectsLen !== saved.objectsLen) return true;
-  if (current.stepsLen !== saved.stepsLen) return true;
-  if (current.objectsJson !== saved.objectsJson) return true;
-  if (current.stepsJson !== saved.stepsJson) return true;
-  return false;
 }
 
 export function useProjectAutoSave({
@@ -169,105 +110,23 @@ export function useProjectAutoSave({
     [name, objects, steps]
   );
 
-  const runSave = useCallback(
-    async (opts: {
-      includeThumbnail: boolean;
-      thumbnailTimeoutMs?: number;
-      dataOverride?: SaveDataSnapshot;
-    }) => {
-      const queueOn = inFlightSaveRef.current ?? Promise.resolve();
-
-      const next = queueOn.then(async () => {
-        const base = latestRef.current.project;
-        if (!base) return;
-
-        const data = computeCurrentData(opts.dataOverride);
-        const serialized = serializeSnapshot(data);
-        if (hasBaselineRef.current && !hasSerializedChanged(serialized, lastSavedSerializedRef.current)) {
-          if (isMountedRef.current) {
-            setStatus('saved');
-            setLastError(null);
-          }
-          return;
-        }
-
-        if (isMountedRef.current) {
-          setStatus('saving');
-          setLastError(null);
-        }
-
-        // Capture thumbnail if requested with timeout
-        let preferredThumbnail: string | undefined;
-        if (
-          opts.includeThumbnail &&
-          captureThumbnailRef.current &&
-          opts.thumbnailTimeoutMs != null
-        ) {
-          try {
-            preferredThumbnail = await withTimeout(
-              captureThumbnailRef.current(),
-              opts.thumbnailTimeoutMs
-            );
-          } catch {
-            preferredThumbnail = undefined;
-          }
-        }
-
-        const updated = buildProject(base, data, preferredThumbnail ?? base.thumbnail);
-
-        // Save core data (awaitable)
-        try {
-          await saveProjectRef.current(updated);
-          lastSavedDataRef.current = data;
-          lastSavedSerializedRef.current = serialized;
-        } catch (err) {
-          const e = toError(err);
-          if (isMountedRef.current) {
-            setStatus('error');
-            setLastError(e);
-          }
-          throw e;
-        }
-
-        // For background autosave, capture thumbnail after core save (non-blocking)
-        if (
-          opts.includeThumbnail &&
-          captureThumbnailRef.current &&
-          opts.thumbnailTimeoutMs == null
-        ) {
-          try {
-            const captured = await captureThumbnailRef.current();
-            if (captured) {
-              const updatedWithThumb = buildProject(base, data, captured);
-              await saveProjectRef.current(updatedWithThumb);
-            }
-          } catch {
-            // Ignore thumbnail errors
-          }
-        }
-
-        if (isMountedRef.current) {
-          setStatus('saved');
-          setLastSavedAt(Date.now());
-        }
-      });
-
-      // Track the in-flight save so subsequent saves can queue behind it.
-      inFlightSaveRef.current = next;
-      // Always clear the ref after completion. Ensure we never leak an unhandled rejection
-      // from the `.finally()` wrapper when `next` rejects.
-      void next
-        .finally(() => {
-          if (inFlightSaveRef.current === next) {
-            inFlightSaveRef.current = null;
-          }
-        })
-        .catch(() => {});
-
-      return next;
-    },
-    [buildProject, computeCurrentData]
-  );
+  const runSave = useMemo(() => {
+    return createRunSave({
+      latestRef,
+      saveProjectRef,
+      captureThumbnailRef,
+      buildProject,
+      computeCurrentData,
+      inFlightSaveRef,
+      lastSavedDataRef,
+      lastSavedSerializedRef,
+      hasBaselineRef,
+      isMountedRef,
+      setStatus,
+      setLastError,
+      setLastSavedAt,
+    });
+  }, [buildProject, computeCurrentData]);
 
   const flushSave = useCallback(
     async (opts?: {

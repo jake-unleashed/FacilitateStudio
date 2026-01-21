@@ -30,7 +30,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'src/test/'],
+      // Restrict coverage to actual source files only. Without this, v8 can
+      // report 0% for root configs or built assets (e.g. dist/), which skews
+      // the overall "All files" metric.
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'src/test/**',
+        'src/vite-env.d.ts',
+      ],
     },
   },
   resolve: {
