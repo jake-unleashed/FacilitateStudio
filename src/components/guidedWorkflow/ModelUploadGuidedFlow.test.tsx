@@ -37,6 +37,7 @@ describe('Guided model upload flow', () => {
     onDeleteStep: vi.fn(),
     onReorderSteps: vi.fn(),
     objects: [] as SceneObject[],
+    onUpdateObject: vi.fn(),
     onUploadAsset: vi.fn(async () => undefined),
     uploadProgress: undefined,
     recentAssets: [] as AssetMetadata[],

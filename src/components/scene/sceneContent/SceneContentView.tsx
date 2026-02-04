@@ -272,17 +272,31 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
       </ChildSelectionProvider>
 
       {!props.previewMode &&
+        !isGuidedModelUpload &&
         ((props.recordingPositionForStepId && props.ghostObject && props.selectedParentId === props.ghostObject.id) ||
-          (!props.recordingPositionForStepId && props.selectedObject)) && (
-          <TransformGizmo
-            object={props.recordingPositionForStepId && props.ghostObject ? props.ghostObject : props.selectedObject!}
-            selectedChildPath={props.selectedChildPath}
-            onUpdateObject={props.onUpdateObject}
-            onDragStart={props.onDragStart}
-            onDragEnd={props.onDragEnd}
-            isDragging={props.dragState?.hasMoved ?? false}
-          />
-        )}
+          (!props.recordingPositionForStepId && props.selectedObject)) &&
+        (() => {
+          const guidedPhase =
+            typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+          const guidedPositionMode =
+            typeof document !== 'undefined' ? document.body.dataset.guidedPositionMode : undefined;
+
+          const isGuidedPositioning = guidedPhase === 'model-positioning';
+          const shouldShowGizmo = !isGuidedPositioning || guidedPositionMode === 'position';
+
+          if (!shouldShowGizmo) return null;
+
+          return (
+            <TransformGizmo
+              object={props.recordingPositionForStepId && props.ghostObject ? props.ghostObject : props.selectedObject!}
+              selectedChildPath={props.selectedChildPath}
+              onUpdateObject={props.onUpdateObject}
+              onDragStart={props.onDragStart}
+              onDragEnd={props.onDragEnd}
+              isDragging={props.dragState?.hasMoved ?? false}
+            />
+          );
+        })()}
 
       <CameraControls
         ref={props.controlsRef}

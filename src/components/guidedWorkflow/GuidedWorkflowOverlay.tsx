@@ -5,6 +5,7 @@ import type { FocusMode, SceneObject, SimStep } from '../../types';
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import { StepCreationPhase } from './phases/StepCreationPhase';
 import { ModelUploadPhase } from './phases/ModelUploadPhase';
+import { ModelPositioningPhase, type PositioningScreen } from './phases/ModelPositioningPhase';
 
 export interface GuidedWorkflowOverlayProps {
   steps: SimStep[];
@@ -13,6 +14,9 @@ export interface GuidedWorkflowOverlayProps {
   onDeleteStep: (stepId: string) => void;
   onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
   objects: SceneObject[];
+  selectedObjectId?: string | null;
+  onSelectObject?: (id: string | null) => void;
+  onUpdateObject: (obj: SceneObject) => void;
   onUploadAsset: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
@@ -28,6 +32,9 @@ export function GuidedWorkflowOverlay({
   onDeleteStep,
   onReorderSteps,
   objects,
+  selectedObjectId,
+  onSelectObject,
+  onUpdateObject,
   onUploadAsset,
   uploadProgress,
   recentAssets,
@@ -37,6 +44,8 @@ export function GuidedWorkflowOverlay({
 }: GuidedWorkflowOverlayProps) {
   const { state, actions, isFirstPhase, isLastPhase } = useGuidedWorkflow();
   const [isSubmenuOpen, setIsSubmenuOpen] = useState(false);
+  const [positioningScreen, setPositioningScreen] =
+    useState<PositioningScreen>('object-selection');
   const hasUploadedModel = useMemo(
     () => objects.some((object) => object.type === 'mesh'),
     [objects]
@@ -47,6 +56,8 @@ export function GuidedWorkflowOverlay({
         return steps.length > 0;
       case 'model-upload':
         return hasUploadedModel;
+      case 'model-positioning':
+        return hasUploadedModel;
       default:
         return true;
     }
@@ -56,8 +67,15 @@ export function GuidedWorkflowOverlay({
     (state.currentPhase === 'model-upload' && !hasUploadedModel);
   const isStepCreation = state.currentPhase === 'step-creation';
   const isModelUpload = state.currentPhase === 'model-upload';
-  const shouldPinLeft = state.currentPhase === 'model-upload' && hasUploadedModel;
-  const shouldShowOverlayNav = !isStepCreation && !(isModelUpload && isCentered && isSubmenuOpen);
+  const isModelPositioning = state.currentPhase === 'model-positioning';
+  const shouldShowOverlayNav =
+    !isStepCreation &&
+    !(isModelUpload && isCentered && isSubmenuOpen) &&
+    (!isModelPositioning || positioningScreen === 'object-selection');
+  const continueLabel =
+    isModelPositioning && positioningScreen === 'object-selection' ? 'Looks good, continue' : 'Continue';
+
+  const skipPlacementClass = 'bottom-6 right-6';
 
   const handleSubmenuChange = useCallback((open: boolean) => {
     setIsSubmenuOpen(open);
@@ -66,12 +84,15 @@ export function GuidedWorkflowOverlay({
   useEffect(() => {
     // Prevent stale submenu state when navigating between phases.
     setIsSubmenuOpen(false);
+    if (state.currentPhase !== 'model-positioning') {
+      setPositioningScreen('object-selection');
+    }
   }, [state.currentPhase]);
 
   return (
     <div className="pointer-events-none absolute inset-0 z-50">
       {/* Skip setup button - persistent throughout all guided phases */}
-      <div className="pointer-events-auto fixed bottom-6 right-6 z-[60]">
+      <div className={`pointer-events-auto fixed z-[70] ${skipPlacementClass}`}>
         <button
           type="button"
           onClick={actions.exitWorkflow}
@@ -85,7 +106,7 @@ export function GuidedWorkflowOverlay({
         className={
           isCentered
             ? 'pointer-events-auto flex h-full w-full items-center justify-center px-6 pt-8 pb-16'
-            : `pointer-events-auto absolute ${shouldPinLeft ? 'left-4' : 'right-4'} top-24 w-[420px] max-w-[calc(100%-32px)]`
+            : 'pointer-events-auto absolute left-4 top-24 w-[420px] max-w-[calc(100%-32px)]'
         }
       >
         <div
@@ -99,7 +120,9 @@ export function GuidedWorkflowOverlay({
             className={
               isCentered
                 ? 'space-y-4'
-                : 'max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto p-6 pr-4 custom-scrollbar'
+                : isModelPositioning
+                  ? 'space-y-4 p-6'
+                  : 'max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto p-6 pr-4 custom-scrollbar'
             }
           >
             {state.currentPhase === 'step-creation' ? (
@@ -122,10 +145,18 @@ export function GuidedWorkflowOverlay({
                 onFocusObject={onFocusObject}
                 onSubmenuChange={handleSubmenuChange}
               />
+            ) : isModelPositioning ? (
+              <ModelPositioningPhase
+                objects={objects}
+                selectedObjectId={selectedObjectId ?? null}
+                onSelectObject={onSelectObject}
+                onUpdateObject={onUpdateObject}
+                onFocusObject={onFocusObject}
+                onScreenChange={setPositioningScreen}
+              />
             ) : (
               <div className="rounded-[20px] border border-white/40 bg-white/50 p-4 text-sm font-medium text-slate-600">
-                Placeholder for <span className="font-semibold">{state.currentPhase}</span> phase
-                content.
+                Placeholder for <span className="font-semibold">{state.currentPhase}</span> phase content.
               </div>
             )}
           </div>
@@ -148,7 +179,7 @@ export function GuidedWorkflowOverlay({
                 className="rounded-[20px]"
                 disabled={isLastPhase || !canContinue}
               >
-                Continue
+                {continueLabel}
               </Button>
             </div>
           )}

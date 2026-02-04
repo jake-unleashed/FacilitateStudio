@@ -102,7 +102,20 @@ function EditorPageContent() {
     // enter object manipulation modes before we introduce them.
     const guidedPhase =
       typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+    // Always allow clearing selection (used when entering phases like model-upload).
+    if (id === null) {
+      setSelectedObjectId(null);
+      return;
+    }
+
     if (guidedPhase === 'model-upload') return;
+    if (guidedPhase === 'model-positioning' && id) {
+      const parsed = parseSelectionId(id);
+      if (parsed?.objectId && parsed.childPath) {
+        setSelectedObjectId(parsed.objectId);
+        return;
+      }
+    }
     setSelectedObjectId(id);
     // Note: We no longer auto-switch panels when selecting an object.
     // Users can manually switch to the Objects tab if they want to see the hierarchy.
@@ -408,6 +421,10 @@ function EditorPageContent() {
     async (object: SceneObject, childPath?: string, focusMode: FocusMode = 'full') => {
       const controls = cameraControlsRef.current;
       if (!controls) return;
+      const guidedPhase =
+        typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+      const resolvedChildPath =
+        guidedPhase === 'model-positioning' && childPath ? undefined : childPath;
 
       const clampY = (pos: THREE.Vector3): THREE.Vector3 => {
         if (pos.y < MIN_FOCUS_CAMERA_Y) pos.y = MIN_FOCUS_CAMERA_Y;
@@ -433,7 +450,10 @@ function EditorPageContent() {
       controls.getPosition(currentPos);
 
       // Calculate focus target (orbit center and bounds size)
-      const focusTarget = await calculateFocusTargetForObject({ object, childPath });
+      const focusTarget = await calculateFocusTargetForObject({
+        object,
+        childPath: resolvedChildPath,
+      });
       const focusTargetVec = { x: focusTarget.targetX, y: focusTarget.targetY, z: focusTarget.targetZ };
 
       // Prefer occlusion-aware camera positioning if we have a scene reference.
@@ -1385,6 +1405,7 @@ function EditorPageContent() {
           onDeleteStep={handleDeleteStep}
           onReorderSteps={handleReorderSteps}
           objects={objects}
+          selectedObjectId={selectedObjectId}
           onUploadAsset={handleUploadAsset}
           uploadProgress={uploadProgress}
           recentAssets={recentAssets}
@@ -1392,6 +1413,7 @@ function EditorPageContent() {
           onDeleteObject={handleDeleteObject}
           onFocusObject={handleFocusObject}
           onSelectObject={handleSelectObject}
+          onUpdateObject={handleUpdateObject}
           editorChrome={{
             topBar: (
               <TopBar
@@ -1510,6 +1532,7 @@ interface GuidedWorkflowEntryProps {
   onDeleteStep: (stepId: string) => void;
   onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
   objects: SceneObject[];
+  selectedObjectId: string | null;
   onUploadAsset: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
@@ -1517,6 +1540,7 @@ interface GuidedWorkflowEntryProps {
   onDeleteObject?: (objectId: string) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onSelectObject: (id: string | null) => void;
+  onUpdateObject: (obj: SceneObject) => void;
   editorChrome: {
     topBar: JSX.Element;
     leftSidebar: JSX.Element;
@@ -1538,6 +1562,7 @@ function GuidedWorkflowEntry({
   onDeleteStep,
   onReorderSteps,
   objects,
+  selectedObjectId,
   onUploadAsset,
   uploadProgress,
   recentAssets,
@@ -1545,9 +1570,11 @@ function GuidedWorkflowEntry({
   onDeleteObject,
   onFocusObject,
   onSelectObject,
+  onUpdateObject,
 }: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
   const [showWelcome, setShowWelcome] = useState(false);
+  const hasAutoSelectedPositioningRef = useRef(false);
 
   useEffect(() => {
     if (!isReady) return;
@@ -1590,6 +1617,24 @@ function GuidedWorkflowEntry({
     onSelectObject(null);
   }, [onSelectObject, state.currentPhase, state.isActive]);
 
+  useEffect(() => {
+    if (!state.isActive || state.currentPhase !== 'model-positioning') {
+      hasAutoSelectedPositioningRef.current = false;
+      return;
+    }
+
+    if (hasAutoSelectedPositioningRef.current) return;
+
+    const meshObjects = objects.filter((object) => object.type === 'mesh');
+    if (meshObjects.length !== 1) return;
+
+    // Gentle first-time experience: if there’s only one model, select + focus it automatically
+    // so users immediately see the gizmo.
+    hasAutoSelectedPositioningRef.current = true;
+    onSelectObject(meshObjects[0].id);
+    onFocusObject?.(meshObjects[0], undefined, 'full');
+  }, [objects, onFocusObject, onSelectObject, state.currentPhase, state.isActive]);
+
   return (
     <>
       {!isGuidedUIMode && (
@@ -1625,6 +1670,9 @@ function GuidedWorkflowEntry({
             onDeleteStep={onDeleteStep}
             onReorderSteps={onReorderSteps}
             objects={objects}
+            selectedObjectId={selectedObjectId}
+            onSelectObject={onSelectObject}
+            onUpdateObject={onUpdateObject}
             onUploadAsset={onUploadAsset}
             uploadProgress={uploadProgress}
             recentAssets={recentAssets}
