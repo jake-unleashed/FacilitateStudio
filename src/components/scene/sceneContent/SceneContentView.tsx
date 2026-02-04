@@ -92,6 +92,8 @@ export interface SceneContentViewProps {
 
 export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const ghostObject = props.ghostObject;
+  const isNavigationDisabled =
+    typeof document !== 'undefined' && document.body.dataset.guidedNavLock === 'true';
   return (
     <>
       {IS_DEV && <ContactShadowDebugger />}
@@ -284,8 +286,9 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         ref={props.controlsRef}
         makeDefault
         enabled={
-          (!props.previewMode && (props.dragState === null || !props.dragState.canDrag) && !props.isRecentlyDragged) ||
-          (props.previewMode && props.isPositioningCameraRef.current)
+          !isNavigationDisabled &&
+          ((!props.previewMode && (props.dragState === null || !props.dragState.canDrag) && !props.isRecentlyDragged) ||
+            (props.previewMode && props.isPositioningCameraRef.current))
         }
         smoothTime={0.6}
         draggingSmoothTime={0.2}
@@ -328,6 +331,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         selectedObject={props.selectedObject}
         selectedChildPath={props.selectedChildPath}
         onFocusObject={props.onFocusObject}
+        isEnabled={!isNavigationDisabled}
       />
     </>
   );

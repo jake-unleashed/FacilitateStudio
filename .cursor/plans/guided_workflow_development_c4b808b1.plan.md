@@ -57,6 +57,15 @@ When starting a task, tell the agent:
 
 ---
 
+## UX guardrails (must follow for every task)
+
+Use the same design principles established during Step Creation:
+
+- See `.cursor/rules/guided-workflow.mdc` → **Guided Workflow UX guardrails**.
+- Keep guided workflow UI minimal and premium: one clear goal per screen, one-line “why” explanation, card-style choice buttons, persistent `Skip setup`, and stable layouts that scroll internally.
+
+---
+
 ## Task Dependency Graph
 
 ```mermaid

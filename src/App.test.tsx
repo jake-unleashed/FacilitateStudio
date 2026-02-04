@@ -16,6 +16,7 @@ vi.mock('./components/MainCanvas', () => ({
     onSelectObject: (id: string | null) => void;
     onUpdateObject: (obj: unknown) => void;
     onCameraControlsReady?: (controls: unknown) => void;
+    disableNavigation?: boolean;
   }) => (
     <div data-testid="main-canvas" onClick={() => onSelectObject(null)}>
       {objects.map((obj) => (
@@ -70,6 +71,16 @@ async function chooseStartFromScratch() {
   return user;
 }
 
+async function chooseGuidedSetup() {
+  const user = userEvent.setup();
+  // Disambiguate from the backdrop "Close guided setup modal" button
+  const guidedButton = await screen.findByRole('button', {
+    name: /guided setup.*recommended/i,
+  });
+  await user.click(guidedButton);
+  return user;
+}
+
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -80,6 +91,40 @@ describe('App', () => {
     expect(screen.getByText('Create Your Simulation')).toBeInTheDocument();
     // Editor chrome should be gated while welcome is shown
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
+  });
+
+  it('shows step creation content when guided setup is selected', async () => {
+    renderApp();
+    await chooseGuidedSetup();
+    expect(screen.getByText(/^add steps$/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upload an sop/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add steps manually/i })).toBeInTheDocument();
+  });
+
+  it('disables Continue until at least one step exists', async () => {
+    renderApp();
+    const user = await chooseGuidedSetup();
+
+    // Choice mode has no Continue button
+    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /add steps manually/i }));
+
+    const continueButton = screen.getByRole('button', { name: /continue/i });
+    expect(continueButton).toBeDisabled();
+
+    const titleInput = screen.getByLabelText(/new step title/i);
+    await user.type(titleInput, 'Inspect workstation');
+    await user.click(screen.getByRole('button', { name: /^add$/i }));
+
+    expect(continueButton).not.toBeDisabled();
+  });
+
+  it('starts progress indicator at step 1 during guided setup', async () => {
+    renderApp();
+    await chooseGuidedSetup();
+    const progressbar = screen.getByRole('progressbar', { name: /setup progress/i });
+    expect(progressbar).toHaveAttribute('aria-valuenow', '1');
   });
 
   it('renders the main application', async () => {

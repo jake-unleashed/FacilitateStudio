@@ -47,6 +47,7 @@ interface KeyboardNavigatorProps {
   selectedObject: SceneObject | null;
   selectedChildPath: string | null;
   onFocusObject?: (obj: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
+  isEnabled?: boolean;
 }
 
 /**
@@ -57,12 +58,14 @@ export const KeyboardNavigator: React.FC<KeyboardNavigatorProps> = ({
   selectedObject,
   selectedChildPath,
   onFocusObject,
+  isEnabled = true,
 }) => {
   const keysPressed = useRef<Set<string>>(new Set());
   const { gl, invalidate } = useThree();
 
   // Handle keydown
   useEffect(() => {
+    if (!isEnabled) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -102,10 +105,11 @@ export const KeyboardNavigator: React.FC<KeyboardNavigatorProps> = ({
       window.removeEventListener('keyup', handleKeyUp);
       keysPressedRef.clear(); // Clean up on unmount
     };
-  }, [gl, selectedObject, selectedChildPath, controlsRef, invalidate, onFocusObject]);
+  }, [gl, selectedObject, selectedChildPath, controlsRef, invalidate, onFocusObject, isEnabled]);
 
   // Continuous movement in useFrame for smooth WASD/arrow key navigation
   useFrame(() => {
+    if (!isEnabled) return;
     if (!controlsRef.current) return;
 
     const keys = keysPressed.current;

@@ -45,7 +45,7 @@ export interface SceneContentProps {
   onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
 }
 
-export const SceneContent: React.FC<SceneContentProps> = ({
+export function SceneContent({
   objects,
   selectedObjectId,
   onSelectObject,
@@ -66,7 +66,7 @@ export const SceneContent: React.FC<SceneContentProps> = ({
   shouldAnimateMoveItem = false,
   previewOutlineTarget = null,
   onPreviewOutlineTargetChange,
-}) => {
+}: SceneContentProps): JSX.Element {
   const controlsRef = useRef<CameraControlsImpl>(null!);
   const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
   const { invalidate, scene, camera, gl } = useThree();
@@ -501,5 +501,5 @@ export const SceneContent: React.FC<SceneContentProps> = ({
       handleMarkAsDrag={handleMarkAsDrag}
     />
   );
-};
+}
 

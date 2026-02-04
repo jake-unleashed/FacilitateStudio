@@ -1,7 +1,6 @@
 import type { GuidedWorkflowPhase } from '../../types/guidedWorkflow';
 
 const phases: GuidedWorkflowPhase[] = [
-  'welcome',
   'step-creation',
   'model-upload',
   'model-positioning',

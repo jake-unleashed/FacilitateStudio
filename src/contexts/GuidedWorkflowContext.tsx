@@ -11,7 +11,6 @@ import type {
 } from '../types/guidedWorkflow';
 
 const phaseOrder: GuidedWorkflowPhase[] = [
-  'welcome',
   'step-creation',
   'model-upload',
   'model-positioning',

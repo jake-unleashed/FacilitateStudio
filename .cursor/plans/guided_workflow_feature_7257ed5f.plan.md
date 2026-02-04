@@ -351,6 +351,18 @@ The step type system is already extensible:
 5. **State Preservation**: All changes use the existing undo/redo system
 6. **Future-Proof**: Step types automatically sync between guided and editor modes
 
+### UX guardrails (apply to every guided phase)
+
+- **No confusion**: each phase must include a single simple line explaining what’s happening and why the user is doing it.
+- **Minimal, premium UI**: one clear decision/action per screen; avoid redundant headings and over-explaining.
+- **Choice screens use card buttons**: entire option cards are clickable (WelcomeModal pattern), with clear primary/recommended vs secondary styling.
+- **Persistent `Skip setup`**: fixed bottom-left, outside the panel, always available; avoid “editor” terminology in user-facing copy.
+- **Focused layout**: center “setup” panels when they’re the primary task (especially at the start of the workflow).
+- **Lock 3D navigation when not needed**: disable camera/keyboard navigation during phases that don’t require scene interaction.
+- **Scale gracefully**: lists must scroll within their own region (panel height stays stable); ensure visual spacing so panels don’t crowd the bottom progress indicator.
+- **Mirror editor interactions**: reuse editor patterns (StepsPanel feel, reorder affordances, etc.) so guided setup trains users for the full workflow.
+- **Accessibility**: semantic controls, `aria-label`s for icon buttons, keyboard-friendly flows by default.
+
 ### Guided Mode UI Gating (Critical)
 
 - **The 3D canvas is always visible** as the background/backdrop in both guided mode and editor mode.

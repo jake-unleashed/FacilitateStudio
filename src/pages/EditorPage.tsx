@@ -1362,6 +1362,11 @@ function EditorPageContent() {
           isNewProject={
             !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0
           }
+          steps={steps}
+          onAddStep={handleAddStep}
+          onUpdateStep={handleUpdateStep}
+          onDeleteStep={handleDeleteStep}
+          onReorderSteps={handleReorderSteps}
           editorChrome={{
             topBar: (
               <TopBar
@@ -1474,6 +1479,11 @@ function EditorPageContent() {
 interface GuidedWorkflowEntryProps {
   isReady: boolean;
   isNewProject: boolean;
+  steps: SimStep[];
+  onAddStep: (step: Omit<SimStep, 'id'>) => void;
+  onUpdateStep: (step: SimStep) => void;
+  onDeleteStep: (stepId: string) => void;
+  onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
   editorChrome: {
     topBar: JSX.Element;
     leftSidebar: JSX.Element;
@@ -1485,7 +1495,16 @@ interface GuidedWorkflowEntryProps {
   };
 }
 
-function GuidedWorkflowEntry({ isReady, isNewProject, editorChrome }: GuidedWorkflowEntryProps) {
+function GuidedWorkflowEntry({
+  isReady,
+  isNewProject,
+  editorChrome,
+  steps,
+  onAddStep,
+  onUpdateStep,
+  onDeleteStep,
+  onReorderSteps,
+}: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
   const [showWelcome, setShowWelcome] = useState(false);
 
@@ -1499,6 +1518,16 @@ function GuidedWorkflowEntry({ isReady, isNewProject, editorChrome }: GuidedWork
   }, [isNewProject, isReady, state.hasDismissedWelcome, state.isActive]);
 
   const isGuidedUIMode = state.isActive || showWelcome;
+  const shouldLockNavigation =
+    showWelcome || (state.isActive && state.currentPhase === 'step-creation');
+
+  useEffect(() => {
+    if (shouldLockNavigation) {
+      document.body.dataset.guidedNavLock = 'true';
+    } else {
+      delete document.body.dataset.guidedNavLock;
+    }
+  }, [shouldLockNavigation]);
 
   return (
     <>
@@ -1528,7 +1557,13 @@ function GuidedWorkflowEntry({ isReady, isNewProject, editorChrome }: GuidedWork
       />
       {state.isActive && (
         <>
-          <GuidedWorkflowOverlay />
+          <GuidedWorkflowOverlay
+            steps={steps}
+            onAddStep={onAddStep}
+            onUpdateStep={onUpdateStep}
+            onDeleteStep={onDeleteStep}
+            onReorderSteps={onReorderSteps}
+          />
           <PhaseIndicator currentPhase={state.currentPhase} />
         </>
       )}

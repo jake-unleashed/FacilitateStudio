@@ -9,8 +9,8 @@ describe('PhaseIndicator', () => {
     const progressbar = screen.getByRole('progressbar', { name: /setup progress/i });
     expect(progressbar).toBeInTheDocument();
     expect(progressbar).toHaveAttribute('aria-valuemin', '1');
-    expect(progressbar).toHaveAttribute('aria-valuemax', '6');
-    expect(progressbar).toHaveAttribute('aria-valuenow', '3');
+    expect(progressbar).toHaveAttribute('aria-valuemax', '5');
+    expect(progressbar).toHaveAttribute('aria-valuenow', '2');
 
     // Ensure we are not listing phase labels (low cognitive load)
     expect(screen.queryByText(/welcome/i)).not.toBeInTheDocument();

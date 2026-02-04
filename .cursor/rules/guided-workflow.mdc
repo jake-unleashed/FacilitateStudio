@@ -14,3 +14,16 @@ alwaysApply: true
 - Follow `STYLE_GUIDE.md` for glass panel styling and typography
 - Prefer using existing editor behaviors and hooks over new parallel logic
 - Keep guided workflow UI simple and focused on teaching editor usage
+
+## Guided Workflow UX guardrails (keep consistent across future phases)
+
+- **One clear goal per screen**: minimal copy, no redundant headings, no walls of text.
+- **Explain “why” in one line**: each phase needs a single, plain-language sentence that makes it obvious what the user is accomplishing and why it matters.
+- **Clickable cards, not nested buttons**: when presenting choices, make the entire option card clickable (WelcomeModal pattern).
+- **Strong CTA hierarchy**: one primary/recommended action; secondary options are visually quieter.
+- **Persistent escape hatch**: keep **`Skip setup`** always visible **outside** the panel (fixed bottom-left). Avoid “editor” wording in user-facing copy.
+- **Panel focus**: for early phases (esp. step creation), center the panel and let it be the primary focal point.
+- **Avoid background confusion**: when the user isn’t meant to interact with the 3D scene, **disable navigation** (camera + keyboard).
+- **Stable layouts at scale**: lists must scroll internally (don’t let panels grow indefinitely), and ensure the panel doesn’t visually crowd the bottom progress indicator.
+- **Teach by mirroring the editor**: reuse editor interaction patterns where safe (e.g. StepsPanel-style rows + drag reorder) so guided mode trains the user.
+- **A11y baseline**: semantic buttons for interactive UI, clear `aria-label`s on icon-only controls, keyboard-friendly flows.
