@@ -94,6 +94,8 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const ghostObject = props.ghostObject;
   const isNavigationDisabled =
     typeof document !== 'undefined' && document.body.dataset.guidedNavLock === 'true';
+  const guidedPhase = typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+  const isGuidedModelUpload = guidedPhase === 'model-upload';
   return (
     <>
       {IS_DEV && <ContactShadowDebugger />}
@@ -298,20 +300,24 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         minDistance={0.5}
         maxDistance={60}
         dollySpeed={0.3}
-        dollyToCursor={true}
+        dollyToCursor={!isGuidedModelUpload}
         minPolarAngle={0}
         maxPolarAngle={Math.PI}
         minAzimuthAngle={-Infinity}
         maxAzimuthAngle={Infinity}
         touches={{
           one: CameraControlsImpl.ACTION.TOUCH_ROTATE,
-          two: CameraControlsImpl.ACTION.TOUCH_DOLLY_TRUCK,
-          three: CameraControlsImpl.ACTION.TOUCH_TRUCK,
+          two: isGuidedModelUpload
+            ? CameraControlsImpl.ACTION.TOUCH_DOLLY
+            : CameraControlsImpl.ACTION.TOUCH_DOLLY_TRUCK,
+          three: isGuidedModelUpload
+            ? CameraControlsImpl.ACTION.NONE
+            : CameraControlsImpl.ACTION.TOUCH_TRUCK,
         }}
         mouseButtons={{
           left: CameraControlsImpl.ACTION.ROTATE,
           middle: CameraControlsImpl.ACTION.DOLLY,
-          right: CameraControlsImpl.ACTION.TRUCK,
+          right: isGuidedModelUpload ? CameraControlsImpl.ACTION.NONE : CameraControlsImpl.ACTION.TRUCK,
           wheel: CameraControlsImpl.ACTION.DOLLY,
         }}
       />
@@ -331,7 +337,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         selectedObject={props.selectedObject}
         selectedChildPath={props.selectedChildPath}
         onFocusObject={props.onFocusObject}
-        isEnabled={!isNavigationDisabled}
+        isEnabled={!isNavigationDisabled && !isGuidedModelUpload}
       />
     </>
   );

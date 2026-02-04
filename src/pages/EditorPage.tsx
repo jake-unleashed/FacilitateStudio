@@ -48,7 +48,7 @@ import {
   findChildByPathString,
 } from '../utils/childTransformUtils';
 import * as THREE from 'three';
-import { AssetMetadata } from '../types/model';
+import { AssetMetadata, UploadProgress } from '../types/model';
 import {
   createUpdateObjectCommandHelper,
   createDeleteObjectCommandHelper,
@@ -98,6 +98,11 @@ function EditorPageContent() {
   // recordingPositionForStepId is owned by useRecordingEndTransform (below)
 
   const handleSelectObject = useCallback((id: string | null) => {
+    // During guided model upload, avoid selection so users don’t accidentally
+    // enter object manipulation modes before we introduce them.
+    const guidedPhase =
+      typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+    if (guidedPhase === 'model-upload') return;
     setSelectedObjectId(id);
     // Note: We no longer auto-switch panels when selecting an object.
     // Users can manually switch to the Objects tab if they want to see the hierarchy.
@@ -813,7 +818,13 @@ function EditorPageContent() {
 
       // Focus on the new object
       setTimeout(() => {
-        handleSelectObject(result.sceneObject.id);
+        const guidedPhase =
+          typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+        if (guidedPhase !== 'model-upload') {
+          handleSelectObject(result.sceneObject.id);
+        } else {
+          setSelectedObjectId(null);
+        }
         setTimeout(() => {
           if (handleFocusObject) {
             handleFocusObject(result.sceneObject);
@@ -844,7 +855,13 @@ function EditorPageContent() {
 
       // Focus on the new object
       setTimeout(() => {
-        handleSelectObject(result.sceneObject.id);
+        const guidedPhase =
+          typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+        if (guidedPhase !== 'model-upload') {
+          handleSelectObject(result.sceneObject.id);
+        } else {
+          setSelectedObjectId(null);
+        }
         setTimeout(() => {
           if (handleFocusObject) {
             handleFocusObject(result.sceneObject);
@@ -1367,6 +1384,14 @@ function EditorPageContent() {
           onUpdateStep={handleUpdateStep}
           onDeleteStep={handleDeleteStep}
           onReorderSteps={handleReorderSteps}
+          objects={objects}
+          onUploadAsset={handleUploadAsset}
+          uploadProgress={uploadProgress}
+          recentAssets={recentAssets}
+          onAddRecentAsset={handleAddRecentAsset}
+          onDeleteObject={handleDeleteObject}
+          onFocusObject={handleFocusObject}
+          onSelectObject={handleSelectObject}
           editorChrome={{
             topBar: (
               <TopBar
@@ -1484,6 +1509,14 @@ interface GuidedWorkflowEntryProps {
   onUpdateStep: (step: SimStep) => void;
   onDeleteStep: (stepId: string) => void;
   onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
+  objects: SceneObject[];
+  onUploadAsset: (file: File) => Promise<void>;
+  uploadProgress?: UploadProgress;
+  recentAssets?: AssetMetadata[];
+  onAddRecentAsset?: (asset: AssetMetadata) => void;
+  onDeleteObject?: (objectId: string) => void;
+  onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
+  onSelectObject: (id: string | null) => void;
   editorChrome: {
     topBar: JSX.Element;
     leftSidebar: JSX.Element;
@@ -1504,6 +1537,14 @@ function GuidedWorkflowEntry({
   onUpdateStep,
   onDeleteStep,
   onReorderSteps,
+  objects,
+  onUploadAsset,
+  uploadProgress,
+  recentAssets,
+  onAddRecentAsset,
+  onDeleteObject,
+  onFocusObject,
+  onSelectObject,
 }: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1522,12 +1563,32 @@ function GuidedWorkflowEntry({
     showWelcome || (state.isActive && state.currentPhase === 'step-creation');
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
     if (shouldLockNavigation) {
       document.body.dataset.guidedNavLock = 'true';
     } else {
       delete document.body.dataset.guidedNavLock;
     }
   }, [shouldLockNavigation]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (state.isActive) {
+      document.body.dataset.guidedPhase = state.currentPhase;
+    } else {
+      delete document.body.dataset.guidedPhase;
+    }
+    return () => {
+      delete document.body.dataset.guidedPhase;
+    };
+  }, [state.currentPhase, state.isActive]);
+
+  useEffect(() => {
+    if (!state.isActive) return;
+    if (state.currentPhase !== 'model-upload') return;
+    // Ensure nothing is selected during model upload.
+    onSelectObject(null);
+  }, [onSelectObject, state.currentPhase, state.isActive]);
 
   return (
     <>
@@ -1563,6 +1624,13 @@ function GuidedWorkflowEntry({
             onUpdateStep={onUpdateStep}
             onDeleteStep={onDeleteStep}
             onReorderSteps={onReorderSteps}
+            objects={objects}
+            onUploadAsset={onUploadAsset}
+            uploadProgress={uploadProgress}
+            recentAssets={recentAssets}
+            onAddRecentAsset={onAddRecentAsset}
+            onDeleteObject={onDeleteObject}
+            onFocusObject={onFocusObject}
           />
           <PhaseIndicator currentPhase={state.currentPhase} />
         </>
