@@ -1,0 +1,16 @@
+---
+description: Guided workflow feature context and conventions
+alwaysApply: true
+---
+
+# Guided Workflow Feature
+
+- Reference plans in `.cursor/plans/`:
+  - `guided_workflow_feature_7257ed5f.plan.md`
+  - `guided_workflow_development_c4b808b1.plan.md`
+- Reuse existing step type UI from `src/components/stepCard/`:
+  - `StepTypeSection`, `InfoCardSection`, `MoveItemSection`
+  - Do not create new step type UI in guided workflow
+- Follow `STYLE_GUIDE.md` for glass panel styling and typography
+- Prefer using existing editor behaviors and hooks over new parallel logic
+- Keep guided workflow UI simple and focused on teaching editor usage

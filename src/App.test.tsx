@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -63,22 +63,43 @@ function renderApp(initialEntries: string[] = ['/editor']) {
   );
 }
 
+async function chooseStartFromScratch() {
+  const user = userEvent.setup();
+  const startButton = await screen.findByRole('button', { name: /start from scratch/i });
+  await user.click(startButton);
+  return user;
+}
+
 describe('App', () => {
-  it('renders the main application', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('shows the guided setup welcome modal for new projects', () => {
     renderApp();
+    expect(screen.getByText('Create Your Simulation')).toBeInTheDocument();
+    // Editor chrome should be gated while welcome is shown
+    expect(screen.queryByText('Preview')).not.toBeInTheDocument();
+  });
+
+  it('renders the main application', async () => {
+    renderApp();
+    await chooseStartFromScratch();
     // Facilitate text appears twice in TopBar (gradient and solid overlay)
     const facilitateElements = screen.getAllByText('Facilitate');
     expect(facilitateElements.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Studio')).toBeInTheDocument();
   });
 
-  it('renders the top bar with default simulation title', () => {
+  it('renders the top bar with default simulation title', async () => {
     renderApp();
+    await chooseStartFromScratch();
     expect(screen.getByText('New Simulation')).toBeInTheDocument();
   });
 
-  it('renders the left sidebar navigation', () => {
+  it('renders the left sidebar navigation', async () => {
     renderApp();
+    await chooseStartFromScratch();
     expect(screen.getByText('Add')).toBeInTheDocument();
     expect(screen.getByText('Objects')).toBeInTheDocument();
     expect(screen.getByText('Steps')).toBeInTheDocument();
@@ -89,41 +110,47 @@ describe('App', () => {
     expect(screen.getByTestId('main-canvas')).toBeInTheDocument();
   });
 
-  it('renders navigation help button', () => {
+  it('renders navigation help button', async () => {
     renderApp();
+    await chooseStartFromScratch();
     expect(screen.getByLabelText('Open Navigation Help')).toBeInTheDocument();
   });
 
-  it('opens Objects panel when Objects button is clicked', () => {
+  it('opens Objects panel when Objects button is clicked', async () => {
     renderApp();
+    await chooseStartFromScratch();
     fireEvent.click(screen.getByText('Objects'));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
   });
 
-  it('opens Steps panel when Steps button is clicked', () => {
+  it('opens Steps panel when Steps button is clicked', async () => {
     renderApp();
+    await chooseStartFromScratch();
     fireEvent.click(screen.getByText('Steps'));
     // The panel heading is "Steps", not "Training Flow"
     const stepsHeadings = screen.getAllByText('Steps');
     expect(stepsHeadings.length).toBeGreaterThan(0);
   });
 
-  it('opens Add panel when Add button is clicked', () => {
+  it('opens Add panel when Add button is clicked', async () => {
     renderApp();
+    await chooseStartFromScratch();
     fireEvent.click(screen.getByText('Add'));
     expect(screen.getByText('Add New')).toBeInTheDocument();
   });
 
-  it('shows empty Objects panel for new project', () => {
+  it('shows empty Objects panel for new project', async () => {
     renderApp();
+    await chooseStartFromScratch();
     fireEvent.click(screen.getByText('Objects'));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
     // No objects should be listed in empty project
     expect(screen.queryByRole('button', { name: /Select/ })).not.toBeInTheDocument();
   });
 
-  it('shows empty Steps panel with Add Step button for new project', () => {
+  it('shows empty Steps panel with Add Step button for new project', async () => {
     renderApp();
+    await chooseStartFromScratch();
     fireEvent.click(screen.getByText('Steps'));
     // The panel heading is "Steps", not "Training Flow"
     const stepsHeadings = screen.getAllByText('Steps');
@@ -131,20 +158,22 @@ describe('App', () => {
     expect(screen.getByText('Add Step')).toBeInTheDocument();
   });
 
-  it('shows Upload 3D Model option in Add panel', () => {
+  it('shows Upload 3D Model option in Add panel', async () => {
     renderApp();
+    await chooseStartFromScratch();
     fireEvent.click(screen.getByText('Add'));
     expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
   });
 
-  it('does not show right sidebar when no object is selected', () => {
+  it('does not show right sidebar when no object is selected', async () => {
     renderApp();
+    await chooseStartFromScratch();
     expect(screen.queryByText('Object Details')).not.toBeInTheDocument();
   });
 
   it('updates simulation title', async () => {
-    const user = userEvent.setup();
     renderApp();
+    const user = await chooseStartFromScratch();
 
     // Click on title to edit
     await user.click(screen.getByText('New Simulation'));
@@ -159,14 +188,16 @@ describe('App', () => {
     expect(screen.getByText('My Training Sim')).toBeInTheDocument();
   });
 
-  it('renders Preview and Publish buttons', () => {
+  it('renders Preview and Publish buttons', async () => {
     renderApp();
+    await chooseStartFromScratch();
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByText('Publish')).toBeInTheDocument();
   });
 
   it('can close sidebar panels', async () => {
     renderApp();
+    await chooseStartFromScratch();
 
     // Open Objects panel
     fireEvent.click(screen.getByText('Objects'));

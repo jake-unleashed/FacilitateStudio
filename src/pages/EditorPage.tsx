@@ -10,6 +10,8 @@ import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
 import { PublishModal } from '../components/PublishModal';
+import { GuidedWorkflowOverlay, WelcomeModal } from '../components/guidedWorkflow';
+import { PhaseIndicator } from '../components/guidedWorkflow/PhaseIndicator';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
 import { calculateIdealCameraPosition, calculateSoftFocus } from '../utils/focusUtils';
 import { calculateFocusTargetForObject } from '../utils/focusTargetCalculator';
@@ -32,11 +34,13 @@ import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { PopupProvider, usePopup } from '../contexts/PopupContext';
+import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { useEditorProjectLifecycle } from '../hooks/editor/useEditorProjectLifecycle';
 import { useEditorNavigationGuards } from '../hooks/editor/useEditorNavigationGuards';
 import { useRecordingEndTransform } from '../hooks/editor/useRecordingEndTransform';
+import { useGuidedWorkflow } from '../hooks/useGuidedWorkflow';
 import {
   calculateChildWorldPosition,
   applyChildLocalTransform,
@@ -1334,126 +1338,200 @@ function EditorPageContent() {
   }
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-black selection:bg-blue-500/30 selection:text-white">
-      {/* Background / Workspace Layer */}
-      <MainCanvas
-        objects={objects}
-        selectedObjectId={selectedObjectId}
-        onSelectObject={handleSelectObject}
-        onUpdateObject={handleUpdateObject}
-        onFocusObject={handleFocusObject}
-        onCameraControlsReady={handleCameraControlsReady}
-        onSceneReady={handleSceneReady}
-        onCanvasReady={handleCanvasReady}
-        onDragStart={beginBatch}
-        onDragEnd={endBatch}
-        recordingPositionForStepId={recordingPositionForStepId}
-        steps={steps}
-        latestRecordingEndPositionRef={latestRecordingEndPositionRef}
-      />
-
-      {/* Floating UI Layer */}
-      <TopBar
-        title={simulationTitle}
-        onTitleChange={handleTitleChange}
-        onRequestHome={handleRequestHome}
-        saveStatus={status}
-        saveErrorMessage={lastError?.message ?? null}
-        onManualSave={handleManualSave}
-        onUndo={undo}
-        onRedo={redo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onPreviewClick={
-          projectId
-            ? () => {
-                void requestNavigation({ type: 'preview', projectId });
-              }
-            : undefined
-        }
-        onPublishClick={handlePublishClick}
-        projectId={projectId}
-      />
-
-      <LeftSidebar
-        ref={leftSidebarRef}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        steps={steps}
-        objects={objects}
-        onSelectObject={handleSelectObject}
-        selectedObjectId={selectedObjectId}
-        onFocusObject={handleFocusObject}
-        onAddStep={handleAddStep}
-        onInsertStep={handleInsertStep}
-        onUpdateStep={handleUpdateStep}
-        onDeleteStep={handleDeleteStep}
-        onReorderSteps={handleReorderSteps}
-        onStartRecordingPosition={handleStartRecordingPosition}
-        onStopRecordingPosition={handleStopRecordingPosition}
-        recordingPositionForStepId={recordingPositionForStepId}
-        onUploadAsset={handleUploadAsset}
-        uploadProgress={uploadProgress}
-        recentAssets={recentAssets}
-        onAddRecentAsset={handleAddRecentAsset}
-        onRemoveAsset={handleRemoveAsset}
-      />
-
-      {selectedObjectForSidebar && (
-        <RightSidebar
-          object={selectedObjectForSidebar}
-          selectedChild={selectedChild}
-          onUpdate={handleUpdateObject}
-          onDelete={handleDeleteObject}
-          onClose={handleCloseRightSidebar}
-          onBatchStart={beginBatch}
-          onBatchEnd={endBatch}
+    <GuidedWorkflowProvider projectId={projectId}>
+      <div className="relative h-screen w-full overflow-hidden bg-black selection:bg-blue-500/30 selection:text-white">
+        {/* Background / Workspace Layer */}
+        <MainCanvas
+          objects={objects}
+          selectedObjectId={selectedObjectId}
+          onSelectObject={handleSelectObject}
+          onUpdateObject={handleUpdateObject}
           onFocusObject={handleFocusObject}
+          onCameraControlsReady={handleCameraControlsReady}
+          onSceneReady={handleSceneReady}
+          onCanvasReady={handleCanvasReady}
+          onDragStart={beginBatch}
+          onDragEnd={endBatch}
+          recordingPositionForStepId={recordingPositionForStepId}
+          steps={steps}
+          latestRecordingEndPositionRef={latestRecordingEndPositionRef}
         />
+
+        <GuidedWorkflowEntry
+          isReady={isInitialized}
+          isNewProject={
+            !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0
+          }
+          editorChrome={{
+            topBar: (
+              <TopBar
+                title={simulationTitle}
+                onTitleChange={handleTitleChange}
+                onRequestHome={handleRequestHome}
+                saveStatus={status}
+                saveErrorMessage={lastError?.message ?? null}
+                onManualSave={handleManualSave}
+                onUndo={undo}
+                onRedo={redo}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onPreviewClick={
+                  projectId
+                    ? () => {
+                        void requestNavigation({ type: 'preview', projectId });
+                      }
+                    : undefined
+                }
+                onPublishClick={handlePublishClick}
+                projectId={projectId}
+              />
+            ),
+            leftSidebar: (
+              <LeftSidebar
+                ref={leftSidebarRef}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                steps={steps}
+                objects={objects}
+                onSelectObject={handleSelectObject}
+                selectedObjectId={selectedObjectId}
+                onFocusObject={handleFocusObject}
+                onAddStep={handleAddStep}
+                onInsertStep={handleInsertStep}
+                onUpdateStep={handleUpdateStep}
+                onDeleteStep={handleDeleteStep}
+                onReorderSteps={handleReorderSteps}
+                onStartRecordingPosition={handleStartRecordingPosition}
+                onStopRecordingPosition={handleStopRecordingPosition}
+                recordingPositionForStepId={recordingPositionForStepId}
+                onUploadAsset={handleUploadAsset}
+                uploadProgress={uploadProgress}
+                recentAssets={recentAssets}
+                onAddRecentAsset={handleAddRecentAsset}
+                onRemoveAsset={handleRemoveAsset}
+              />
+            ),
+            rightSidebar: selectedObjectForSidebar ? (
+              <RightSidebar
+                object={selectedObjectForSidebar}
+                selectedChild={selectedChild}
+                onUpdate={handleUpdateObject}
+                onDelete={handleDeleteObject}
+                onClose={handleCloseRightSidebar}
+                onBatchStart={beginBatch}
+                onBatchEnd={endBatch}
+                onFocusObject={handleFocusObject}
+              />
+            ) : null,
+            navigationHelp: <NavigationHelp offsetForSidebar={hasSelectedObject} />,
+            cameraResetButton: <CameraResetButton cameraControlsRef={cameraControlsRef} />,
+            debugMenu: (
+              <DebugMenu
+                onAddCube={handleAddDebugCube}
+                onPopulateTestSteps={handlePopulateTestSteps}
+                hasSelectedObject={hasSelectedObject}
+              />
+            ),
+            publishModal: currentProject ? (
+              <PublishModal
+                project={currentProject}
+                isOpen={isPublishModalOpen}
+                onClose={() => setIsPublishModalOpen(false)}
+              />
+            ) : null,
+          }}
+        />
+
+        {/* Recording Mode Overlay */}
+        {recordingPositionForStepId && (
+          <RecordingModeOverlay
+            recordingStep={steps.find((s) => s.id === recordingPositionForStepId) || null}
+            targetObject={(() => {
+              const step = steps.find((s) => s.id === recordingPositionForStepId);
+              if (!step?.targetObjectId) return null;
+              return objects.find((obj) => obj.id === step.targetObjectId) || null;
+            })()}
+            onStopRecording={handleStopRecordingPosition}
+          />
+        )}
+
+        {exitOverlay && (
+          <SaveOverlay
+            mode={exitOverlay.mode}
+            errorMessage={exitOverlay.errorMessage}
+            onStay={handleExitStay}
+            onLeaveAnyway={handleExitLeaveAnyway}
+          />
+        )}
+
+        {/* Global Popup - renders centered on screen for errors and notifications */}
+        <GlobalPopup />
+      </div>
+    </GuidedWorkflowProvider>
+  );
+}
+
+interface GuidedWorkflowEntryProps {
+  isReady: boolean;
+  isNewProject: boolean;
+  editorChrome: {
+    topBar: JSX.Element;
+    leftSidebar: JSX.Element;
+    rightSidebar: JSX.Element | null;
+    navigationHelp: JSX.Element;
+    cameraResetButton: JSX.Element;
+    debugMenu: JSX.Element;
+    publishModal: JSX.Element | null;
+  };
+}
+
+function GuidedWorkflowEntry({ isReady, isNewProject, editorChrome }: GuidedWorkflowEntryProps) {
+  const { state, actions } = useGuidedWorkflow();
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    if (!isReady) return;
+    if (!isNewProject) {
+      setShowWelcome(false);
+      return;
+    }
+    setShowWelcome(!state.isActive && !state.hasDismissedWelcome);
+  }, [isNewProject, isReady, state.hasDismissedWelcome, state.isActive]);
+
+  const isGuidedUIMode = state.isActive || showWelcome;
+
+  return (
+    <>
+      {!isGuidedUIMode && (
+        <>
+          {/* Floating UI Layer */}
+          {editorChrome.topBar}
+          {editorChrome.leftSidebar}
+          {editorChrome.rightSidebar}
+          {editorChrome.navigationHelp}
+          {editorChrome.cameraResetButton}
+          {editorChrome.debugMenu}
+          {editorChrome.publishModal}
+        </>
       )}
 
-      <NavigationHelp offsetForSidebar={hasSelectedObject} />
-
-      <CameraResetButton cameraControlsRef={cameraControlsRef} />
-
-      {/* Recording Mode Overlay */}
-      {recordingPositionForStepId && (
-        <RecordingModeOverlay
-          recordingStep={steps.find((s) => s.id === recordingPositionForStepId) || null}
-          targetObject={(() => {
-            const step = steps.find((s) => s.id === recordingPositionForStepId);
-            if (!step?.targetObjectId) return null;
-            return objects.find((obj) => obj.id === step.targetObjectId) || null;
-          })()}
-          onStopRecording={handleStopRecordingPosition}
-        />
-      )}
-
-      <DebugMenu
-        onAddCube={handleAddDebugCube}
-        onPopulateTestSteps={handlePopulateTestSteps}
-        hasSelectedObject={hasSelectedObject}
+      <WelcomeModal
+        isOpen={showWelcome}
+        onSelectGuided={() => {
+          actions.startWorkflow();
+          setShowWelcome(false);
+        }}
+        onSelectEditor={() => {
+          actions.skipToEditor();
+          setShowWelcome(false);
+        }}
       />
-
-      {exitOverlay && (
-        <SaveOverlay
-          mode={exitOverlay.mode}
-          errorMessage={exitOverlay.errorMessage}
-          onStay={handleExitStay}
-          onLeaveAnyway={handleExitLeaveAnyway}
-        />
+      {state.isActive && (
+        <>
+          <GuidedWorkflowOverlay />
+          <PhaseIndicator currentPhase={state.currentPhase} />
+        </>
       )}
-
-      {currentProject && (
-        <PublishModal
-          project={currentProject}
-          isOpen={isPublishModalOpen}
-          onClose={() => setIsPublishModalOpen(false)}
-        />
-      )}
-
-      {/* Global Popup - renders centered on screen for errors and notifications */}
-      <GlobalPopup />
-    </div>
+    </>
   );
 }
