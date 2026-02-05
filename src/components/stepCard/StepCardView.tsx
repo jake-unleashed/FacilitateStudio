@@ -39,6 +39,7 @@ export function StepCardView({ step, onMinimize, onDeleteVisible, controller }: 
         stepName={controller.stepName}
         selectedType={controller.selectedType}
         isVisible={controller.isInfoCardSelected && !controller.showTypeSelection}
+        compact={false}
         editingField={controller.editingField}
         heading={controller.heading}
         bodyText={controller.bodyText}
@@ -56,6 +57,7 @@ export function StepCardView({ step, onMinimize, onDeleteVisible, controller }: 
       <MoveItemSection
         step={step}
         isVisible={controller.isMoveItemSelected && !controller.showTypeSelection}
+        compact={false}
         isRecordingPosition={controller.isRecordingPosition}
         targetObject={controller.targetObject}
         targetChildName={controller.targetChild?.name ?? null}

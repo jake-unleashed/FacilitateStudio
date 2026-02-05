@@ -6,6 +6,7 @@ import type { AssetMetadata, UploadProgress } from '../../types/model';
 import { StepCreationPhase } from './phases/StepCreationPhase';
 import { ModelUploadPhase } from './phases/ModelUploadPhase';
 import { ModelPositioningPhase, type PositioningScreen } from './phases/ModelPositioningPhase';
+import { StepConfigurationPhase } from './phases/StepConfigurationPhase';
 
 export interface GuidedWorkflowOverlayProps {
   steps: SimStep[];
@@ -17,6 +18,9 @@ export interface GuidedWorkflowOverlayProps {
   selectedObjectId?: string | null;
   onSelectObject?: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
+  onStartRecordingPosition?: (stepId: string) => void;
+  onStopRecordingPosition?: () => void;
+  recordingPositionForStepId?: string | null;
   onUploadAsset: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
@@ -35,6 +39,9 @@ export function GuidedWorkflowOverlay({
   selectedObjectId,
   onSelectObject,
   onUpdateObject,
+  onStartRecordingPosition,
+  onStopRecordingPosition,
+  recordingPositionForStepId,
   onUploadAsset,
   uploadProgress,
   recentAssets,
@@ -68,9 +75,11 @@ export function GuidedWorkflowOverlay({
   const isStepCreation = state.currentPhase === 'step-creation';
   const isModelUpload = state.currentPhase === 'model-upload';
   const isModelPositioning = state.currentPhase === 'model-positioning';
+  const isStepConfiguration = state.currentPhase === 'step-configuration';
   const shouldShowOverlayNav =
     !isStepCreation &&
     !(isModelUpload && isCentered && isSubmenuOpen) &&
+    !isStepConfiguration &&
     (!isModelPositioning || positioningScreen === 'object-selection');
   const continueLabel =
     isModelPositioning && positioningScreen === 'object-selection' ? 'Looks good, continue' : 'Continue';
@@ -106,7 +115,7 @@ export function GuidedWorkflowOverlay({
         className={
           isCentered
             ? 'pointer-events-auto flex h-full w-full items-center justify-center px-6 pt-8 pb-16'
-            : 'pointer-events-auto absolute left-4 top-24 w-[420px] max-w-[calc(100%-32px)]'
+            : `pointer-events-auto absolute left-4 ${isStepConfiguration ? 'top-20' : 'top-24'} w-[420px] max-w-[calc(100%-32px)]`
         }
       >
         <div
@@ -122,7 +131,9 @@ export function GuidedWorkflowOverlay({
                 ? 'space-y-4'
                 : isModelPositioning
                   ? 'space-y-4 p-6'
-                  : 'max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto p-6 pr-4 custom-scrollbar'
+                  : isStepConfiguration
+                    ? 'space-y-4 p-6'
+                    : 'max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto p-6 pr-4 custom-scrollbar'
             }
           >
             {state.currentPhase === 'step-creation' ? (
@@ -153,6 +164,17 @@ export function GuidedWorkflowOverlay({
                 onUpdateObject={onUpdateObject}
                 onFocusObject={onFocusObject}
                 onScreenChange={setPositioningScreen}
+              />
+            ) : isStepConfiguration ? (
+              <StepConfigurationPhase
+                steps={steps}
+                objects={objects}
+                selectedObjectId={selectedObjectId ?? null}
+                onUpdateStep={onUpdateStep}
+                onFocusObject={onFocusObject}
+                onStartRecordingPosition={onStartRecordingPosition}
+                onStopRecordingPosition={onStopRecordingPosition}
+                recordingPositionForStepId={recordingPositionForStepId}
               />
             ) : (
               <div className="rounded-[20px] border border-white/40 bg-white/50 p-4 text-sm font-medium text-slate-600">

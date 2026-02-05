@@ -155,7 +155,6 @@ export function useStepCardController({
     onUpdate,
     createUpdatedStep,
     stepName,
-    selectedType,
     heading,
     bodyText,
     buttonText,
@@ -219,6 +218,12 @@ export function useStepCardController({
   const handleChangeStepType = useCallback(() => {
     setShowTypeSelection(true);
   }, []);
+
+  const handleClearStepType = useCallback(() => {
+    setSelectedType(null);
+    setShowTypeSelection(true);
+    onUpdate(createUpdatedStep({ type: null }));
+  }, [createUpdatedStep, onUpdate]);
 
   useStepCardTextareas({
     isOpen,
@@ -327,6 +332,7 @@ export function useStepCardController({
     handleStartEdit,
     handleTypeSelect,
     handleChangeStepType,
+    handleClearStepType,
     handleSetCardColor,
     handleUseSelectedObject,
     handleToggleRecording,

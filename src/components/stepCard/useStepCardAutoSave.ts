@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { SimStep, StepType } from '../../types';
+import type { SimStep } from '../../types';
 import { useDebounce } from './useDebounce';
 import { AUTO_SAVE_DELAY } from './constants';
 
@@ -9,7 +9,6 @@ export interface StepCardAutoSaveArgs {
   createUpdatedStep: (overrides?: Partial<SimStep>) => SimStep;
 
   stepName: string;
-  selectedType: StepType | null;
   heading: string;
   bodyText: string;
   buttonText: string;
@@ -27,7 +26,6 @@ export function useStepCardAutoSave({
   onUpdate,
   createUpdatedStep,
   stepName,
-  selectedType,
   heading,
   bodyText,
   buttonText,
@@ -57,7 +55,6 @@ export function useStepCardAutoSave({
 
     const hasChanged =
       debouncedStepName !== step.title ||
-      selectedType !== step.type ||
       debouncedHeading !== (step.heading || '') ||
       debouncedBodyText !== (step.bodyText || '') ||
       debouncedButtonText !== (step.buttonText || '') ||
@@ -89,7 +86,6 @@ export function useStepCardAutoSave({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     debouncedStepName,
-    selectedType,
     debouncedHeading,
     debouncedBodyText,
     debouncedButtonText,

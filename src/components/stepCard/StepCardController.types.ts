@@ -60,6 +60,7 @@ export interface StepCardController {
   handleStartEdit: (field: 'heading' | 'bodyText' | 'buttonText') => void;
   handleTypeSelect: (type: StepType) => void;
   handleChangeStepType: () => void;
+  handleClearStepType: () => void;
   handleSetCardColor: (color: 'blue' | 'green' | 'yellow' | 'red' | 'gray') => void;
   handleUseSelectedObject: () => void;
   handleToggleRecording: () => void;

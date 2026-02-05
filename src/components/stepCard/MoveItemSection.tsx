@@ -5,6 +5,7 @@ import { OBJECT_ICONS } from '../../constants';
 export interface MoveItemSectionProps {
   step: SimStep;
   isVisible: boolean;
+  compact?: boolean;
   isRecordingPosition: boolean;
   targetObject: SceneObject | null;
   targetChildName?: string | null;
@@ -21,6 +22,7 @@ export interface MoveItemSectionProps {
 export function MoveItemSection({
   step,
   isVisible,
+  compact = false,
   isRecordingPosition,
   targetObject,
   targetChildName,
@@ -35,16 +37,20 @@ export function MoveItemSection({
   if (!isVisible) return null;
 
   return (
-    <div className="border-t border-white/30 pt-4">
-      <div className="mb-3 flex items-center gap-2">
+    <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
+      <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Settings</span>
         <span title="Configure which object to move/rotate/scale and what its end transform should be.">
           <HelpCircle size={12} className="text-slate-400" />
         </span>
       </div>
 
-      <div className="mb-4 space-y-3">
-        <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
+      <div className={`mb-4 ${compact ? 'space-y-2' : 'space-y-3'}`}>
+        <div
+          className={`rounded-[16px] border border-white/40 bg-white/40 shadow-sm ${
+            compact ? 'px-3 py-2' : 'px-3 py-2.5'
+          }`}
+        >
           <label className="mb-2 block text-xs font-semibold text-slate-700">Target Object</label>
 
           {targetObject ? (
@@ -110,9 +116,13 @@ export function MoveItemSection({
         </div>
 
         {targetObject && (
-          <div className="rounded-[16px] border border-white/40 bg-white/40 px-3 py-2.5 shadow-sm">
+          <div
+            className={`rounded-[16px] border border-white/40 bg-white/40 shadow-sm ${
+              compact ? 'px-3 py-2' : 'px-3 py-2.5'
+            }`}
+          >
             <label className="mb-2 block text-xs font-semibold text-slate-700">End Transform</label>
-            <div className="space-y-3">
+            <div className={compact ? 'space-y-2' : 'space-y-3'}>
               {isRecordingPosition ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 rounded-[10px] border border-blue-200/60 bg-blue-50/50 px-3 py-2">

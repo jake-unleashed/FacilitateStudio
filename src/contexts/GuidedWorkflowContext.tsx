@@ -21,6 +21,10 @@ const phaseOrder: GuidedWorkflowPhase[] = [
 const initialState: GuidedWorkflowState = {
   isActive: false,
   hasDismissedWelcome: false,
+  hasSeenStepSetupIntro: false,
+  stepSetupBlankStepIds: [],
+  stepSetupEntryMode: 'intro',
+  stepSetupResume: null,
   currentPhase: 'welcome',
   currentStepIndex: 0,
   pendingSteps: [],
@@ -129,7 +133,26 @@ export function GuidedWorkflowProvider({
       const currentIndex = getPhaseIndex(prev.currentPhase);
       const nextIndex = Math.min(currentIndex + 1, phaseOrder.length - 1);
       if (currentIndex === nextIndex) return prev;
-      return { ...prev, currentPhase: phaseOrder[nextIndex] };
+      const nextPhaseValue = phaseOrder[nextIndex];
+
+      if (nextPhaseValue === 'step-configuration') {
+        return {
+          ...prev,
+          currentPhase: nextPhaseValue,
+          stepSetupEntryMode: 'intro',
+          stepSetupResume: null,
+        };
+      }
+
+      if (prev.currentPhase === 'step-configuration' && nextPhaseValue === 'finish') {
+        return {
+          ...prev,
+          currentPhase: nextPhaseValue,
+          stepSetupEntryMode: 'resume',
+        };
+      }
+
+      return { ...prev, currentPhase: nextPhaseValue };
     });
   }, []);
 
@@ -138,7 +161,17 @@ export function GuidedWorkflowProvider({
       const currentIndex = getPhaseIndex(prev.currentPhase);
       const nextIndex = Math.max(currentIndex - 1, 0);
       if (currentIndex === nextIndex) return prev;
-      return { ...prev, currentPhase: phaseOrder[nextIndex] };
+      const nextPhaseValue = phaseOrder[nextIndex];
+
+      if (prev.currentPhase === 'finish' && nextPhaseValue === 'step-configuration') {
+        return {
+          ...prev,
+          currentPhase: nextPhaseValue,
+          stepSetupEntryMode: 'resume',
+        };
+      }
+
+      return { ...prev, currentPhase: nextPhaseValue };
     });
   }, []);
 
@@ -154,6 +187,32 @@ export function GuidedWorkflowProvider({
     setState((prev) => ({ ...prev, creationMethod: method }));
   }, []);
 
+  const markStepSetupIntroSeen = useCallback(() => {
+    setState((prev) => ({ ...prev, hasSeenStepSetupIntro: true }));
+  }, []);
+
+  const setStepSetupBlankChoice = useCallback((stepId: string, isBlank: boolean) => {
+    setState((prev) => {
+      const exists = prev.stepSetupBlankStepIds.includes(stepId);
+      if (isBlank && exists) return prev;
+      if (!isBlank && !exists) return prev;
+      return {
+        ...prev,
+        stepSetupBlankStepIds: isBlank
+          ? [...prev.stepSetupBlankStepIds, stepId]
+          : prev.stepSetupBlankStepIds.filter((id) => id !== stepId),
+      };
+    });
+  }, []);
+
+  const setStepSetupEntryMode = useCallback((mode: GuidedWorkflowState['stepSetupEntryMode']) => {
+    setState((prev) => ({ ...prev, stepSetupEntryMode: mode }));
+  }, []);
+
+  const setStepSetupResume = useCallback((resume: GuidedWorkflowState['stepSetupResume']) => {
+    setState((prev) => ({ ...prev, stepSetupResume: resume }));
+  }, []);
+
   const actions: GuidedWorkflowActions = useMemo(
     () => ({
       startWorkflow,
@@ -163,6 +222,10 @@ export function GuidedWorkflowProvider({
       setCurrentStepIndex,
       setPendingSteps,
       setCreationMethod,
+      markStepSetupIntroSeen,
+      setStepSetupBlankChoice,
+      setStepSetupEntryMode,
+      setStepSetupResume,
       exitWorkflow,
     }),
     [
@@ -173,6 +236,10 @@ export function GuidedWorkflowProvider({
       setCurrentStepIndex,
       setPendingSteps,
       setCreationMethod,
+      markStepSetupIntroSeen,
+      setStepSetupBlankChoice,
+      setStepSetupEntryMode,
+      setStepSetupResume,
       exitWorkflow,
     ]
   );

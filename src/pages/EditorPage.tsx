@@ -1414,6 +1414,9 @@ function EditorPageContent() {
           onFocusObject={handleFocusObject}
           onSelectObject={handleSelectObject}
           onUpdateObject={handleUpdateObject}
+          onStartRecordingPosition={handleStartRecordingPosition}
+          onStopRecordingPosition={handleStopRecordingPosition}
+          recordingPositionForStepId={recordingPositionForStepId}
           editorChrome={{
             topBar: (
               <TopBar
@@ -1541,6 +1544,9 @@ interface GuidedWorkflowEntryProps {
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onSelectObject: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
+  onStartRecordingPosition?: (stepId: string) => void;
+  onStopRecordingPosition?: () => void;
+  recordingPositionForStepId?: string | null;
   editorChrome: {
     topBar: JSX.Element;
     leftSidebar: JSX.Element;
@@ -1571,6 +1577,9 @@ function GuidedWorkflowEntry({
   onFocusObject,
   onSelectObject,
   onUpdateObject,
+  onStartRecordingPosition,
+  onStopRecordingPosition,
+  recordingPositionForStepId,
 }: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1673,6 +1682,9 @@ function GuidedWorkflowEntry({
             selectedObjectId={selectedObjectId}
             onSelectObject={onSelectObject}
             onUpdateObject={onUpdateObject}
+            onStartRecordingPosition={onStartRecordingPosition}
+            onStopRecordingPosition={onStopRecordingPosition}
+            recordingPositionForStepId={recordingPositionForStepId}
             onUploadAsset={onUploadAsset}
             uploadProgress={uploadProgress}
             recentAssets={recentAssets}

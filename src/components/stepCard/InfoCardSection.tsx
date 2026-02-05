@@ -8,6 +8,7 @@ export interface InfoCardSectionProps {
   stepName: string;
   selectedType: SimStep['type'];
   isVisible: boolean;
+  compact?: boolean;
 
   editingField: 'heading' | 'bodyText' | 'buttonText' | null;
   heading: string;
@@ -28,6 +29,7 @@ export interface InfoCardSectionProps {
 export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null {
   const {
     isVisible,
+    compact = false,
     editingField,
     heading,
     bodyText,
@@ -44,8 +46,8 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
   if (!isVisible) return null;
 
   return (
-    <div className="border-t border-white/30 pt-4">
-      <div className="mb-3 flex items-center gap-2">
+    <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
+      <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Preview</span>
         <span title="Preview of how the Info Card will look. Click edit icons to change content.">
           <HelpCircle size={12} className="text-slate-400" />
@@ -53,7 +55,11 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
       </div>
 
       <div className="relative overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/50 shadow-sm backdrop-blur-sm">
-        <div className={`group relative ${currentTheme.headingBg} rounded-t-[20px] px-6 py-4`}>
+        <div
+          className={`group relative ${currentTheme.headingBg} rounded-t-[20px] ${
+            compact ? 'px-5 py-3' : 'px-6 py-4'
+          }`}
+        >
           {editingField === 'heading' ? (
             <textarea
               ref={headingTextareaRef}
@@ -94,7 +100,7 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
           )}
         </div>
 
-        <div className="group relative px-6 py-5">
+        <div className={`group relative ${compact ? 'px-5 py-4' : 'px-6 py-5'}`}>
           {editingField === 'bodyText' ? (
             <textarea
               ref={bodyTextTextareaRef}
@@ -127,7 +133,11 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
           )}
         </div>
 
-        <div className="group relative flex justify-center border-t border-white/30 px-6 py-4">
+        <div
+          className={`group relative flex justify-center border-t border-white/30 ${
+            compact ? 'px-5 py-3' : 'px-6 py-4'
+          }`}
+        >
           {editingField === 'buttonText' ? (
             <input
               ref={buttonTextInputRef}
@@ -172,7 +182,7 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-2.5">
+      <div className={`flex items-center justify-center ${compact ? 'mt-3 gap-2' : 'mt-4 gap-2.5'}`}>
         {(['blue', 'green', 'yellow', 'red', 'gray'] as const).map((color) => {
           const isSelected = cardColor === color;
           // we rely on controller to compute actual theme, but we still need circle color
