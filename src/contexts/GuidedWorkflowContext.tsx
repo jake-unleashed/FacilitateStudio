@@ -25,6 +25,7 @@ const initialState: GuidedWorkflowState = {
   stepSetupBlankStepIds: [],
   stepSetupEntryMode: 'intro',
   stepSetupResume: null,
+  hasPreviewedInFinishPhase: false,
   currentPhase: 'welcome',
   currentStepIndex: 0,
   pendingSteps: [],
@@ -149,6 +150,7 @@ export function GuidedWorkflowProvider({
           ...prev,
           currentPhase: nextPhaseValue,
           stepSetupEntryMode: 'resume',
+          hasPreviewedInFinishPhase: false,
         };
       }
 
@@ -213,6 +215,10 @@ export function GuidedWorkflowProvider({
     setState((prev) => ({ ...prev, stepSetupResume: resume }));
   }, []);
 
+  const markFinishPreviewDone = useCallback(() => {
+    setState((prev) => ({ ...prev, hasPreviewedInFinishPhase: true }));
+  }, []);
+
   const actions: GuidedWorkflowActions = useMemo(
     () => ({
       startWorkflow,
@@ -226,6 +232,7 @@ export function GuidedWorkflowProvider({
       setStepSetupBlankChoice,
       setStepSetupEntryMode,
       setStepSetupResume,
+      markFinishPreviewDone,
       exitWorkflow,
     }),
     [
@@ -240,6 +247,7 @@ export function GuidedWorkflowProvider({
       setStepSetupBlankChoice,
       setStepSetupEntryMode,
       setStepSetupResume,
+      markFinishPreviewDone,
       exitWorkflow,
     ]
   );

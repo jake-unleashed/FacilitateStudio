@@ -1417,6 +1417,14 @@ function EditorPageContent() {
           onStartRecordingPosition={handleStartRecordingPosition}
           onStopRecordingPosition={handleStopRecordingPosition}
           recordingPositionForStepId={recordingPositionForStepId}
+          onPreviewClick={
+            projectId
+              ? () => {
+                  void requestNavigation({ type: 'preview', projectId });
+                }
+              : undefined
+          }
+          onPublishClick={handlePublishClick}
           editorChrome={{
             topBar: (
               <TopBar
@@ -1547,6 +1555,8 @@ interface GuidedWorkflowEntryProps {
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
+  onPreviewClick?: () => void;
+  onPublishClick?: () => void;
   editorChrome: {
     topBar: JSX.Element;
     leftSidebar: JSX.Element;
@@ -1580,6 +1590,8 @@ function GuidedWorkflowEntry({
   onStartRecordingPosition,
   onStopRecordingPosition,
   recordingPositionForStepId,
+  onPreviewClick,
+  onPublishClick,
 }: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1655,7 +1667,6 @@ function GuidedWorkflowEntry({
           {editorChrome.navigationHelp}
           {editorChrome.cameraResetButton}
           {editorChrome.debugMenu}
-          {editorChrome.publishModal}
         </>
       )}
 
@@ -1691,10 +1702,13 @@ function GuidedWorkflowEntry({
             onAddRecentAsset={onAddRecentAsset}
             onDeleteObject={onDeleteObject}
             onFocusObject={onFocusObject}
+            onPreviewClick={onPreviewClick}
+            onPublishClick={onPublishClick}
           />
           <PhaseIndicator currentPhase={state.currentPhase} />
         </>
       )}
+      {editorChrome.publishModal}
     </>
   );
 }

@@ -40,6 +40,10 @@ export interface GuidedWorkflowState {
         subScreen: 'type' | 'settings';
       }
     | null;
+  /**
+   * Whether the user has previewed from the finish phase.
+   */
+  hasPreviewedInFinishPhase: boolean;
   currentPhase: GuidedWorkflowPhase;
   currentStepIndex: number;
   pendingSteps: string[];
@@ -58,5 +62,6 @@ export interface GuidedWorkflowActions {
   setStepSetupBlankChoice: (stepId: string, isBlank: boolean) => void;
   setStepSetupEntryMode: (mode: GuidedWorkflowState['stepSetupEntryMode']) => void;
   setStepSetupResume: (resume: GuidedWorkflowState['stepSetupResume']) => void;
+  markFinishPreviewDone: () => void;
   exitWorkflow: () => void;
 }
