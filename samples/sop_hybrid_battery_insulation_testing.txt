@@ -1,0 +1,42 @@
+VR Training Simulation: Hybrid Battery Insulation Testing
+
+Learner Profile: Automotive technicians, EV/Hybrid specialists. Assumes basic knowledge of high-voltage safety but is designed for learners who may be new to this specific diagnostic procedure.
+
+Learning Objectives
+1. Set up and operate a megohmmeter (insulation tester) correctly for high-voltage battery diagnostics.
+2. Perform a high-level insulation test to determine if a fault exists within a hybrid battery pack.
+3. Isolate an insulation fault to a specific half of the battery pack.
+4. Disassemble battery busbars and connectors safely to perform cell-level diagnostics.
+5. Pinpoint the specific faulty cell(s) causing the insulation leak by interpreting meter readings accurately.
+
+VR Simulation Storyboard
+
+1. Introduction & Safety
+Learner picks up and puts on the HV gloves.
+
+2. Meter Setup
+Learner picks up the tester and turns the dial to the 500V setting.
+
+3. Grounding & Meter Check
+Learner connects the black probe to a metal point on the battery case.
+Learner presses the Test button and touches the red probe to the case.
+Meter should read 0.00 MΩ to confirm ground connection.
+
+4. High-Level Fault Diagnosis
+Learner confirms the orange safety plug is removed.
+Learner presses Test and touches the red probe to the main positive terminal.
+Learner presses Test and touches the red probe to the main negative terminal.
+
+5. Disassembly for Deeper Diagnosis
+Learner removes the battery cover.
+Learner uses a nut driver to remove the nuts.
+Learner removes the busbars from the faulty half and places them in a tray.
+
+6. Cell-Level Fault Finding
+Learner methodically tests each cell terminal on the exposed side with the red probe.
+Learner identifies the faulty cell from a low insulation reading.
+
+7. Conclusion & After-Action Review (AAR)
+Learner completes the test.
+Learner views the results screen.
+

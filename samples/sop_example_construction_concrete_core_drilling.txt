@@ -1,0 +1,26 @@
+SOP: Concrete Core Drilling (2-inch) — Indoor Mechanical Room
+
+Purpose (ignore)
+Create a penetration through reinforced concrete for conduit routing.
+
+Tools
+- Core drill, 2-inch diamond core bit, vacuum base
+- Water supply, wet vacuum
+- Measuring tape, marker
+
+Procedure
+1. Verify the core location against the approved drawing.
+2. Mark the center point on the concrete surface.
+3. Place the vacuum base over the mark.
+4. Turn on the vacuum pump to secure the drill base.
+5. Install the core bit on the drill spindle.
+6. Connect the water supply to the drill.
+7. Start the drill motor.
+8. Apply light pressure to begin the cut.
+9. Maintain steady water flow during drilling.
+10. Advance the bit until the core is through the slab.
+11. Turn off the drill motor.
+12. Turn off the water supply.
+13. Remove the core sample from the bit.
+14. Vacuum slurry from the floor.
+15. Release the vacuum base and remove the drill.

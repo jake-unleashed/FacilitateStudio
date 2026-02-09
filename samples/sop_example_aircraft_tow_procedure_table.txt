@@ -1,0 +1,22 @@
+PROCEDURE (TABLE EXPORT): Tow Aircraft Into Hangar (Single Tug)
+
+Meta (ignore)
+Document owner: Line Maintenance
+Revision: 3.2
+
+| Seq | Role   | Action (learner)                                   | Notes (ignore)                    |
+|-----|--------|-----------------------------------------------------|-----------------------------------|
+| 1   | Lead   | Conduct a pre-tow briefing with the tow team         | Confirm radio channel             |
+| 2   | Lead   | Install wheel chocks                                |                                   |
+| 3   | Lead   | Attach tow bar to aircraft nose gear                 | Verify locking pins engaged       |
+| 4   | Tug Op | Attach tow bar to tug                                |                                   |
+| 5   | Lead   | Remove wheel chocks                                 |                                   |
+| 6   | Lead   | Confirm area is clear of personnel and equipment     | Use wing walkers                  |
+| 7   | Tug Op | Begin towing at walking pace                         | No sharp turns                    |
+| 8   | Wing   | Monitor wing clearance during tow                    | Call out obstacles                |
+| 9   | Tug Op | Stop tug at hangar threshold                         |                                   |
+| 10  | Lead   | Place wheel chocks                                  |                                   |
+| 11  | Tug Op | Set tug parking brake                                |                                   |
+| 12  | Lead   | Disconnect tow bar from tug                          |                                   |
+| 13  | Lead   | Disconnect tow bar from aircraft nose gear           |                                   |
+| 14  | Lead   | Remove tow bar from the area                         |                                   |

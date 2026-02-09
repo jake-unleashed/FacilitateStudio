@@ -1,0 +1,22 @@
+INCIDENT RUNBOOK: API Latency Spike (Production)
+
+This is a procedure, but it’s software-focused. Ignore “why” sections.
+
+Signal
+- Alert: p95 latency > 2s for 5 minutes
+
+Procedure
+1. Acknowledge the alert in the on-call tool.
+2. Open the service dashboard for the affected API.
+3. Check current error rate and request rate.
+4. Check CPU and memory utilization for the API pods.
+5. Check database connection pool saturation.
+6. Identify the most recent deployment for the API.
+7. Roll back the API deployment to the previous version.
+8. Confirm latency returns to normal range.
+9. Confirm error rate returns to baseline.
+10. Post an incident update in the incident channel.
+11. Create an incident ticket and attach graphs.
+
+Post-incident (ignore)
+- Root cause analysis within 2 business days.

@@ -1,0 +1,42 @@
+STANDARD OPERATING PROCEDURE
+Title: Autoclave (Steam Sterilizer) Cycle — Unwrapped Instruments
+
+Purpose (not steps)
+Sterilize heat-stable instruments using a validated steam cycle.
+
+Safety (read-only)
+- Wear heat-resistant gloves when unloading.
+- Use eye protection when handling hot trays.
+
+Materials
+- Autoclave with printer
+- Chemical indicator strips
+- Sterilization trays
+
+Procedure
+A. Pre-check
+1) Verify the autoclave water reservoir level is within range.
+2) Verify the chamber is empty and clean.
+3) Verify the drain strainer is seated.
+
+B. Load
+4) Place a chemical indicator strip on each tray.
+5) Place instruments in trays with hinges open.
+6) Load trays into the autoclave without stacking.
+7) Close and latch the autoclave door.
+
+C. Run cycle
+8) Select the “Unwrapped Instruments” cycle.
+9) Set the temperature to 132°C.
+10) Set the exposure time to 4 minutes.
+11) Press Start.
+
+D. Unload
+12) Wait for the cycle to complete and pressure to reach zero.
+13) Open the door slightly to vent steam.
+14) Wait 10 minutes for drying.
+15) Remove trays using heat-resistant gloves.
+
+E. Verify
+16) Check each chemical indicator for correct color change.
+17) Attach the cycle printout to the batch log.

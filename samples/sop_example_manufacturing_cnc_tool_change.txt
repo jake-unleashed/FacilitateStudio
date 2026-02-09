@@ -1,0 +1,31 @@
+WORK INSTRUCTION: CNC Mill — End Mill Tool Change (with Presetter)
+
+Audience
+- Operators trained on this machine model.
+
+Equipment
+- CNC vertical mill, tool carousel
+- Torque wrench, pull stud, collet, end mill
+- Tool presetter
+
+Background (ignore)
+This instruction is part of the TPM program and supports OEE targets.
+
+Procedure
+1. Press Feed Hold on the CNC control.
+2. Press Cycle Stop on the CNC control.
+3. Press E-Stop.
+4. Open the machine door.
+5. Remove the old tool holder from the spindle.
+6. Remove the end mill from the tool holder.
+7. Install the new end mill in the tool holder.
+8. Torque the collet nut to 35 N·m.
+9. Place the tool holder on the presetter.
+10. Measure tool length on the presetter.
+11. Record the tool length offset value.
+12. Insert the tool holder into the spindle.
+13. Close the machine door.
+14. Release E-Stop.
+15. Reset alarms on the CNC control.
+16. Run the tool change to confirm the tool seats correctly.
+17. Run a single-part dry run at reduced feed.

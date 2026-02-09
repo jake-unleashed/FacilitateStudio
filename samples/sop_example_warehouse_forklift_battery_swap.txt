@@ -1,0 +1,27 @@
+SOP: Forklift Battery Swap (Lead-Acid) — Battery Changing Station
+
+Safety Notice (read, then ignore)
+Only trained associates may perform this procedure.
+
+Equipment
+- Forklift with removable battery
+- Battery extractor (roller bed), spare charged battery
+- Battery connector, battery plug cover
+
+Procedure
+1. Park the forklift at the battery changing station.
+2. Lower the forks to the floor.
+3. Set the parking brake.
+4. Turn off the forklift key switch.
+5. Open the battery compartment.
+6. Disconnect the battery connector.
+7. Attach the battery extractor hook to the battery lifting eye.
+8. Pull the battery onto the roller bed.
+9. Place the discharged battery in the charging position.
+10. Pull a charged battery onto the roller bed.
+11. Push the charged battery into the forklift compartment.
+12. Disconnect the extractor hook from the battery lifting eye.
+13. Connect the battery connector.
+14. Close the battery compartment.
+15. Turn on the forklift key switch.
+16. Verify the forklift powers on normally.

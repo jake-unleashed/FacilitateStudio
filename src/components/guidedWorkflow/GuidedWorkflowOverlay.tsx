@@ -16,6 +16,10 @@ export interface GuidedWorkflowOverlayProps {
   onUpdateStep: (step: SimStep) => void;
   onDeleteStep: (stepId: string) => void;
   onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
+  /** Optional batch boundary for grouping many step/object changes into one undo entry. */
+  onBatchStart?: () => void;
+  /** Optional batch boundary for grouping many step/object changes into one undo entry. */
+  onBatchEnd?: () => void;
   objects: SceneObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (id: string | null) => void;
@@ -40,6 +44,8 @@ export function GuidedWorkflowOverlay({
   onUpdateStep,
   onDeleteStep,
   onReorderSteps,
+  onBatchStart,
+  onBatchEnd,
   objects,
   selectedObjectId,
   onSelectObject,
@@ -235,6 +241,8 @@ export function GuidedWorkflowOverlay({
                 onUpdateStep={onUpdateStep}
                 onDeleteStep={onDeleteStep}
                 onReorderSteps={onReorderSteps}
+                onBatchStart={onBatchStart}
+                onBatchEnd={onBatchEnd}
                 onContinue={actions.nextPhase}
               />
             ) : isModelUpload ? (

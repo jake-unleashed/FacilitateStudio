@@ -1,0 +1,31 @@
+SOP: Data Center — Replace a Rack PDU (A-side) Without Powering Down Servers
+
+Scope
+- One rack. One A-side PDU. Dual-corded equipment only.
+
+Do NOT include these as steps
+- Policy statements, definitions, escalation contacts.
+
+Tools
+- New rack PDU (same model), mounting screws
+- Label maker, flashlight
+
+Pre-conditions
+- Confirm all servers in the rack have dual PSUs and are connected to A-side + B-side.
+
+Procedure
+1. Identify the rack and confirm the PDU label matches the work order.
+2. Photograph the existing PDU outlet connections.
+3. Label each power cord with its current outlet number.
+4. Verify B-side power is healthy on each server.
+5. Turn off the PDU output breakers on the A-side PDU.
+6. Unplug all power cords from the A-side PDU.
+7. Disconnect the PDU input feed from the floor whips.
+8. Remove the A-side PDU from the rack mounts.
+9. Mount the replacement PDU in the same position.
+10. Connect the PDU input feed to the floor whips.
+11. Turn on the PDU output breakers.
+12. Plug each server power cord back into the labeled outlet.
+13. Verify server status lights remain normal.
+14. Verify the PDU load reading is within normal range.
+15. Remove temporary labels if required by site standard.

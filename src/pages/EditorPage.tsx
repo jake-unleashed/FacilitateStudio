@@ -1248,7 +1248,12 @@ function EditorPageContent() {
         ...step,
         id: crypto.randomUUID(),
       };
-      const index = steps.length;
+      // IMPORTANT:
+      // We intentionally append by using an index beyond the current list length.
+      // Relying on `steps.length` here can be stale during rapid multi-step insertion
+      // (e.g. SOP imports), which can lead to repeated inserts at the same index and
+      // reverse the inserted block.
+      const index = Number.MAX_SAFE_INTEGER;
       const command = createCreateStepCommandHelper(
         newStep,
         index,
@@ -1256,7 +1261,7 @@ function EditorPageContent() {
       );
       executeCommand(command);
     },
-    [steps.length, executeCommand]
+    [executeCommand]
   );
 
   const handleInsertStep = useCallback(
@@ -1275,7 +1280,9 @@ function EditorPageContent() {
         id: crypto.randomUUID(),
       };
 
-      const clampedIndex = Math.max(0, Math.min(index, steps.length));
+      // Clamp only the lower bound. If index is beyond the current length,
+      // the command execution will safely append.
+      const clampedIndex = Math.max(0, index);
       const command = createCreateStepCommandHelper(
         newStep,
         clampedIndex,
@@ -1283,7 +1290,7 @@ function EditorPageContent() {
       );
       executeCommand(command);
     },
-    [steps.length, executeCommand]
+    [executeCommand]
   );
 
   const handleUpdateStep = useCallback(
@@ -1514,6 +1521,8 @@ function EditorPageContent() {
           onUpdateStep={handleUpdateStep}
           onDeleteStep={handleDeleteStep}
           onReorderSteps={handleReorderSteps}
+          onBatchStart={beginBatch}
+          onBatchEnd={endBatch}
           objects={objects}
           selectedObjectId={selectedObjectId}
           onUploadAsset={handleUploadAsset}
@@ -1654,6 +1663,8 @@ interface GuidedWorkflowEntryProps {
   onUpdateStep: (step: SimStep) => void;
   onDeleteStep: (stepId: string) => void;
   onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
+  onBatchStart?: () => void;
+  onBatchEnd?: () => void;
   objects: SceneObject[];
   selectedObjectId: string | null;
   onUploadAsset: (file: File) => Promise<void>;
@@ -1691,6 +1702,8 @@ function GuidedWorkflowEntry({
   onUpdateStep,
   onDeleteStep,
   onReorderSteps,
+  onBatchStart,
+  onBatchEnd,
   objects,
   selectedObjectId,
   onUploadAsset,
@@ -1846,6 +1859,8 @@ function GuidedWorkflowEntry({
             onUpdateStep={onUpdateStep}
             onDeleteStep={onDeleteStep}
             onReorderSteps={onReorderSteps}
+            onBatchStart={onBatchStart}
+            onBatchEnd={onBatchEnd}
             objects={objects}
             selectedObjectId={selectedObjectId}
             onSelectObject={onSelectObject}

@@ -1,0 +1,25 @@
+FIELD JOB AID (text message copy/paste)
+Title: Start-up Check — Transfer Pump (Skid 3)
+
+Ignore:
+- “Why” notes, supervisor commentary, and asset lists.
+
+Before you touch anything:
+PPE: gloves / goggles / hearing.
+
+Steps (messy)
+- Walkdown the skid. Look for leaks & loose hoses.
+- Verify suction valve OPEN and discharge valve CLOSED.
+- Check oil level in pump sight glass.
+- Check strainer is installed.
+- Connect grounding clamp to skid lug.
+- Start the generator and confirm stable output.
+- Turn on the pump VFD.
+- Set the speed to 20%.
+- Open discharge valve slowly.
+- Increase speed to 60%.
+- Watch the pressure gauge and flow indicator.
+- Record start time and pressure.
+- If vibration is high, stop and call supervisor.
+- After 5 minutes, re-check for leaks.
+- Leave area clean.

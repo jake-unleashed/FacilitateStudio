@@ -1,0 +1,54 @@
+LOCKOUT/TAGOUT STANDARD OPERATING PROCEDURES
+The following procedure establishes the minimum requirements for lockout of energy sources
+that could cause injury to personnel. All employees will comply with these procedures. All
+equipment and/or circuits will be locked out to protect against accidental or inadvertent operation
+when such operation of the equipment and/or circuits could cause injury to personnel. Do not
+attempt to operate any switch, valve, or other energy isolating device bearing a lock. Any
+employee found to be working, or causing others to work on, equipment and or/circuits that, in
+the opinion of management should have been locked out, will be subject to severe disciplinary
+actions up to and including termination.
+Lockout Responsibility
+The primary responsibility for the proper lockout of equipment and/or circuits on a project
+belongs to the project Supervisor and/or Foreman. However, this does not alleviate the field
+employees from ensuring that proper lockout procedures are followed at all times. The
+Supervisor and/or Foreman will ensure that each employee is properly instructed in the safety
+significance of lockout procedures.
+Preparation for Lockout of Circuits and Equipment
+Employees will be certain as to which switch, valve, or other energy isolating devices apply to
+the equipment and/or circuits being locked. More than one energy source (electrical, mechanical,
+or others) may be involved. Any questionable identification of sources will be cleared by the
+employees with their supervisor or project foreman. Before lockout commences, authorization
+from the customer and project Supervisor will be obtained.
+Sequence of Lockout Procedures
+Special Note: In the following steps, when more than one individual is involved with the project
+and required to lock out the equipment and/or circuits, each employee will place their own
+personal lock on the energy isolating devices. A lock for each involved is the preferred method
+for locking out energy sources. If this is not feasible, the designated individual of the work crew
+(the Supervisor or Foreman) with complete knowledge of who is on the crew is the individual
+responsible for carrying out all steps of the lockout procedure. That individual will inform the
+work crew when it is safe to work on the equipment and/or circuits. Additionally, the designated
+individual will not remove a crew lock until it has been verified that ALL individuals are clear.
+1. Notify all affected employees and customer(s) that a lockout is required and the reason.
+2. If the equipment is in operation, after obtaining approval, shut it down by the normal stopping
+procedures.
+3. Operate the switch, valve, or other energy isolating devices so that all energy sources
+(electrical, mechanical, hydraulic, etc.) are disconnected or isolated from the equipment and/or
+circuits. Stored energy, such as that in capacitors, springs, elevated machine members, rotating
+flywheels, hydraulic systems, and air, gas, steam, or water pressure, etc., must also be dissipated
+or restrained by methods such as grounding, repositioning, blocking, bleeding down, etc.
+4. All affected employees are then required to lockout the energy devices with their individual
+lock.
+5. After ensuring that no personnel are exposed and as a check on having disconnected the
+energy sources, operate the push button or other normal operating controls to make certain the
+equipment will not operate. In the event that electrical circuits have been locked out, ensure that
+the circuits are de- energized by applying an appropriate voltage tester that itself has been tested
+on live circuits. Be sure to return all operating controls to the neutral position.
+6. The equipment and/or circuits are now locked out.
+
+
+Restoring Equipment and/or Circuits to Service
+1. When the job is complete and the equipment or circuits are ready for testing or normal service,
+check the equipment and/or circuits to ensure that no one is exposed (no locks are left on the
+locking device from others).
+2. When the equipment and/or circuits are clear, remove all locks. The energy isolating devices
+may be operated to restore energy to the equipment and/or circuits.

@@ -6,6 +6,14 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    proxy: {
+      // Local dev API server for SOP uploads (AI or nothing).
+      // This makes `/api/*` requests work under `npm run dev`.
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [react()],
   resolve: {

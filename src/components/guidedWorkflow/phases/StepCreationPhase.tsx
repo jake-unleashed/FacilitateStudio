@@ -14,11 +14,12 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
-import { Plus, UploadCloud } from 'lucide-react';
+import { Check, Copy, Plus, UploadCloud } from 'lucide-react';
 import { Button } from '../../Button';
 import { Input } from '../../Input';
 import type { SimStep } from '../../../types';
 import { GuidedSortableStepRow } from './GuidedSortableStepRow';
+import { SOPUploadView } from './SOPUploadView';
 
 interface StepCreationPhaseProps {
   steps: SimStep[];
@@ -26,12 +27,17 @@ interface StepCreationPhaseProps {
   onUpdateStep: (step: SimStep) => void;
   onDeleteStep: (stepId: string) => void;
   onReorderSteps?: (previousOrder: string[], newOrder: string[]) => void;
+  /** Optional batch boundary for grouping bulk step changes into one undo entry. */
+  onBatchStart?: () => void;
+  /** Optional batch boundary for grouping bulk step changes into one undo entry. */
+  onBatchEnd?: () => void;
   onContinue?: () => void;
 }
 
 /**
  * Guided workflow phase for creating a project’s steps.
- * - Choice view: select SOP upload (coming soon) vs manual creation.
+ * - Choice view: select SOP upload vs manual creation.
+ * - SOP view: upload a document and extract steps via AI.
  * - Manual view: add/edit/delete/reorder steps using editor-like patterns.
  */
 export function StepCreationPhase({
@@ -40,13 +46,18 @@ export function StepCreationPhase({
   onUpdateStep,
   onDeleteStep,
   onReorderSteps,
+  onBatchStart,
+  onBatchEnd,
   onContinue,
 }: StepCreationPhaseProps): JSX.Element {
-  const [mode, setMode] = useState<'choice' | 'manual'>('choice');
+  const [mode, setMode] = useState<'choice' | 'sop' | 'manual' | 'reset-confirm'>('choice');
   const [draftTitle, setDraftTitle] = useState('');
   const [stepTitles, setStepTitles] = useState<Record<string, string>>({});
+  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(false);
+  const isClearingStepsRef = useRef(false);
+  const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setStepTitles((prev) =>
@@ -55,10 +66,13 @@ export function StepCreationPhase({
   }, [steps]);
 
   useEffect(() => {
-    if (steps.length > 0) {
+    // Auto-advance into the step list view when steps already exist (e.g. resume).
+    // Avoid fighting explicit navigation when we're intentionally clearing/resetting.
+    if (isClearingStepsRef.current) return;
+    if (mode === 'choice' && steps.length > 0) {
       setMode('manual');
     }
-  }, [steps.length]);
+  }, [mode, steps.length]);
 
   const canAddStep = draftTitle.trim().length > 0;
 
@@ -130,6 +144,131 @@ export function StepCreationPhase({
 
   const isReorderEnabled = !!onReorderSteps;
 
+  const clearCopyResetTimeout = useCallback(() => {
+    if (!copyResetTimeoutRef.current) return;
+    clearTimeout(copyResetTimeoutRef.current);
+    copyResetTimeoutRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearCopyResetTimeout();
+    };
+  }, [clearCopyResetTimeout]);
+
+  const handleCopySteps = useCallback(async () => {
+    if (sortedSteps.length === 0) return;
+    const text = sortedSteps.map((s, i) => `${i + 1}. ${s.title}`).join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for environments without clipboard permissions.
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+
+    clearCopyResetTimeout();
+    setCopyState('copied');
+    copyResetTimeoutRef.current = setTimeout(() => setCopyState('idle'), 1400);
+  }, [clearCopyResetTimeout, sortedSteps]);
+
+  const clearAllSteps = useCallback(() => {
+    if (steps.length === 0) return;
+    isClearingStepsRef.current = true;
+    for (const step of steps) {
+      onDeleteStep(step.id);
+    }
+    setDraftTitle('');
+    setStepTitles({});
+    shouldScrollToBottomRef.current = false;
+    // Allow the parent step state to flush before re-enabling auto mode transitions.
+    requestAnimationFrame(() => {
+      isClearingStepsRef.current = false;
+    });
+  }, [onDeleteStep, steps]);
+
+  const handleSOPStepsExtracted = useCallback(
+    (extractedSteps: string[]) => {
+      // Replace any existing step list with the latest SOP extraction.
+      // Wrap in a batch so "Undo" treats this as one operation.
+      onBatchStart?.();
+      try {
+        clearAllSteps();
+        for (const title of extractedSteps) {
+          onAddStep({
+            title,
+            description: '',
+            completed: false,
+            type: null,
+          });
+        }
+      } finally {
+        onBatchEnd?.();
+      }
+      setMode('manual');
+    },
+    [clearAllSteps, onAddStep, onBatchEnd, onBatchStart]
+  );
+
+  if (mode === 'reset-confirm') {
+    return (
+      <div className="space-y-8">
+        <div className="text-center">
+          <h2 className="text-lg font-bold tracking-tight text-slate-800">Start over?</h2>
+          <p className="mt-2 text-sm font-medium text-slate-600">
+            This will remove your current step list so you can upload a new SOP or add steps manually.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-white/10 pt-6">
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => setMode('manual')}
+            className="rounded-[20px]"
+          >
+            Keep steps
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => {
+              // Wrap reset in a batch so "Undo" stays clean.
+              onBatchStart?.();
+              try {
+                clearAllSteps();
+              } finally {
+                onBatchEnd?.();
+              }
+              setMode('choice');
+            }}
+            className="rounded-[20px] bg-red-600 shadow-lg shadow-red-500/20 hover:bg-red-500 border border-red-400/20"
+          >
+            Start over
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'sop') {
+    return (
+      <SOPUploadView
+        onStepsExtracted={handleSOPStepsExtracted}
+        onBack={() => setMode('choice')}
+      />
+    );
+  }
+
   if (mode === 'choice') {
     return (
       <div className="space-y-8">
@@ -145,8 +284,8 @@ export function StepCreationPhase({
         <div className="grid gap-4">
           <button
             type="button"
-            disabled
-            className="group flex w-full items-start gap-4 rounded-[20px] border border-blue-400/30 bg-white/70 p-5 text-left shadow-sm transition-all duration-300 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => setMode('sop')}
+            className="group flex w-full items-start gap-4 rounded-[20px] border border-blue-400/30 bg-white/70 p-5 text-left shadow-sm transition-all duration-300 hover:bg-white/90 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-500/10"
           >
             <span className="flex h-12 w-12 items-center justify-center rounded-[20px] border border-white/60 bg-white/60 text-blue-600 shadow-sm">
               <UploadCloud size={24} />
@@ -186,8 +325,23 @@ export function StepCreationPhase({
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-lg font-bold tracking-tight text-slate-800">Add steps</h2>
+      <div className="flex items-center gap-3">
+        <div className="w-10" aria-hidden="true" />
+        <div className="flex-1 text-center">
+          <h2 className="text-lg font-bold tracking-tight text-slate-800">Add steps</h2>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={handleCopySteps}
+          disabled={sortedSteps.length === 0}
+          aria-label={copyState === 'copied' ? 'Copied' : 'Copy all steps'}
+          title={copyState === 'copied' ? 'Copied' : 'Copy all steps'}
+          className="rounded-full px-3"
+        >
+          {copyState === 'copied' ? <Check size={16} /> : <Copy size={16} />}
+        </Button>
       </div>
 
       <div
@@ -250,7 +404,13 @@ export function StepCreationPhase({
         <Button
           variant="secondary"
           size="md"
-          onClick={() => setMode('choice')}
+          onClick={() => {
+            if (steps.length === 0) {
+              setMode('choice');
+              return;
+            }
+            setMode('reset-confirm');
+          }}
           className="rounded-[20px]"
         >
           Back

@@ -1,0 +1,31 @@
+SOP: Batch Changeover — Tablet Press Line (Line 2)
+
+Training objectives (ignore)
+- Reduce cross-contamination risk
+- Maintain GMP compliance
+
+Roles (ignore)
+- Operator: performs steps
+- QA: reviews documentation
+
+Pre-req checks
+- Confirm last batch is released for changeover.
+- Confirm cleaning kit is available.
+
+Changeover Procedure
+1. Press Stop on the tablet press HMI.
+2. Turn the main disconnect switch to OFF.
+3. Apply lock and tag to the main disconnect.
+4. Remove product contact parts from the press.
+5. Place removed parts in a labeled cleaning bin.
+6. Vacuum loose powder from the press enclosure.
+7. Wipe contact surfaces with approved cleaning solution.
+8. Rinse wiped surfaces with purified water wipes.
+9. Dry contact surfaces with lint-free wipes.
+10. Inspect surfaces for residue.
+11. Reinstall product contact parts.
+12. Remove lock and tag from the main disconnect.
+13. Turn the main disconnect switch to ON.
+14. Run the press at slow speed for 10 tablets.
+15. Inspect the first 10 tablets for defects.
+16. Record line clearance completion in the batch record.
