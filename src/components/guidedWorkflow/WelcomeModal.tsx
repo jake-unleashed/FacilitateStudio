@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, PencilRuler } from 'lucide-react';
 
 export interface WelcomeModalProps {
@@ -6,6 +6,8 @@ export interface WelcomeModalProps {
   onSelectGuided: () => void;
   onSelectEditor: () => void;
 }
+
+const ANIMATION_DURATION_MS = 220;
 
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
   const nodes = Array.from(
@@ -30,6 +32,61 @@ export function WelcomeModal({
 }: WelcomeModalProps): JSX.Element | null {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const prefersReducedMotion = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }, []);
+
+  // Keep mounted briefly for exit animation.
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current);
+      dismissTimeoutRef.current = null;
+    }
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    if (prefersReducedMotion) {
+      setShouldRender(isOpen);
+      setIsVisible(isOpen);
+      return;
+    }
+
+    if (isOpen) {
+      setShouldRender(true);
+      // Start hidden, then reveal on next frame for a smooth enter transition.
+      setIsVisible(false);
+      rafRef.current = requestAnimationFrame(() => {
+        setIsVisible(true);
+        rafRef.current = null;
+      });
+      return;
+    }
+
+    // Closing: animate out, then unmount.
+    if (shouldRender) {
+      setIsVisible(false);
+      dismissTimeoutRef.current = setTimeout(() => {
+        setShouldRender(false);
+        dismissTimeoutRef.current = null;
+      }, ANIMATION_DURATION_MS);
+    }
+  }, [isOpen, prefersReducedMotion, shouldRender]);
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -91,11 +148,13 @@ export function WelcomeModal({
     };
   }, [isOpen, onSelectEditor]);
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center"
+      className={`pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center transition-opacity duration-200 ease-out ${
+        isVisible ? 'opacity-100' : 'opacity-0'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="welcome-modal-title"
@@ -111,7 +170,9 @@ export function WelcomeModal({
 
       <div
         ref={dialogRef}
-        className="relative mx-4 w-full max-w-xl rounded-[32px] border border-white/40 bg-white/80 p-6 shadow-glass backdrop-blur-xl"
+        className={`relative mx-4 w-full max-w-xl rounded-[32px] border border-white/40 bg-white/80 p-6 shadow-glass backdrop-blur-xl transition-all duration-200 ease-out ${
+          isVisible ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-95 opacity-0'
+        }`}
       >
         <div className="text-center">
           <h2 id="welcome-modal-title" className="text-lg font-bold tracking-tight text-slate-800">

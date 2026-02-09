@@ -38,8 +38,11 @@ import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { useEditorProjectLifecycle } from '../hooks/editor/useEditorProjectLifecycle';
+
+const IS_TEST = (import.meta as { env?: { MODE?: string } }).env?.MODE === 'test';
 import { useEditorNavigationGuards } from '../hooks/editor/useEditorNavigationGuards';
 import { useRecordingEndTransform } from '../hooks/editor/useRecordingEndTransform';
+import type { LatestRecordingEndTransformRefValue } from '../hooks/editor/useRecordingEndTransform';
 import { useGuidedWorkflow } from '../hooks/useGuidedWorkflow';
 import {
   calculateChildWorldPosition,
@@ -94,6 +97,13 @@ function EditorPageContent() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
+  const [hasFirstFrame, setHasFirstFrame] = useState(false);
+  const [isEntryFadeVisible, setIsEntryFadeVisible] = useState(false);
+  const [isEntryFadeFading, setIsEntryFadeFading] = useState(false);
+  const [isEntryTransitionDone, setIsEntryTransitionDone] = useState(true);
+  const entryFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entryFadeStartedAtRef = useRef<number | null>(null);
+  const entryFadeCompletedRef = useRef(false);
   // Recording state for move-item step end position
   // recordingPositionForStepId is owned by useRecordingEndTransform (below)
 
@@ -386,6 +396,16 @@ function EditorPageContent() {
   // Reset hydration when project changes
   useEffect(() => {
     hasHydratedRef.current = false;
+    setHasFirstFrame(false);
+    entryFadeCompletedRef.current = false;
+    entryFadeStartedAtRef.current = null;
+    setIsEntryFadeVisible(false);
+    setIsEntryFadeFading(false);
+    setIsEntryTransitionDone(true);
+    if (entryFadeTimerRef.current) {
+      clearTimeout(entryFadeTimerRef.current);
+      entryFadeTimerRef.current = null;
+    }
   }, [currentProjectId]);
 
   // ============================================================================
@@ -403,6 +423,88 @@ function EditorPageContent() {
 
   const handleCanvasReady = useCallback((canvas: HTMLCanvasElement) => {
     canvasRef.current = canvas;
+  }, []);
+
+  const handleFirstFrame = useCallback(() => {
+    setHasFirstFrame(true);
+  }, []);
+
+  // Entry fade overlay: masks WebGL/scene initialization flashes, then dissolves away.
+  useEffect(() => {
+    if (IS_TEST) {
+      setIsEntryFadeVisible(false);
+      setIsEntryFadeFading(false);
+      setIsEntryTransitionDone(true);
+      entryFadeCompletedRef.current = true;
+      return;
+    }
+    const isNewProject =
+      !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0;
+    if (!isInitialized || !isNewProject) {
+      setIsEntryFadeVisible(false);
+      setIsEntryFadeFading(false);
+      setIsEntryTransitionDone(true);
+      entryFadeCompletedRef.current = false;
+      return;
+    }
+
+    if (entryFadeCompletedRef.current) return;
+
+    // Show immediately on new projects once initialized.
+    if (!isEntryFadeVisible) {
+      setIsEntryFadeVisible(true);
+      setIsEntryFadeFading(false);
+      setIsEntryTransitionDone(false);
+      entryFadeStartedAtRef.current =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+    }
+
+    if (!hasFirstFrame) return;
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const minVisibleMs = prefersReducedMotion ? 0 : 200;
+    const fadeMs = prefersReducedMotion ? 0 : 380;
+    const startedAt =
+      entryFadeStartedAtRef.current ??
+      (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const elapsed = Math.max(0, now - startedAt);
+    const remaining = Math.max(0, minVisibleMs - elapsed);
+
+    if (entryFadeTimerRef.current) {
+      clearTimeout(entryFadeTimerRef.current);
+      entryFadeTimerRef.current = null;
+    }
+
+    entryFadeTimerRef.current = setTimeout(() => {
+      if (prefersReducedMotion) {
+        setIsEntryFadeVisible(false);
+        setIsEntryFadeFading(false);
+        setIsEntryTransitionDone(true);
+        entryFadeCompletedRef.current = true;
+        entryFadeTimerRef.current = null;
+        return;
+      }
+
+      setIsEntryFadeFading(true);
+      entryFadeTimerRef.current = setTimeout(() => {
+        setIsEntryFadeVisible(false);
+        setIsEntryFadeFading(false);
+        setIsEntryTransitionDone(true);
+        entryFadeCompletedRef.current = true;
+        entryFadeTimerRef.current = null;
+      }, fadeMs);
+    }, remaining);
+  }, [currentProject, hasFirstFrame, isEntryFadeVisible, isInitialized]);
+
+  useEffect(() => {
+    return () => {
+      if (entryFadeTimerRef.current) clearTimeout(entryFadeTimerRef.current);
+    };
   }, []);
 
   /**
@@ -1376,7 +1478,7 @@ function EditorPageContent() {
 
   return (
     <GuidedWorkflowProvider projectId={projectId}>
-      <div className="relative h-screen w-full overflow-hidden bg-black selection:bg-blue-500/30 selection:text-white">
+      <div className="relative h-screen w-full overflow-hidden bg-slate-100 selection:bg-blue-500/30 selection:text-white">
         {/* Background / Workspace Layer */}
         <MainCanvas
           objects={objects}
@@ -1387,6 +1489,7 @@ function EditorPageContent() {
           onCameraControlsReady={handleCameraControlsReady}
           onSceneReady={handleSceneReady}
           onCanvasReady={handleCanvasReady}
+          onFirstFrame={handleFirstFrame}
           onDragStart={beginBatch}
           onDragEnd={endBatch}
           recordingPositionForStepId={recordingPositionForStepId}
@@ -1394,8 +1497,21 @@ function EditorPageContent() {
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
         />
 
+        {isEntryFadeVisible && (
+          <div
+            className={`pointer-events-auto absolute inset-0 z-40 bg-slate-100 transition-opacity duration-500 ease-out ${
+              isEntryFadeFading ? 'opacity-0' : 'opacity-100'
+            }`}
+            aria-hidden="true"
+          >
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_#f8fafc_0%,_#cbd5e1_100%)]" />
+          </div>
+        )}
+
         <GuidedWorkflowEntry
           isReady={isInitialized}
+          projectId={projectId}
+          isEntryTransitionDone={isEntryTransitionDone}
           isNewProject={
             !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0
           }
@@ -1417,6 +1533,7 @@ function EditorPageContent() {
           onStartRecordingPosition={handleStartRecordingPosition}
           onStopRecordingPosition={handleStopRecordingPosition}
           recordingPositionForStepId={recordingPositionForStepId}
+          latestRecordingEndPositionRef={latestRecordingEndPositionRef}
           onPreviewClick={
             projectId
               ? () => {
@@ -1536,6 +1653,8 @@ function EditorPageContent() {
 
 interface GuidedWorkflowEntryProps {
   isReady: boolean;
+  projectId?: string;
+  isEntryTransitionDone: boolean;
   isNewProject: boolean;
   steps: SimStep[];
   onAddStep: (step: Omit<SimStep, 'id'>) => void;
@@ -1555,6 +1674,7 @@ interface GuidedWorkflowEntryProps {
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
+  latestRecordingEndPositionRef?: React.MutableRefObject<LatestRecordingEndTransformRefValue | null>;
   onPreviewClick?: () => void;
   onPublishClick?: () => void;
   editorChrome: {
@@ -1570,6 +1690,8 @@ interface GuidedWorkflowEntryProps {
 
 function GuidedWorkflowEntry({
   isReady,
+  projectId,
+  isEntryTransitionDone,
   isNewProject,
   editorChrome,
   steps,
@@ -1590,25 +1712,69 @@ function GuidedWorkflowEntry({
   onStartRecordingPosition,
   onStopRecordingPosition,
   recordingPositionForStepId,
+  latestRecordingEndPositionRef,
   onPreviewClick,
   onPublishClick,
 }: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
   const [showWelcome, setShowWelcome] = useState(false);
   const hasAutoSelectedPositioningRef = useRef(false);
+  const welcomeOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isReady) return;
-    if (!isNewProject) {
+    const shouldOfferWelcome =
+      Boolean(projectId) && isNewProject && !state.isActive && !state.hasDismissedWelcome;
+    if (!shouldOfferWelcome) {
       setShowWelcome(false);
+      if (welcomeOpenTimeoutRef.current) {
+        clearTimeout(welcomeOpenTimeoutRef.current);
+        welcomeOpenTimeoutRef.current = null;
+      }
       return;
     }
-    setShowWelcome(!state.isActive && !state.hasDismissedWelcome);
-  }, [isNewProject, isReady, state.hasDismissedWelcome, state.isActive]);
 
-  const isGuidedUIMode = state.isActive || showWelcome;
+    // Wait until the entry fade has dissolved away, then add breathing room.
+    if (!isEntryTransitionDone) return;
+    if (showWelcome) return;
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const delayMs = prefersReducedMotion ? 0 : 250;
+
+    if (welcomeOpenTimeoutRef.current) {
+      clearTimeout(welcomeOpenTimeoutRef.current);
+      welcomeOpenTimeoutRef.current = null;
+    }
+
+    welcomeOpenTimeoutRef.current = setTimeout(() => {
+      setShowWelcome(true);
+      welcomeOpenTimeoutRef.current = null;
+    }, delayMs);
+  }, [
+    isEntryTransitionDone,
+    isNewProject,
+    isReady,
+    projectId,
+    showWelcome,
+    state.hasDismissedWelcome,
+    state.isActive,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (welcomeOpenTimeoutRef.current) clearTimeout(welcomeOpenTimeoutRef.current);
+    };
+  }, []);
+
+  const shouldOfferWelcome =
+    Boolean(projectId) && isNewProject && !state.isActive && !state.hasDismissedWelcome;
+  const isGuidedUIMode = state.isActive || showWelcome || shouldOfferWelcome;
   const shouldLockNavigation =
-    showWelcome || (state.isActive && state.currentPhase === 'step-creation');
+    shouldOfferWelcome || (state.isActive && state.currentPhase === 'step-creation');
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -1696,6 +1862,7 @@ function GuidedWorkflowEntry({
             onStartRecordingPosition={onStartRecordingPosition}
             onStopRecordingPosition={onStopRecordingPosition}
             recordingPositionForStepId={recordingPositionForStepId}
+            latestRecordingEndPositionRef={latestRecordingEndPositionRef}
             onUploadAsset={onUploadAsset}
             uploadProgress={uploadProgress}
             recentAssets={recentAssets}

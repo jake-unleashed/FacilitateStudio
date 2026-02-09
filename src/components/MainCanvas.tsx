@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
 import * as THREE from 'three';
 
@@ -31,6 +31,8 @@ interface MainCanvasProps {
   onSceneReady?: (scene: THREE.Scene) => void;
   /** Callback when the WebGL canvas is ready (for thumbnail capture) */
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+  /** Callback after the first rendered frame (for visual loading transitions) */
+  onFirstFrame?: () => void;
   /** Show performance monitor (defaults to true in development) */
   showPerformanceMonitor?: boolean;
   /** Callback when drag operation starts (for undo/redo batching) */
@@ -78,6 +80,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onCameraControlsReady,
   onSceneReady,
   onCanvasReady,
+  onFirstFrame,
   showPerformanceMonitor = IS_DEV,
   onDragStart,
   onDragEnd,
@@ -96,6 +99,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
 
   // Track if we've notified about canvas being ready
   const hasNotifiedCanvasRef = useRef(false);
+  const hasNotifiedFirstFrameRef = useRef(false);
 
   const handlePerfStats = useCallback((stats: PerformanceStats) => {
     setPerfStats(stats);
@@ -103,6 +107,10 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
 
   const handleCreated = useCallback(
     (state: { gl: THREE.WebGLRenderer }) => {
+      // Prevent any opaque black clear from showing through during initialization.
+      // With alpha enabled, we explicitly clear with alpha=0 so the CSS background stays visible.
+      state.gl.setClearColor(0x000000, 0);
+
       if (onCanvasReady && !hasNotifiedCanvasRef.current) {
         hasNotifiedCanvasRef.current = true;
         onCanvasReady(state.gl.domElement);
@@ -110,6 +118,15 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
     },
     [onCanvasReady]
   );
+
+  function FirstFrameNotifier(): null {
+    useFrame(() => {
+      if (hasNotifiedFirstFrameRef.current) return;
+      hasNotifiedFirstFrameRef.current = true;
+      onFirstFrame?.();
+    });
+    return null;
+  }
 
   return (
     <div className="absolute inset-0 h-full w-full overflow-hidden bg-slate-100">
@@ -155,6 +172,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onPreviewOutlineTargetChange={setPreviewOutlineTarget}
           />
 
+          {onFirstFrame && <FirstFrameNotifier />}
           {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}
         </Canvas>
       </div>

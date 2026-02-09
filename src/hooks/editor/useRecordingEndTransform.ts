@@ -42,7 +42,7 @@ export interface UseRecordingEndTransformResult {
  * useRecordingEndTransform
  *
  * Owns the move-item end-transform recording workflow:
- * - Start recording (batch, clear existing end transform, select target)
+ * - Start recording (batch, select target)
  * - Stop recording (persist end transform via undo command, restore object to start, end batch)
  *
  * The drag pipeline updates `latestRecordingEndPositionRef` synchronously (from EditorPage),
@@ -67,49 +67,36 @@ export function useRecordingEndTransform({
 
   const handleStartRecordingPosition = useCallback(
     (stepId: string) => {
+      // Read from undoRedoSteps to get the most up-to-date step
+      const recordingStep =
+        undoRedoSteps.find((s) => s.id === stepId) || steps.find((s) => s.id === stepId);
+      if (!recordingStep?.targetObjectId) {
+        console.warn('[useRecordingEndTransform] Cannot start recording: step has no targetObjectId', stepId);
+        return;
+      }
+
+      const targetObjectExists = objects.some((o) => o.id === recordingStep.targetObjectId);
+      if (!targetObjectExists) {
+        console.warn(
+          '[useRecordingEndTransform] Cannot start recording: target object not found',
+          recordingStep.targetObjectId
+        );
+        return;
+      }
+
+      // Enter recording mode only after validation succeeds.
       setRecordingPositionForStepId(stepId);
 
       // Clear the ref when starting a new recording session
       latestRecordingEndPositionRef.current = null;
 
-      // Read from undoRedoSteps to get the most up-to-date step
-      const recordingStep = undoRedoSteps.find((s) => s.id === stepId) || steps.find((s) => s.id === stepId);
-      if (!recordingStep?.targetObjectId) return;
-
-      // Clear endPosition when starting a new recording session so ghost starts at startPosition
-      let initialStepForCommand = { ...recordingStep };
-
-      // Start batch FIRST so the initial state is captured before we clear endPosition
+      // Start batch so the final "Set end transform" command (and any restores)
+      // are grouped together for undo/redo.
       beginBatch();
 
-      const hasExistingEndTransform =
-        !!recordingStep.endPosition || !!recordingStep.endRotation || !!recordingStep.endScale;
-      if (hasExistingEndTransform) {
-        // Clear end transform fields and store the cleared version as initial state
-        initialStepForCommand = {
-          ...recordingStep,
-          endPosition: undefined,
-          endRotation: undefined,
-          endScale: undefined,
-        };
-
-        const clearedStep: SimStep = {
-          ...recordingStep,
-          endPosition: undefined,
-          endRotation: undefined,
-          endScale: undefined,
-        };
-
-        const clearCommand = createUpdateStepCommandHelper(
-          clearedStep.id,
-          recordingStep,
-          clearedStep,
-          `Clear end transform for recording: ${clearedStep.title || 'Untitled'}`
-        );
-        executeCommand(clearCommand);
-      }
-
-      recordingInitialStepRef.current = initialStepForCommand;
+      // IMPORTANT UX: When recording again, start from the previously-recorded end transform
+      // so users can refine it without losing position/rotation/scale.
+      recordingInitialStepRef.current = { ...recordingStep };
 
       // If target is a child, create compound selection ID (matches parseSelectionId format)
       if (recordingStep.targetChildPath) {
@@ -118,7 +105,7 @@ export function useRecordingEndTransform({
         onSelectObject(recordingStep.targetObjectId);
       }
     },
-    [beginBatch, executeCommand, onSelectObject, steps, undoRedoSteps]
+    [beginBatch, objects, onSelectObject, steps, undoRedoSteps]
   );
 
   const handleStopRecordingPosition = useCallback(() => {

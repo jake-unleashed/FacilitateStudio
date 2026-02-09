@@ -282,7 +282,9 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
             typeof document !== 'undefined' ? document.body.dataset.guidedPositionMode : undefined;
 
           const isGuidedPositioning = guidedPhase === 'model-positioning';
-          const shouldShowGizmo = !isGuidedPositioning || guidedPositionMode === 'position';
+          const isGuidedStepConfig = guidedPhase === 'step-configuration';
+          const shouldShowGizmo =
+            (!isGuidedPositioning && !isGuidedStepConfig) || guidedPositionMode === 'position';
 
           if (!shouldShowGizmo) return null;
 

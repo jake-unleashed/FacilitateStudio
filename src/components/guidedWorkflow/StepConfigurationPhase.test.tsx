@@ -47,6 +47,7 @@ describe('StepConfigurationPhase', () => {
         objects={[]}
         selectedObjectId={null}
         onUpdateStep={onUpdateStep}
+        onUpdateObject={vi.fn()}
       />,
       {
         wrapper: ({ children }) => <TestWrapper projectId={projectId}>{children}</TestWrapper>,
@@ -77,6 +78,7 @@ describe('StepConfigurationPhase', () => {
         objects={[]}
         selectedObjectId={null}
         onUpdateStep={onUpdateStep}
+        onUpdateObject={vi.fn()}
       />,
       {
         wrapper: ({ children }) => <TestWrapper projectId={projectId}>{children}</TestWrapper>,
@@ -103,7 +105,7 @@ describe('StepConfigurationPhase', () => {
     });
 
     render(
-      <StepConfigurationPhase steps={steps} objects={[]} selectedObjectId={null} onUpdateStep={vi.fn()} />,
+      <StepConfigurationPhase steps={steps} objects={[]} selectedObjectId={null} onUpdateStep={vi.fn()} onUpdateObject={vi.fn()} />,
       {
         wrapper: ({ children }) => <TestWrapper projectId={introProjectId}>{children}</TestWrapper>,
       }
@@ -129,7 +131,7 @@ describe('StepConfigurationPhase', () => {
     });
 
     render(
-      <StepConfigurationPhase steps={steps} objects={[]} selectedObjectId={null} onUpdateStep={vi.fn()} />,
+      <StepConfigurationPhase steps={steps} objects={[]} selectedObjectId={null} onUpdateStep={vi.fn()} onUpdateObject={vi.fn()} />,
       {
         wrapper: ({ children }) => <TestWrapper projectId={blankRestoreProjectId}>{children}</TestWrapper>,
       }

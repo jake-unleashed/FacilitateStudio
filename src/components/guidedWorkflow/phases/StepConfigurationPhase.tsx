@@ -7,17 +7,21 @@ import { InfoCardSection } from '../../stepCard/InfoCardSection';
 import { MoveItemSection } from '../../stepCard/MoveItemSection';
 import type { FocusMode, SceneObject, SimStep, StepType } from '../../../types';
 import { StepContextDisplay } from '../components/StepContextDisplay';
+import { RecordingPanel } from './RecordingPanel';
 import { MinusCircle } from 'lucide-react';
+import type { LatestRecordingEndTransformRefValue } from '../../../hooks/editor/useRecordingEndTransform';
 
 interface StepConfigurationPhaseProps {
   steps: SimStep[];
   objects: SceneObject[];
   selectedObjectId?: string | null;
   onUpdateStep: (step: SimStep) => void;
+  onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
+  latestRecordingEndPositionRef?: React.MutableRefObject<LatestRecordingEndTransformRefValue | null>;
 }
 
 export function StepConfigurationPhase({
@@ -25,10 +29,12 @@ export function StepConfigurationPhase({
   objects,
   selectedObjectId,
   onUpdateStep,
+  onUpdateObject,
   onFocusObject,
   onStartRecordingPosition,
   onStopRecordingPosition,
   recordingPositionForStepId,
+  latestRecordingEndPositionRef,
 }: StepConfigurationPhaseProps): JSX.Element {
   const { state, actions } = useGuidedWorkflow();
   const totalSteps = steps.length;
@@ -131,10 +137,12 @@ export function StepConfigurationPhase({
       objects={objects}
       selectedObjectId={selectedObjectId}
       onUpdateStep={onUpdateStep}
+      onUpdateObject={onUpdateObject}
       onFocusObject={onFocusObject}
       onStartRecordingPosition={onStartRecordingPosition}
       onStopRecordingPosition={onStopRecordingPosition}
       recordingPositionForStepId={recordingPositionForStepId}
+      latestRecordingEndPositionRef={latestRecordingEndPositionRef}
       onRequestShowIntro={() => setIsIntroVisible(true)}
       currentSubScreen={currentSubScreen}
       onSetCurrentSubScreen={setCurrentSubScreen}
@@ -150,10 +158,12 @@ function StepSetupStep({
   objects,
   selectedObjectId,
   onUpdateStep,
+  onUpdateObject,
   onFocusObject,
   onStartRecordingPosition,
   onStopRecordingPosition,
   recordingPositionForStepId,
+  latestRecordingEndPositionRef,
   onRequestShowIntro,
   currentSubScreen,
   onSetCurrentSubScreen,
@@ -165,10 +175,12 @@ function StepSetupStep({
   objects: SceneObject[];
   selectedObjectId?: string | null;
   onUpdateStep: (step: SimStep) => void;
+  onUpdateObject: (obj: SceneObject) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
+  latestRecordingEndPositionRef?: React.MutableRefObject<LatestRecordingEndTransformRefValue | null>;
   onRequestShowIntro: () => void;
   currentSubScreen: 'type' | 'settings';
   onSetCurrentSubScreen: (screen: 'type' | 'settings') => void;
@@ -294,6 +306,7 @@ function StepSetupStep({
 
   const canAdvance = controller.selectedType !== null;
   const isRecording = controller.isRecordingPosition;
+
   const isBlankSelected = chooserSelection === 'blank';
   const handleSelectBlank = useCallback(() => {
     controller.flushPendingUpdates();
@@ -303,6 +316,21 @@ function StepSetupStep({
     onSetCurrentSubScreen('type');
   }, [actions, controller, onSetCurrentSubScreen, step.id]);
 
+  const shouldShowRecordingPanel =
+    isRecording && recordingPositionForStepId === step.id && Boolean(onStopRecordingPosition);
+
+  if (shouldShowRecordingPanel) {
+    return (
+      <RecordingPanel
+        step={step}
+        objects={objects}
+        onUpdateObject={onUpdateObject}
+        onStopRecording={onStopRecordingPosition!}
+        latestRecordingEndPositionRef={latestRecordingEndPositionRef}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <StepContextDisplay
@@ -311,99 +339,102 @@ function StepSetupStep({
         stepTitle={step.title || ''}
       />
 
-      {isChooserScreen && (
-        <div className="text-sm font-medium text-slate-600">
-          Choose what the trainee will do in this step.
-        </div>
-      )}
-
-      <StepTypeSection
-        selectedType={chooserSelection && chooserSelection !== 'blank' ? chooserSelection : null}
-        showTypeSelection={isChooserScreen}
-        currentStepTypeConfig={controller.currentStepTypeConfig}
-        isInfoCardSelected={chooserSelection === 'info-card'}
-        onChangeStepType={() => {
-          controller.handleChangeStepType();
-          onSetCurrentSubScreen('type');
-        }}
-        onTypeSelect={(type) => {
-          setChooserSelection(type);
-          actions.setStepSetupBlankChoice(step.id, false);
-          controller.handleTypeSelect(type);
-        }}
-      />
-
-      {isChooserScreen && (
-        <button
-          type="button"
-          onClick={handleSelectBlank}
-          disabled={isRecording}
-          className={`
-            group relative mx-auto block w-[260px] max-w-full cursor-pointer overflow-hidden rounded-[20px] border backdrop-blur-xl transition-all duration-300 ease-out
-            border-slate-200/60 bg-gradient-to-br from-slate-50/90 via-slate-100/80 to-white/70 shadow-lg shadow-slate-500/10
-            hover:border-slate-300/70 hover:shadow-xl hover:shadow-slate-500/15
-            ${isBlankSelected ? 'border-slate-400/70 shadow-2xl shadow-slate-500/20 ring-2 ring-slate-400/40' : ''}
-            ${isRecording ? 'pointer-events-none opacity-60' : ''}
-          `}
-          aria-label="Leave blank for now"
-        >
-          <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-gradient-to-br from-white/60 via-white/40 to-white/20 backdrop-blur-sm" />
-
-          <div className="relative flex items-center gap-3 px-5 py-3.5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[14px] border border-white/40 bg-white/50">
-                <MinusCircle size={16} className="text-slate-600" />
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-slate-800">Leave blank for now</div>
-                <div className="text-xs font-medium text-slate-600">No step type selected.</div>
-              </div>
-            </div>
-
-            {isBlankSelected && (
-              <div className="absolute right-3 top-3">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-slate-600 shadow-lg ring-2 ring-slate-400/50" />
-              </div>
-            )}
+      {/* Keyed wrapper triggers guided-fade-in animation on sub-screen or step changes */}
+      <div key={`${step.id}-${effectiveSubScreen}`} className="guided-fade-in space-y-4">
+        {isChooserScreen && (
+          <div className="text-sm font-medium text-slate-600">
+            Choose what the trainee will do in this step.
           </div>
-        </button>
-      )}
+        )}
 
-      <InfoCardSection
-        step={step}
-        stepName={controller.stepName}
-        selectedType={controller.selectedType}
-        isVisible={controller.isInfoCardSelected && isConfigScreen}
-        compact
-        editingField={controller.editingField}
-        heading={controller.heading}
-        bodyText={controller.bodyText}
-        buttonText={controller.buttonText}
-        cardColor={controller.cardColor}
-        currentTheme={controller.currentTheme}
-        headingTextareaRef={controller.headingTextareaRef}
-        bodyTextTextareaRef={controller.bodyTextTextareaRef}
-        buttonTextInputRef={controller.buttonTextInputRef}
-        onStartEdit={controller.handleStartEdit}
-        onFieldBlur={(field, value) => controller.handleFieldBlur(field, value)}
-        onSetCardColor={controller.handleSetCardColor}
-      />
+        <StepTypeSection
+          selectedType={chooserSelection && chooserSelection !== 'blank' ? chooserSelection : null}
+          showTypeSelection={isChooserScreen}
+          currentStepTypeConfig={controller.currentStepTypeConfig}
+          isInfoCardSelected={chooserSelection === 'info-card'}
+          onChangeStepType={() => {
+            controller.handleChangeStepType();
+            onSetCurrentSubScreen('type');
+          }}
+          onTypeSelect={(type) => {
+            setChooserSelection(type);
+            actions.setStepSetupBlankChoice(step.id, false);
+            controller.handleTypeSelect(type);
+          }}
+        />
 
-      <MoveItemSection
-        step={step}
-        isVisible={controller.isMoveItemSelected && isConfigScreen}
-        compact
-        isRecordingPosition={controller.isRecordingPosition}
-        targetObject={controller.targetObject}
-        targetChildName={controller.targetChild?.name ?? null}
-        canUseSelectedObject={controller.canUseSelectedObject}
-        effectiveTargetObjectId={controller.effectiveTargetObjectId}
-        effectiveTargetChildPath={controller.effectiveTargetChildPath}
-        onUseSelectedObject={controller.handleUseSelectedObject}
-        onRemoveTargetObject={controller.handleRemoveTargetObject}
-        onFocusTargetObject={controller.handleFocusTargetObject}
-        onToggleRecording={controller.handleToggleRecording}
-      />
+        {isChooserScreen && (
+          <button
+            type="button"
+            onClick={handleSelectBlank}
+            disabled={isRecording}
+            className={`
+              group relative mx-auto block w-[260px] max-w-full cursor-pointer overflow-hidden rounded-[20px] border backdrop-blur-xl transition-all duration-300 ease-out
+              border-slate-200/60 bg-gradient-to-br from-slate-50/90 via-slate-100/80 to-white/70 shadow-lg shadow-slate-500/10
+              hover:border-slate-300/70 hover:shadow-xl hover:shadow-slate-500/15
+              ${isBlankSelected ? 'border-slate-400/70 shadow-2xl shadow-slate-500/20 ring-2 ring-slate-400/40' : ''}
+              ${isRecording ? 'pointer-events-none opacity-60' : ''}
+            `}
+            aria-label="Leave blank for now"
+          >
+            <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-gradient-to-br from-white/60 via-white/40 to-white/20 backdrop-blur-sm" />
+
+            <div className="relative flex items-center gap-3 px-5 py-3.5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-[14px] border border-white/40 bg-white/50">
+                  <MinusCircle size={16} className="text-slate-600" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">Leave blank for now</div>
+                  <div className="text-xs font-medium text-slate-600">No step type selected.</div>
+                </div>
+              </div>
+
+              {isBlankSelected && (
+                <div className="absolute right-3 top-3">
+                  <div className="h-2 w-2 animate-pulse rounded-full bg-slate-600 shadow-lg ring-2 ring-slate-400/50" />
+                </div>
+              )}
+            </div>
+          </button>
+        )}
+
+        <InfoCardSection
+          step={step}
+          stepName={controller.stepName}
+          selectedType={controller.selectedType}
+          isVisible={controller.isInfoCardSelected && isConfigScreen}
+          compact
+          editingField={controller.editingField}
+          heading={controller.heading}
+          bodyText={controller.bodyText}
+          buttonText={controller.buttonText}
+          cardColor={controller.cardColor}
+          currentTheme={controller.currentTheme}
+          headingTextareaRef={controller.headingTextareaRef}
+          bodyTextTextareaRef={controller.bodyTextTextareaRef}
+          buttonTextInputRef={controller.buttonTextInputRef}
+          onStartEdit={controller.handleStartEdit}
+          onFieldBlur={(field, value) => controller.handleFieldBlur(field, value)}
+          onSetCardColor={controller.handleSetCardColor}
+        />
+
+        <MoveItemSection
+          step={step}
+          isVisible={controller.isMoveItemSelected && isConfigScreen}
+          compact
+          isRecordingPosition={controller.isRecordingPosition}
+          targetObject={controller.targetObject}
+          targetChildName={controller.targetChild?.name ?? null}
+          canUseSelectedObject={controller.canUseSelectedObject}
+          effectiveTargetObjectId={controller.effectiveTargetObjectId}
+          effectiveTargetChildPath={controller.effectiveTargetChildPath}
+          onUseSelectedObject={controller.handleUseSelectedObject}
+          onRemoveTargetObject={controller.handleRemoveTargetObject}
+          onFocusTargetObject={controller.handleFocusTargetObject}
+          onToggleRecording={controller.handleToggleRecording}
+        />
+      </div>
 
       <div className="flex items-center justify-between border-t border-white/20 pt-4">
         <Button

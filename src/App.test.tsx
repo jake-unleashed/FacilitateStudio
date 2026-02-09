@@ -1,8 +1,11 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from './App';
+
+const WELCOME_TIMEOUT_MS = 6000;
 
 // Mock the MainCanvas component since Three.js doesn't work in jsdom
 vi.mock('./components/MainCanvas', () => ({
@@ -10,30 +13,41 @@ vi.mock('./components/MainCanvas', () => ({
     objects,
     onSelectObject,
     selectedObjectId,
+    onCanvasReady,
+    onFirstFrame,
   }: {
     objects: { id: string; name: string }[];
     selectedObjectId: string | null;
     onSelectObject: (id: string | null) => void;
     onUpdateObject: (obj: unknown) => void;
     onCameraControlsReady?: (controls: unknown) => void;
+    onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+    onFirstFrame?: () => void;
     disableNavigation?: boolean;
-  }) => (
-    <div data-testid="main-canvas" onClick={() => onSelectObject(null)}>
-      {objects.map((obj) => (
-        <button
-          key={obj.id}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelectObject(obj.id);
-          }}
-          data-testid={`select-${obj.id}`}
-        >
-          Select {obj.name}
-        </button>
-      ))}
-      <span data-testid="selected-id">{selectedObjectId || 'none'}</span>
-    </div>
-  ),
+  }) => {
+    React.useEffect(() => {
+      onCanvasReady?.(document.createElement('canvas'));
+      onFirstFrame?.();
+    }, [onCanvasReady, onFirstFrame]);
+
+    return (
+      <div data-testid="main-canvas" onClick={() => onSelectObject(null)}>
+        {objects.map((obj) => (
+          <button
+            key={obj.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectObject(obj.id);
+            }}
+            data-testid={`select-${obj.id}`}
+          >
+            Select {obj.name}
+          </button>
+        ))}
+        <span data-testid="selected-id">{selectedObjectId || 'none'}</span>
+      </div>
+    );
+  },
 }));
 
 // Mock useProjects hook for EditorPage
@@ -66,7 +80,11 @@ function renderApp(initialEntries: string[] = ['/editor']) {
 
 async function chooseStartFromScratch() {
   const user = userEvent.setup();
-  const startButton = await screen.findByRole('button', { name: /start from scratch/i });
+  const startButton = await screen.findByRole(
+    'button',
+    { name: /start from scratch/i },
+    { timeout: WELCOME_TIMEOUT_MS }
+  );
   await user.click(startButton);
   return user;
 }
@@ -74,9 +92,11 @@ async function chooseStartFromScratch() {
 async function chooseGuidedSetup() {
   const user = userEvent.setup();
   // Disambiguate from the backdrop "Close guided setup modal" button
-  const guidedButton = await screen.findByRole('button', {
-    name: /guided setup.*recommended/i,
-  });
+  const guidedButton = await screen.findByRole(
+    'button',
+    { name: /guided setup.*recommended/i },
+    { timeout: WELCOME_TIMEOUT_MS }
+  );
   await user.click(guidedButton);
   return user;
 }
@@ -84,11 +104,24 @@ async function chooseGuidedSetup() {
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    // Keep App tests snappy: treat reduced motion as enabled so visual transitions don't add delays.
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
   });
 
-  it('shows the guided setup welcome modal for new projects', () => {
+  it('shows the guided setup welcome modal for new projects', async () => {
     renderApp();
-    expect(screen.getByText('Create Your Simulation')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Create Your Simulation', {}, { timeout: WELCOME_TIMEOUT_MS })
+    ).toBeInTheDocument();
     // Editor chrome should be gated while welcome is shown
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
   });
