@@ -38,8 +38,6 @@ import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
 import { GlobalPopup } from '../components/GlobalPopup';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { useEditorProjectLifecycle } from '../hooks/editor/useEditorProjectLifecycle';
-
-const IS_TEST = (import.meta as { env?: { MODE?: string } }).env?.MODE === 'test';
 import { useEditorNavigationGuards } from '../hooks/editor/useEditorNavigationGuards';
 import { useRecordingEndTransform } from '../hooks/editor/useRecordingEndTransform';
 import type { LatestRecordingEndTransformRefValue } from '../hooks/editor/useRecordingEndTransform';
@@ -431,13 +429,6 @@ function EditorPageContent() {
 
   // Entry fade overlay: masks WebGL/scene initialization flashes, then dissolves away.
   useEffect(() => {
-    if (IS_TEST) {
-      setIsEntryFadeVisible(false);
-      setIsEntryFadeFading(false);
-      setIsEntryTransitionDone(true);
-      entryFadeCompletedRef.current = true;
-      return;
-    }
     const isNewProject =
       !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0;
     if (!isInitialized || !isNewProject) {
@@ -466,6 +457,19 @@ function EditorPageContent() {
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // Reduced motion: don't linger or animate; just ensure the overlay is gone.
+    if (prefersReducedMotion) {
+      setIsEntryFadeVisible(false);
+      setIsEntryFadeFading(false);
+      setIsEntryTransitionDone(true);
+      entryFadeCompletedRef.current = true;
+      if (entryFadeTimerRef.current) {
+        clearTimeout(entryFadeTimerRef.current);
+        entryFadeTimerRef.current = null;
+      }
+      return;
+    }
+
     const minVisibleMs = prefersReducedMotion ? 0 : 200;
     const fadeMs = prefersReducedMotion ? 0 : 380;
     const startedAt =
@@ -481,15 +485,6 @@ function EditorPageContent() {
     }
 
     entryFadeTimerRef.current = setTimeout(() => {
-      if (prefersReducedMotion) {
-        setIsEntryFadeVisible(false);
-        setIsEntryFadeFading(false);
-        setIsEntryTransitionDone(true);
-        entryFadeCompletedRef.current = true;
-        entryFadeTimerRef.current = null;
-        return;
-      }
-
       setIsEntryFadeFading(true);
       entryFadeTimerRef.current = setTimeout(() => {
         setIsEntryFadeVisible(false);
@@ -1510,7 +1505,6 @@ function EditorPageContent() {
 
         <GuidedWorkflowEntry
           isReady={isInitialized}
-          projectId={projectId}
           isEntryTransitionDone={isEntryTransitionDone}
           isNewProject={
             !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0
@@ -1653,7 +1647,6 @@ function EditorPageContent() {
 
 interface GuidedWorkflowEntryProps {
   isReady: boolean;
-  projectId?: string;
   isEntryTransitionDone: boolean;
   isNewProject: boolean;
   steps: SimStep[];
@@ -1690,7 +1683,6 @@ interface GuidedWorkflowEntryProps {
 
 function GuidedWorkflowEntry({
   isReady,
-  projectId,
   isEntryTransitionDone,
   isNewProject,
   editorChrome,
@@ -1724,7 +1716,7 @@ function GuidedWorkflowEntry({
   useEffect(() => {
     if (!isReady) return;
     const shouldOfferWelcome =
-      Boolean(projectId) && isNewProject && !state.isActive && !state.hasDismissedWelcome;
+      isNewProject && !state.isActive && !state.hasDismissedWelcome;
     if (!shouldOfferWelcome) {
       setShowWelcome(false);
       if (welcomeOpenTimeoutRef.current) {
@@ -1758,7 +1750,6 @@ function GuidedWorkflowEntry({
     isEntryTransitionDone,
     isNewProject,
     isReady,
-    projectId,
     showWelcome,
     state.hasDismissedWelcome,
     state.isActive,
@@ -1771,7 +1762,7 @@ function GuidedWorkflowEntry({
   }, []);
 
   const shouldOfferWelcome =
-    Boolean(projectId) && isNewProject && !state.isActive && !state.hasDismissedWelcome;
+    isNewProject && !state.isActive && !state.hasDismissedWelcome;
   const isGuidedUIMode = state.isActive || showWelcome || shouldOfferWelcome;
   const shouldLockNavigation =
     shouldOfferWelcome || (state.isActive && state.currentPhase === 'step-creation');

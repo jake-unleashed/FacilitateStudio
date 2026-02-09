@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, type RootState } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
 import * as THREE from 'three';
 
@@ -71,6 +71,21 @@ interface MainCanvasProps {
   shouldAnimateMoveItem?: boolean;
 }
 
+function FirstFrameNotifier({
+  onFirstFrame,
+  hasNotifiedFirstFrameRef,
+}: {
+  onFirstFrame: () => void;
+  hasNotifiedFirstFrameRef: React.MutableRefObject<boolean>;
+}): null {
+  useFrame(() => {
+    if (hasNotifiedFirstFrameRef.current) return;
+    hasNotifiedFirstFrameRef.current = true;
+    onFirstFrame();
+  });
+  return null;
+}
+
 export const MainCanvas: React.FC<MainCanvasProps> = ({
   objects,
   selectedObjectId,
@@ -106,7 +121,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   }, []);
 
   const handleCreated = useCallback(
-    (state: { gl: THREE.WebGLRenderer }) => {
+    (state: RootState) => {
       // Prevent any opaque black clear from showing through during initialization.
       // With alpha enabled, we explicitly clear with alpha=0 so the CSS background stays visible.
       state.gl.setClearColor(0x000000, 0);
@@ -118,15 +133,6 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
     },
     [onCanvasReady]
   );
-
-  function FirstFrameNotifier(): null {
-    useFrame(() => {
-      if (hasNotifiedFirstFrameRef.current) return;
-      hasNotifiedFirstFrameRef.current = true;
-      onFirstFrame?.();
-    });
-    return null;
-  }
 
   return (
     <div className="absolute inset-0 h-full w-full overflow-hidden bg-slate-100">
@@ -172,7 +178,12 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onPreviewOutlineTargetChange={setPreviewOutlineTarget}
           />
 
-          {onFirstFrame && <FirstFrameNotifier />}
+          {onFirstFrame && (
+            <FirstFrameNotifier
+              onFirstFrame={onFirstFrame}
+              hasNotifiedFirstFrameRef={hasNotifiedFirstFrameRef}
+            />
+          )}
           {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}
         </Canvas>
       </div>
