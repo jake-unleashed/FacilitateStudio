@@ -15,6 +15,7 @@ import { NavItem } from './leftSidebar/NavItem';
 import { AddPanel } from './leftSidebar/AddPanel';
 import { StepsPanel } from './leftSidebar/StepsPanel';
 import { ObjectsPanel } from './leftSidebar/ObjectsPanel';
+import { HelpIcon } from './HelpIcon';
 
 export type { LeftSidebarHandle } from './leftSidebar/types';
 
@@ -271,11 +272,22 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
       >
         {/* Header */}
         <div className="flex h-16 min-w-[20rem] shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
-          <h2 className="text-lg font-bold tracking-tight text-slate-800">
-            {activeTab === 'add' && 'Add New'}
-            {activeTab === 'steps' && 'Steps'}
-            {activeTab === 'objects' && 'Scene Objects'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold tracking-tight text-slate-800">
+              {activeTab === 'add' && 'Add New'}
+              {activeTab === 'steps' && 'Steps'}
+              {activeTab === 'objects' && 'Scene Objects'}
+            </h2>
+            {activeTab === 'steps' && (
+              <HelpIcon content="Your training steps in order. Drag to rearrange them." />
+            )}
+            {activeTab === 'objects' && (
+              <HelpIcon content="All objects in your project. Select one to edit or use in a step." />
+            )}
+            {activeTab === 'add' && (
+              <HelpIcon content="Add objects to build your training." />
+            )}
+          </div>
           <button
             onClick={handleClosePanel}
             className="flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-500 transition-colors hover:bg-white/50 hover:text-slate-800"

@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useState } from 'react';
 import { Scaling } from 'lucide-react';
+import { HelpIcon } from '../HelpIcon';
 
 export interface ScaleSectionProps {
   currentScale: number;
@@ -53,6 +54,7 @@ export const ScaleSection = memo<ScaleSectionProps>(
           <div className="flex items-center gap-1.5">
             <Scaling size={12} className="text-slate-500" />
             <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Scale</label>
+            <HelpIcon content="Make the object bigger or smaller." />
           </div>
           <span
             className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-500 shadow-sm"

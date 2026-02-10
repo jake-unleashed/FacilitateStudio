@@ -585,7 +585,7 @@ describe('RightSidebar', () => {
       render(<RightSidebar {...defaultProps} />);
       const resetButton = screen.getByTestId('reset-button');
       // Check that the help icon is a child within the button
-      expect(resetButton.querySelector('svg.text-blue-400')).toBeInTheDocument();
+      expect(resetButton.querySelector('svg.text-slate-400')).toBeInTheDocument();
     });
 
     it('calls onBatchStart and onBatchEnd when Reset is clicked', () => {

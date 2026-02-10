@@ -1,6 +1,7 @@
-import { HelpCircle, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import type { StepType } from '../../types';
 import { STEP_TYPES, type StepTypeConfig } from './constants';
+import { HelpIcon } from '../HelpIcon';
 
 export interface StepTypeSectionProps {
   selectedType: StepType | null;
@@ -41,15 +42,13 @@ export function StepTypeSection({
           <span className="text-xs font-semibold text-slate-700">{currentStepTypeConfig.label}</span>
         </div>
 
-        <span
-          title={
+        <HelpIcon
+          content={
             isInfoCardSelected
-              ? 'Shows a pop-up card with information to trainees. They read the heading and body text, then click the button to continue.'
-              : 'Guides trainees to move an object in the 3D scene.'
+              ? 'Shows a pop-up card with information. Trainees read the content, then click to continue.'
+              : 'Trainees move an object to complete this step.'
           }
-        >
-          <HelpCircle size={12} className="text-slate-400" />
-        </span>
+        />
 
         <button
           onClick={onChangeStepType}
@@ -69,9 +68,7 @@ export function StepTypeSection({
     <div className="mb-4">
       <label className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-slate-500">
         Step Type
-        <span title="Choose what kind of step this is. Each type does something different for the trainee.">
-          <HelpCircle size={12} className="text-slate-400" />
-        </span>
+        <HelpIcon content="Choose what kind of action trainees will take in this step." />
       </label>
 
       <div className="grid grid-cols-2 gap-3">

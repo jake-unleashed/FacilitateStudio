@@ -10,6 +10,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { AssetMetadata } from '../types/model';
 import { RecentAssetsList } from './RecentAssetsList';
 import { ensureAssetThumbnail } from '../utils/assetThumbnails/ensureAssetThumbnail';
+import { HelpIcon } from './HelpIcon';
 
 interface AssetLibraryPanelProps {
   /** Starter assets (seeded from app) */
@@ -94,9 +95,12 @@ export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({
             aria-expanded={isStarterSectionOpen}
             aria-label={isStarterSectionOpen ? 'Collapse starter models' : 'Expand starter models'}
           >
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 transition-colors group-hover:text-slate-600">
-              Starter models
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 transition-colors group-hover:text-slate-600">
+                Starter models
+              </h3>
+              <HelpIcon content="Click any model to add it to your project." />
+            </div>
             <div className="text-slate-400 transition-all group-hover:text-slate-600">
               {isStarterSectionOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </div>
@@ -117,9 +121,12 @@ export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({
       {/* Recent Uploads Section */}
       {recentAssets.length > 0 && (
         <div>
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
-            Recent uploads
-          </h3>
+          <div className="mb-3 flex items-center gap-1.5">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
+              Recent uploads
+            </h3>
+            <HelpIcon content="Click any model to add it to your project." />
+          </div>
           <RecentAssetsList
             assets={recentAssets}
             onAddAsset={onAddAsset}

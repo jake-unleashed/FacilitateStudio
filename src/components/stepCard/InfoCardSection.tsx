@@ -1,7 +1,8 @@
 import type { RefObject } from 'react';
-import { HelpCircle, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import type { SimStep } from '../../types';
 import { COLOR_THEMES } from './constants';
+import { HelpIcon } from '../HelpIcon';
 
 export interface InfoCardSectionProps {
   step: SimStep;
@@ -49,9 +50,7 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
     <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
       <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Preview</span>
-        <span title="Preview of how the Info Card will look. Click edit icons to change content.">
-          <HelpCircle size={12} className="text-slate-400" />
-        </span>
+        <HelpIcon content="Preview of how this card will appear. Click the edit icons to change the content." />
       </div>
 
       <div className="relative overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/50 shadow-sm backdrop-blur-sm">

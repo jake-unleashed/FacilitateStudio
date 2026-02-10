@@ -3,6 +3,7 @@ import { ChevronDown, Rotate3d } from 'lucide-react';
 
 import type { RotationAxis } from './types';
 import { normalizeAngle } from './utils';
+import { HelpIcon } from '../HelpIcon';
 
 export interface RotationSectionProps {
   rotationX: number;
@@ -166,6 +167,7 @@ export const RotationSection = memo<RotationSectionProps>(
           <div className="flex items-center gap-1.5">
             <Rotate3d size={12} className="text-slate-500" />
             <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Rotation</label>
+            <HelpIcon content="Spin the object to change its angle. Click 'More options' for additional controls." />
           </div>
           <span
             className="rounded-[8px] border border-white/50 bg-white/50 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-500 shadow-sm"

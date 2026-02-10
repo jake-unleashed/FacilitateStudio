@@ -1,6 +1,7 @@
-import { CheckCircle, CheckCircle2, Circle, HelpCircle, Info, X } from 'lucide-react';
+import { CheckCircle, CheckCircle2, Circle, Info, X } from 'lucide-react';
 import type { SceneObject, SimStep } from '../../types';
 import { OBJECT_ICONS } from '../../constants';
+import { HelpIcon } from '../HelpIcon';
 
 export interface MoveItemSectionProps {
   step: SimStep;
@@ -40,9 +41,7 @@ export function MoveItemSection({
     <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
       <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Settings</span>
-        <span title="Configure which object to move/rotate/scale and what its end position should be.">
-          <HelpCircle size={12} className="text-slate-400" />
-        </span>
+        <HelpIcon content="Choose which object moves and where it moves to." />
       </div>
 
       <div className={`mb-4 ${compact ? 'space-y-2' : 'space-y-3'}`}>
@@ -51,7 +50,10 @@ export function MoveItemSection({
             compact ? 'px-3 py-2' : 'px-3 py-2.5'
           }`}
         >
-          <label className="mb-2 block text-xs font-semibold text-slate-700">Target Object</label>
+          <div className="mb-2 flex items-center gap-1.5">
+            <label className="text-xs font-semibold text-slate-700">Target Object</label>
+            <HelpIcon content="The object that will move when the trainee performs this step." />
+          </div>
 
           {targetObject ? (
             <div className="group relative">
@@ -121,7 +123,10 @@ export function MoveItemSection({
               compact ? 'px-3 py-2' : 'px-3 py-2.5'
             }`}
           >
-            <label className="mb-2 block text-xs font-semibold text-slate-700">End position</label>
+            <div className="mb-2 flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-slate-700">End position</label>
+              <HelpIcon content="Where the object will be when this step is complete. Move the object, then click 'Stop Recording' to save its position." />
+            </div>
             <div className={compact ? 'space-y-2' : 'space-y-3'}>
               {isRecordingPosition ? (
                 <div className="space-y-2">
