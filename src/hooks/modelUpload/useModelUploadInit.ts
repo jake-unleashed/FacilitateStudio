@@ -6,6 +6,7 @@ import {
   hasLegacyAssets,
   migrateLegacyAssets,
 } from '../../utils/modelAssetStore';
+import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
 
 export function useModelUploadInit({
   setRecentAssets,
@@ -26,6 +27,18 @@ export function useModelUploadInit({
           }
         } catch (error) {
           console.error('[useModelUpload] Migration failed:', error);
+        }
+      }
+
+      // Seed starter assets if needed (first run or version change)
+      if (shouldReseedLibrary()) {
+        try {
+          const seeded = await seedStarterAssets();
+          if (seeded > 0) {
+            console.log(`[useModelUpload] Seeded ${seeded} starter asset(s)`);
+          }
+        } catch (error) {
+          console.error('[useModelUpload] Starter asset seeding failed:', error);
         }
       }
 

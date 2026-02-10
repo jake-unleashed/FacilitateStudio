@@ -30,6 +30,13 @@ vi.mock('../utils/modelCache', () => ({
   cachePreprocessedModel: vi.fn(),
 }));
 
+vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
+  seedStarterAssets: vi.fn().mockResolvedValue(0),
+  shouldReseedLibrary: vi.fn().mockReturnValue(false),
+  getStarterAssetIds: vi.fn().mockReturnValue([]),
+  STARTER_LIBRARY_VERSION: '4',
+}));
+
 // Import mocked modules for assertions
 import {
   saveAsset,

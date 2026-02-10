@@ -101,6 +101,16 @@ export interface AssetMetadata {
    * Stored to avoid re-extraction when adding from recent assets.
    */
   children?: import('../types').ChildMesh[];
+  /**
+   * Auto-generated thumbnail (base64 data URL).
+   * Generated from the 3D model render and cached to avoid regeneration.
+   */
+  thumbnail?: string;
+  /**
+   * ISO date string of when the thumbnail was generated.
+   * Used to determine if thumbnail needs regeneration (e.g., after app updates).
+   */
+  thumbnailUpdatedAt?: string;
 }
 
 // =============================================================================

@@ -1,12 +1,13 @@
-import { Clock, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import { AssetUploadButton } from '../AssetUploadButton';
-import { RecentAssetsList } from '../RecentAssetsList';
+import { AssetLibraryPanel } from '../AssetLibraryPanel';
 
 export function AddPanel({
   onUploadAsset,
   uploadProgress,
   recentAssets = [],
+  starterAssets = [],
   onAddRecentAsset,
   onRemoveAsset,
   onRequestModel,
@@ -14,6 +15,7 @@ export function AddPanel({
   onUploadAsset?: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
+  starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onRemoveAsset?: (assetId: string) => void;
   onRequestModel: () => void;
@@ -37,30 +39,24 @@ export function AddPanel({
 
       <div className="pt-2 text-center">
         <p className="mb-2 text-xs text-slate-500">Nothing to upload?</p>
-        <button onClick={onRequestModel} className="text-sm font-medium text-blue-600 hover:underline">
+        <button
+          type="button"
+          onClick={onRequestModel}
+          className="text-sm font-medium text-blue-600 hover:underline"
+        >
           Request a 3D Model
         </button>
       </div>
 
-      <div>
-        <h3 className="mb-4 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">Recent</h3>
-        {onAddRecentAsset ? (
-          <RecentAssetsList
-            assets={recentAssets}
-            onAddAsset={onAddRecentAsset}
-            onRemoveAsset={onRemoveAsset}
-            emptyMessage="No recent assets"
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-white/30 px-6 py-8 text-center">
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-              <Clock size={20} />
-            </div>
-            <p className="text-sm font-medium text-slate-500">No recent assets</p>
-            <p className="mt-1 text-xs text-slate-400">Uploaded assets will appear here</p>
-          </div>
-        )}
-      </div>
+      {/* Asset Library (Starter + Recent) */}
+      {onAddRecentAsset && (
+        <AssetLibraryPanel
+          starterAssets={starterAssets}
+          recentAssets={recentAssets}
+          onAddAsset={onAddRecentAsset}
+          onRemoveRecent={onRemoveAsset}
+        />
+      )}
     </div>
   );
 }

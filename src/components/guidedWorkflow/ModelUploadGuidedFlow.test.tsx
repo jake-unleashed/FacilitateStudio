@@ -67,7 +67,7 @@ describe('Guided model upload flow', () => {
     expect(continueBtn).toBeDisabled(); // requires at least 1 model
   });
 
-  it('hides overlay Back/Continue when recent uploads submenu is open', async () => {
+  it('hides overlay Back/Continue when library submenu is open', async () => {
     const recentAssets: AssetMetadata[] = [
       {
         id: 'asset-1',
@@ -89,9 +89,9 @@ describe('Guided model upload flow', () => {
       }
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /use a recent upload/i }));
+    await userEvent.click(screen.getByRole('button', { name: /choose from your library/i }));
 
-    // Only the submenu "Back" should remain.
+    // Only the submenu "Back" should remain; overlay Back/Continue are hidden.
     expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
   });

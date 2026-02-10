@@ -10,7 +10,7 @@
  * Designed for clean separation between storage/processing and scene logic.
  */
 
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useMemo } from 'react';
 import type { SceneObject } from '../types';
 import {
   AssetMetadata,
@@ -35,6 +35,7 @@ import { createSceneObject } from './modelUpload/sceneObject';
 import { serializeMetrics } from './modelUpload/metrics';
 import { useModelUploadInit } from './modelUpload/useModelUploadInit';
 import { useAutoResetProgress } from './modelUpload/useAutoResetProgress';
+import { getStarterAssetIds } from '../utils/starterAssets/seedStarterAssets';
 
 // Re-export types for convenience
 export type { UploadProgress };
@@ -60,6 +61,8 @@ interface UseModelUploadReturn {
   uploadProgress: UploadProgress;
   /** List of recent assets for the library */
   recentAssets: AssetMetadata[];
+  /** List of starter assets (seeded from app) */
+  starterAssets: AssetMetadata[];
   /** Upload a file and create a scene object */
   uploadFile: (file: File, existingObjects: SceneObject[]) => Promise<UploadResult | null>;
   /** Add an existing asset to the scene */
@@ -95,6 +98,19 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   const [lastError, setLastError] = useState<string | null>(null);
   const hasMigratedRef = useRef(false);
   useModelUploadInit({ setRecentAssets, hasMigratedRef });
+
+  // Separate starter assets from recent uploads
+  const starterAssetIds = useMemo(() => new Set(getStarterAssetIds()), []);
+  
+  const starterAssets = useMemo(
+    () => recentAssets.filter((asset) => starterAssetIds.has(asset.id)),
+    [recentAssets, starterAssetIds]
+  );
+
+  const userRecentAssets = useMemo(
+    () => recentAssets.filter((asset) => !starterAssetIds.has(asset.id)),
+    [recentAssets, starterAssetIds]
+  );
 
   // (init behavior extracted to useModelUploadInit)
 
@@ -348,7 +364,8 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
   return {
     uploadProgress,
-    recentAssets,
+    recentAssets: userRecentAssets,
+    starterAssets,
     uploadFile,
     addRecentAssetToScene,
     removeAsset,

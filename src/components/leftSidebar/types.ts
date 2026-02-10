@@ -21,6 +21,7 @@ export interface LeftSidebarProps {
   onUploadAsset?: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
+  starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onRemoveAsset?: (assetId: string) => void;
 }

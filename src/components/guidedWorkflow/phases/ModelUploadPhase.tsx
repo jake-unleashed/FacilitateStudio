@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Clock } from 'lucide-react';
+import { Box, Library } from 'lucide-react';
 import type { FocusMode, SceneObject } from '../../../types';
 import type { AssetMetadata, UploadProgress } from '../../../types/model';
 import { AssetUploadButton } from '../../AssetUploadButton';
-import { RecentAssetsList } from '../../RecentAssetsList';
+import { AssetLibraryPanel } from '../../AssetLibraryPanel';
 import { Button } from '../../Button';
 import { usePopup } from '../../../contexts/PopupContext';
 
@@ -12,6 +12,7 @@ interface ModelUploadPhaseProps {
   onUploadAsset: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
+  starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onDeleteObject?: (objectId: string) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
@@ -23,6 +24,7 @@ export function ModelUploadPhase({
   onUploadAsset,
   uploadProgress,
   recentAssets,
+  starterAssets,
   onAddRecentAsset,
   onDeleteObject,
   onFocusObject,
@@ -33,14 +35,15 @@ export function ModelUploadPhase({
     () => objects.filter((object) => object.type === 'mesh'),
     [objects]
   );
-  const [emptyMode, setEmptyMode] = useState<'upload' | 'recent'>('upload');
+  const [emptyMode, setEmptyMode] = useState<'upload' | 'library'>('upload');
 
-  const canUseRecent = (recentAssets?.length ?? 0) > 0 && !!onAddRecentAsset;
+  const hasLibraryAssets =
+    ((starterAssets?.length ?? 0) + (recentAssets?.length ?? 0)) > 0 && !!onAddRecentAsset;
 
   const setEmptyModeAndNotify = useCallback(
-    (mode: 'upload' | 'recent') => {
+    (mode: 'upload' | 'library') => {
       setEmptyMode(mode);
-      onSubmenuChange?.(mode === 'recent');
+      onSubmenuChange?.(mode === 'library');
     },
     [onSubmenuChange]
   );
@@ -56,7 +59,7 @@ export function ModelUploadPhase({
 
   useEffect(() => {
     if (uploadedObjects.length === 0) return;
-    // Once at least one model exists, treat this phase as “main view” (no submenu).
+    // Once at least one model exists, treat this phase as "main view" (no submenu).
     setEmptyMode((prev) => (prev === 'upload' ? prev : 'upload'));
     onSubmenuChange?.(false);
   }, [onSubmenuChange, uploadedObjects.length]);
@@ -71,10 +74,9 @@ export function ModelUploadPhase({
           </p>
         </div>
 
-        {emptyMode === 'recent' && canUseRecent ? (
+        {emptyMode === 'library' && hasLibraryAssets ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Recent</p>
+            <div className="flex items-center justify-end">
               <Button
                 type="button"
                 variant="secondary"
@@ -85,32 +87,36 @@ export function ModelUploadPhase({
                 Back
               </Button>
             </div>
-            <RecentAssetsList assets={recentAssets ?? []} onAddAsset={onAddRecentAsset!} />
+            <AssetLibraryPanel
+              starterAssets={starterAssets ?? []}
+              recentAssets={recentAssets ?? []}
+              onAddAsset={onAddRecentAsset!}
+            />
           </div>
         ) : (
           <div className="space-y-4">
             <AssetUploadButton onUpload={onUploadAsset} uploadProgress={uploadProgress} />
 
-            {canUseRecent ? (
+            {hasLibraryAssets ? (
               <button
                 type="button"
-                onClick={() => setEmptyModeAndNotify('recent')}
+                onClick={() => setEmptyModeAndNotify('library')}
                 className="group flex w-full items-start gap-4 rounded-[20px] border border-white/40 bg-white/60 p-5 text-left shadow-sm transition-all duration-300 hover:bg-white/80 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-500/10"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-[20px] border border-white/60 bg-white/60 text-slate-600 shadow-sm">
-                  <Clock size={24} />
+                  <Library size={24} />
                 </span>
                 <span className="flex-1">
-                  <span className="text-sm font-semibold text-slate-800">Use a recent upload</span>
+                  <span className="text-sm font-semibold text-slate-800">Choose from your library</span>
                   <span className="mt-1 block text-xs font-medium text-slate-500">
-                    Add a model you’ve uploaded before
+                    Use starter models or recent uploads
                   </span>
                 </span>
               </button>
             ) : null}
 
             <div className="pt-2 text-center">
-              <p className="mb-2 text-xs text-slate-500">Don’t have a 3D model yet?</p>
+              <p className="mb-2 text-xs text-slate-500">Don&apos;t have a 3D model yet?</p>
               <button
                 type="button"
                 onClick={handleRequestModel}
@@ -169,13 +175,13 @@ export function ModelUploadPhase({
         </div>
       </div>
 
-      {recentAssets && onAddRecentAsset ? (
+      {hasLibraryAssets ? (
         <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Recent</h3>
-          <RecentAssetsList
-            assets={recentAssets}
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Your library</h3>
+          <AssetLibraryPanel
+            starterAssets={starterAssets ?? []}
+            recentAssets={recentAssets ?? []}
             onAddAsset={onAddRecentAsset}
-            emptyMessage="No recent assets"
           />
         </div>
       ) : null}

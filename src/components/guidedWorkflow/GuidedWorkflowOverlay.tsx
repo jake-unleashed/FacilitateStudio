@@ -31,6 +31,7 @@ export interface GuidedWorkflowOverlayProps {
   onUploadAsset: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
+  starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onDeleteObject?: (objectId: string) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
@@ -57,6 +58,7 @@ export function GuidedWorkflowOverlay({
   onUploadAsset,
   uploadProgress,
   recentAssets,
+  starterAssets,
   onAddRecentAsset,
   onDeleteObject,
   onFocusObject,
@@ -251,6 +253,7 @@ export function GuidedWorkflowOverlay({
                 onUploadAsset={onUploadAsset}
                 uploadProgress={uploadProgress}
                 recentAssets={recentAssets}
+                starterAssets={starterAssets}
                 onAddRecentAsset={onAddRecentAsset}
                 onDeleteObject={onDeleteObject}
                 onFocusObject={onFocusObject}

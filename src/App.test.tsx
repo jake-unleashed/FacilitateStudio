@@ -50,6 +50,14 @@ vi.mock('./components/MainCanvas', () => ({
   },
 }));
 
+// Mock starter asset seeding - avoids fetch with relative URLs in Node
+vi.mock('./utils/starterAssets/seedStarterAssets', () => ({
+  seedStarterAssets: vi.fn().mockResolvedValue(0),
+  shouldReseedLibrary: vi.fn().mockReturnValue(false),
+  getStarterAssetIds: vi.fn().mockReturnValue([]),
+  STARTER_LIBRARY_VERSION: '4',
+}));
+
 // Mock useProjects hook for EditorPage
 vi.mock('./hooks/useProjects', () => ({
   useProjects: () => ({

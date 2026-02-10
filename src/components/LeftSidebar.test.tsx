@@ -163,11 +163,18 @@ describe('LeftSidebar', () => {
       expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
     });
 
-    it('shows Recent section with empty state', () => {
-      renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
-      expect(screen.getByText('Recent')).toBeInTheDocument();
-      expect(screen.getByText('No recent assets')).toBeInTheDocument();
-      expect(screen.getByText('Uploaded assets will appear here')).toBeInTheDocument();
+    it('shows asset library empty state when onAddRecentAsset provided', () => {
+      renderWithProvider(
+        <LeftSidebar
+          {...defaultProps}
+          activeTab="add"
+          onAddRecentAsset={vi.fn()}
+          recentAssets={[]}
+          starterAssets={[]}
+        />
+      );
+      expect(screen.getByText('No assets available')).toBeInTheDocument();
+      expect(screen.getByText('Upload a 3D model to get started')).toBeInTheDocument();
     });
 
     it('shows Request 3D Model section with correct text', () => {

@@ -128,6 +128,61 @@ export async function saveAsset(file: File): Promise<AssetMetadata> {
 }
 
 /**
+ * Upsert an asset with a caller-supplied ID (for seeding starter assets).
+ * Unlike saveAsset(), this allows deterministic IDs for reproducible seeding.
+ *
+ * @param options - Asset creation options
+ * @returns The created/updated asset metadata
+ * @throws Error if storage quota is exceeded
+ */
+export async function upsertAssetFromBlob(options: {
+  id: string;
+  name: string;
+  fileType: ModelFileType;
+  uploadDate: string;
+  blob: Blob;
+  metadataOverrides?: Partial<AssetMetadata>;
+}): Promise<AssetMetadata> {
+  const db = await getDB();
+
+  const metadata: AssetMetadata = {
+    id: options.id,
+    name: options.name,
+    fileType: options.fileType,
+    fileSize: options.blob.size,
+    uploadDate: options.uploadDate,
+    ...options.metadataOverrides,
+  };
+
+  const storedAsset: StoredAsset = {
+    id: options.id,
+    metadata,
+    blob: options.blob,
+  };
+
+  try {
+    await db.put('assets', storedAsset);
+    return metadata;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please delete some assets to free up space.');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Check if an asset exists in the store.
+ *
+ * @param assetId - The asset ID to check
+ * @returns True if the asset exists, false otherwise
+ */
+export async function assetExists(assetId: string): Promise<boolean> {
+  const metadata = await getAssetMetadata(assetId);
+  return metadata !== null;
+}
+
+/**
  * Get an asset's blob and metadata by ID.
  *
  * @param assetId - The asset ID to retrieve

@@ -60,6 +60,13 @@ vi.mock('../utils/captureThumbnail', () => {
   };
 });
 
+vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
+  seedStarterAssets: vi.fn().mockResolvedValue(0),
+  shouldReseedLibrary: vi.fn().mockReturnValue(false),
+  getStarterAssetIds: vi.fn().mockReturnValue([]),
+  STARTER_LIBRARY_VERSION: '4',
+}));
+
 // Minimal Home stub so we can assert navigation occurred.
 function HomeStub() {
   return <div data-testid="home-page">Home</div>;

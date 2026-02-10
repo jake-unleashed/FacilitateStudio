@@ -271,7 +271,7 @@ const AssetOptionsMenu: React.FC<AssetOptionsMenuProps> = ({ displayName, onRemo
  * AssetCard - Individual asset card in the recent assets list.
  *
  * Displays:
- * - Model icon (Package icon as placeholder, or checkmark when added)
+ * - Model thumbnail (if available) or icon (Package icon as placeholder, or checkmark when added)
  * - Model name (without file extension), or "Added to scene!" when added
  * - Relative timestamp (e.g., "5m ago", "2h ago")
  * - Options menu on hover with remove action
@@ -279,6 +279,24 @@ const AssetOptionsMenu: React.FC<AssetOptionsMenuProps> = ({ displayName, onRemo
 const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded = false }) => {
   const displayName = stripFileExtension(asset.name);
   const relativeDate = formatRelativeDate(asset.uploadDate);
+  const [thumbnail, setThumbnail] = useState<string | null>(asset.thumbnail || null);
+
+  // Lazy-load thumbnail if not already available
+  useEffect(() => {
+    if (!thumbnail && !isAdded) {
+      import('../utils/assetThumbnails/ensureAssetThumbnail').then(({ ensureAssetThumbnail }) => {
+        ensureAssetThumbnail(asset.id).then((thumb) => {
+          if (thumb) {
+            setThumbnail(thumb);
+          }
+        }).catch((error) => {
+          console.error(`[AssetCard] Thumbnail generation failed for ${asset.id}:`, error);
+        });
+      }).catch((error) => {
+        console.error('[AssetCard] Failed to load thumbnail module:', error);
+      });
+    }
+  }, [asset.id, thumbnail, isAdded]);
 
   /** Handle keyboard activation of the card */
   const handleKeyDown = useCallback(
@@ -324,16 +342,26 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
       {onRemove && !isAdded && <AssetOptionsMenu displayName={displayName} onRemove={onRemove} />}
 
       <div className="flex items-center gap-3">
-        {/* Icon */}
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] shadow-sm ${iconClasses}`}
-        >
-          {isAdded ? (
-            <CheckCircle2 size={18} aria-hidden="true" />
-          ) : (
-            <Package size={18} aria-hidden="true" />
-          )}
-        </div>
+        {/* Thumbnail or Icon */}
+        {thumbnail && !isAdded ? (
+          <div className="h-10 w-16 shrink-0 overflow-hidden rounded-[8px] shadow-sm">
+            <img
+              src={thumbnail}
+              alt={displayName}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : (
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] shadow-sm ${iconClasses}`}
+          >
+            {isAdded ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <Package size={18} aria-hidden="true" />
+            )}
+          </div>
+        )}
 
         {/* Content */}
         <div className="min-w-0 flex-1">

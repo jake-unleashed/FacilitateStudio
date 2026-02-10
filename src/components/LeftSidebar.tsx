@@ -41,6 +41,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   onUploadAsset,
   uploadProgress,
   recentAssets = [],
+  starterAssets = [],
   onAddRecentAsset,
   onRemoveAsset,
 }, ref) => {
@@ -294,6 +295,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
               onUploadAsset={onUploadAsset}
               uploadProgress={uploadProgress}
               recentAssets={recentAssets}
+              starterAssets={starterAssets}
               onAddRecentAsset={onAddRecentAsset}
               onRemoveAsset={onRemoveAsset}
               onRequestModel={handleRequestModel}

@@ -283,6 +283,7 @@ function EditorPageContent() {
   const {
     uploadProgress,
     recentAssets,
+    starterAssets,
     uploadFile,
     addRecentAssetToScene,
     removeAsset,
@@ -1528,6 +1529,7 @@ function EditorPageContent() {
           onUploadAsset={handleUploadAsset}
           uploadProgress={uploadProgress}
           recentAssets={recentAssets}
+          starterAssets={starterAssets}
           onAddRecentAsset={handleAddRecentAsset}
           onDeleteObject={handleDeleteObject}
           onFocusObject={handleFocusObject}
@@ -1590,6 +1592,7 @@ function EditorPageContent() {
                 onUploadAsset={handleUploadAsset}
                 uploadProgress={uploadProgress}
                 recentAssets={recentAssets}
+                starterAssets={starterAssets}
                 onAddRecentAsset={handleAddRecentAsset}
                 onRemoveAsset={handleRemoveAsset}
               />
@@ -1670,6 +1673,7 @@ interface GuidedWorkflowEntryProps {
   onUploadAsset: (file: File) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
+  starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onDeleteObject?: (objectId: string) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
@@ -1709,6 +1713,7 @@ function GuidedWorkflowEntry({
   onUploadAsset,
   uploadProgress,
   recentAssets,
+  starterAssets,
   onAddRecentAsset,
   onDeleteObject,
   onFocusObject,
@@ -1872,6 +1877,7 @@ function GuidedWorkflowEntry({
             onUploadAsset={onUploadAsset}
             uploadProgress={uploadProgress}
             recentAssets={recentAssets}
+            starterAssets={starterAssets}
             onAddRecentAsset={onAddRecentAsset}
             onDeleteObject={onDeleteObject}
             onFocusObject={onFocusObject}
