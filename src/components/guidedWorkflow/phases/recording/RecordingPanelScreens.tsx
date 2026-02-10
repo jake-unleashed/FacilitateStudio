@@ -84,7 +84,7 @@ function SubScreenBackHeader({
         type="button"
         onClick={onBack}
         className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-white/40 bg-white/60 text-slate-600 shadow-sm transition-all duration-300 hover:bg-white/80 hover:text-slate-800 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
-        aria-label="Back to transform options"
+        aria-label="Back to adjustment options"
       >
         <ArrowLeft size={16} />
       </button>

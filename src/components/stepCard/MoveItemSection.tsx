@@ -40,7 +40,7 @@ export function MoveItemSection({
     <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
       <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Settings</span>
-        <span title="Configure which object to move/rotate/scale and what its end transform should be.">
+        <span title="Configure which object to move/rotate/scale and what its end position should be.">
           <HelpCircle size={12} className="text-slate-400" />
         </span>
       </div>
@@ -121,14 +121,14 @@ export function MoveItemSection({
               compact ? 'px-3 py-2' : 'px-3 py-2.5'
             }`}
           >
-            <label className="mb-2 block text-xs font-semibold text-slate-700">End Transform</label>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">End position</label>
             <div className={compact ? 'space-y-2' : 'space-y-3'}>
               {isRecordingPosition ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 rounded-[10px] border border-blue-200/60 bg-blue-50/50 px-3 py-2">
                     <Circle size={12} className="animate-pulse fill-blue-600 text-blue-600" />
                     <span className="text-xs font-medium text-blue-700">
-                      Recording... Move/rotate/scale the object to its end transform
+                      Recording... Move/rotate/scale the object to its end position
                     </span>
                   </div>
                   <button
@@ -146,22 +146,22 @@ export function MoveItemSection({
                   })() ? (
                     <div className="flex items-center gap-2 rounded-[10px] border border-green-200/60 bg-green-50/50 px-3 py-2">
                       <CheckCircle size={14} className="text-green-600" />
-                      <span className="text-xs font-medium text-green-700">End transform recorded</span>
+                      <span className="text-xs font-medium text-green-700">End position recorded</span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 rounded-[10px] border border-slate-200/60 bg-slate-100/50 px-3 py-2">
                       <Circle size={14} className="text-slate-400" />
-                      <span className="text-xs text-slate-400">No end transform recorded</span>
+                      <span className="text-xs text-slate-400">No end position recorded</span>
                     </div>
                   )}
                   <button
                     onClick={onToggleRecording}
                     className="w-full rounded-[10px] border border-blue-300/60 bg-blue-100/50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:border-blue-400/80 hover:bg-blue-200/60"
-                    title="Click to start recording the end transform. Move/rotate/scale the object, then click Stop Recording."
+                    title="Click to start recording the end position. Move/rotate/scale the object, then click Stop Recording."
                   >
                     {(() => {
                       const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
-                      return hasEndTransform ? 'Record New Transform' : 'Record End Transform';
+                      return hasEndTransform ? 'Record end position again' : 'Record end position';
                     })()}
                   </button>
                 </div>

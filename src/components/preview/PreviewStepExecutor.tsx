@@ -71,8 +71,8 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
       }
 
       if (step.type === 'move-item') {
-        // For move-item steps, we need a target and an end transform.
-        // End position/rotation/scale are recorded during the “record end transform” workflow.
+        // For move-item steps, we need a target and an end position.
+        // End position/rotation/scale are recorded during the “record end position” workflow.
         // startPosition/rotation/scale are implicit at step start, but are still supported.
         const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
         if (!step.targetObjectId || !hasEndTransform) return false;

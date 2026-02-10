@@ -22,10 +22,10 @@ interface RecordingPanelProps {
 
 /**
  * Dedicated recording panel shown during step-configuration when recording
- * an end transform for a move-item step. Replaces the normal step config UI.
+ * an end position for a move-item step. Replaces the normal step config UI.
  *
  * Mirrors the model-positioning adjustment flow:
- * - Transform type selection (Position / Rotation / Scale)
+ * - Adjustment type selection (Position / Rotation / Scale)
  * - Position: enables TransformGizmo via guidedPositionMode data attribute
  * - Rotation: inline RotationSection sliders
  * - Scale: inline ScaleSection slider
@@ -63,10 +63,10 @@ export function RecordingPanel({
     <div className="space-y-4">
       {/* Header — always visible */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-800">End Transform</h2>
+        <h2 className="text-lg font-semibold text-slate-800">End position</h2>
         <div className="flex items-center gap-2 rounded-[12px] border border-blue-200/60 bg-blue-50/50 px-3 py-2">
           <Circle size={10} className="animate-pulse fill-blue-600 text-blue-600" />
-          <span className="text-xs font-medium text-blue-700">Recording end transform…</span>
+          <span className="text-xs font-medium text-blue-700">Recording end position…</span>
         </div>
       </div>
 

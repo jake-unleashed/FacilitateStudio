@@ -228,8 +228,8 @@ describe('StepCard - Recording Mode', () => {
     });
   });
 
-  describe('Recording End Transform', () => {
-    it('should show "Record End Transform" button when target object is set', () => {
+  describe('Recording End Position', () => {
+    it('should show "Record end position" button when target object is set', () => {
       render(
         <StepCard
           step={mockMoveItemStep}
@@ -245,10 +245,10 @@ describe('StepCard - Recording Mode', () => {
         />
       );
 
-      expect(screen.getByText('Record End Transform')).toBeInTheDocument();
+      expect(screen.getByText('Record end position')).toBeInTheDocument();
     });
 
-    it('should call onStartRecording when "Record End Transform" button is clicked', async () => {
+    it('should call onStartRecording when "Record end position" button is clicked', async () => {
       const user = userEvent.setup();
       render(
         <StepCard
@@ -265,7 +265,7 @@ describe('StepCard - Recording Mode', () => {
         />
       );
 
-      const recordButton = screen.getByText('Record End Transform');
+      const recordButton = screen.getByText('Record end position');
       await user.click(recordButton);
 
       expect(mockOnStartRecording).toHaveBeenCalledOnce();
@@ -288,7 +288,7 @@ describe('StepCard - Recording Mode', () => {
       );
 
       expect(
-        screen.getByText(/Recording\.\.\. Move\/rotate\/scale the object to its end transform/)
+        screen.getByText(/Recording\.\.\. Move\/rotate\/scale the object to its end position/)
       ).toBeInTheDocument();
       expect(screen.getByText('Stop Recording')).toBeInTheDocument();
     });
@@ -316,7 +316,7 @@ describe('StepCard - Recording Mode', () => {
       expect(mockOnStopRecording).toHaveBeenCalledOnce();
     });
 
-    it('should show "End transform recorded" status when endPosition is set', () => {
+    it('should show "End position recorded" status when endPosition is set', () => {
       const stepWithEndPosition: SimStep = {
         ...mockMoveItemStep,
         endPosition: { x: 200, y: 50, z: 200 },
@@ -337,10 +337,10 @@ describe('StepCard - Recording Mode', () => {
         />
       );
 
-      expect(screen.getByText('End transform recorded')).toBeInTheDocument();
+      expect(screen.getByText('End position recorded')).toBeInTheDocument();
     });
 
-    it('should change button text to "Record New Transform" when endPosition exists', () => {
+    it('should change button text to "Record end position again" when endPosition exists', () => {
       const stepWithEndPosition: SimStep = {
         ...mockMoveItemStep,
         endPosition: { x: 200, y: 50, z: 200 },
@@ -361,7 +361,7 @@ describe('StepCard - Recording Mode', () => {
         />
       );
 
-      expect(screen.getByText('Record New Transform')).toBeInTheDocument();
+      expect(screen.getByText('Record end position again')).toBeInTheDocument();
     });
 
     it('should show warning when target object is deleted', () => {
@@ -417,7 +417,7 @@ describe('StepCard - Recording Mode', () => {
         />
       );
 
-      expect(screen.queryByText('Record End Transform')).not.toBeInTheDocument();
+      expect(screen.queryByText('Record end position')).not.toBeInTheDocument();
       expect(screen.queryByText('Target Object')).not.toBeInTheDocument();
     });
   });
