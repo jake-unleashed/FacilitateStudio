@@ -23,7 +23,9 @@ This works well with capable models (Claude Opus, GPT-4, etc.) that can understa
 Plan (Cursor built-in) → Implement → /post-feature → Push
 ```
 
-One command after implementing. It handles everything.
+One command after implementing. It handles everything, including generating your Feature Review.
+
+**Note**: Your work is automatically logged! Every prompt you send, every commit you make, and every push is captured in the worklog system. The `/post-feature` command generates a human-readable Feature Review from these events.
 
 ---
 
@@ -42,6 +44,7 @@ One command after implementing. It handles everything.
 6. Adds missing tests
 7. Runs all static checks
 8. Verifies everything passes
+9. **Generates Feature Review** with session timeline, commits, and insights
 
 **Usage**:
 ```
@@ -155,6 +158,53 @@ Production bugs are expensive. The extra verification is worth it.
 ├── pre-release.md              # /release
 └── fix-tests.md                # /fix-tests
 ```
+
+---
+
+## Automatic Worklog System
+
+### What Gets Logged Automatically
+
+The project includes an always-on worklog system that captures:
+
+- **Every AI session**: When you prompt the AI, it logs the start time, your intention (1-2 sentence summary), and any insights from the response
+- **Every commit**: Git automatically logs commit details (hash, message, files changed)
+- **Every push**: Push events are logged with commit ranges
+- **Feature Reviews**: Generated at `/post-feature` with full timeline and verification results
+
+### Where Logs Are Stored
+
+- **Raw events**: `.git/worklog/events.ndjson` (local-only, never committed, no merge conflicts)
+- **Feature Reviews**: `docs/worklog/digests/YYYY-MM/branch-name.md` (committed to repo, human-readable)
+
+### How It Works
+
+1. **Cursor Hooks** capture your prompts and the AI's responses (as summaries only, not full text)
+2. **Git hooks** (via Husky) capture commits and pushes
+3. **`/post-feature`** generates a Feature Review markdown file from all captured events
+
+### Privacy
+
+- Only **intention summaries** (1-2 sentences) are stored, not full prompts/responses
+- Prompts/responses are hashed for traceability without storing content
+- All raw logs stay local in `.git/worklog/` (never pushed to remote)
+
+### Manual Generation
+
+To generate a Feature Review at any time:
+
+```bash
+node scripts/worklog/generateDigest.mjs
+```
+
+### Viewing Your Work History
+
+Feature Reviews are organized by year-month in `docs/worklog/digests/` and include:
+- Session timeline with intentions
+- Commit history with diffstats
+- Verification results (typecheck/lint/tests)
+- Duration and timestamps
+- Insights and notes from each session
 
 ---
 

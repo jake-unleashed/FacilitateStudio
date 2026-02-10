@@ -127,11 +127,15 @@ Run the `/post-feature` quality gate in Cursor, or manually:
 npm run typecheck && npm run lint && npm run test
 ```
 
+The `/post-feature` command also generates a Feature Review with your work timeline.
+
+**Note**: All your work is automatically logged! Every prompt, commit, and push is captured. Feature Reviews are generated from these events and saved in `docs/worklog/digests/`.
+
 ### 4. Weekly Maintenance
 
 Run `/health` in Cursor to audit the codebase for technical debt.
 
-See [AI_WORKFLOW.md](./AI_WORKFLOW.md) for detailed documentation on all slash commands.
+See [AI_WORKFLOW.md](./AI_WORKFLOW.md) for detailed documentation on all slash commands and the automatic worklog system.
 
 ---
 

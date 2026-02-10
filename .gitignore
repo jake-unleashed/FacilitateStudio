@@ -29,3 +29,6 @@ npm-debug.log*
 # Cache
 .cache/
 *.tsbuildinfo
+
+# Worklog (local only - never commit raw events)
+.git/worklog/

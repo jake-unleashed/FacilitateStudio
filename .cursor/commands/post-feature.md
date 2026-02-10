@@ -158,6 +158,24 @@ All green = ready to push.
 
 ---
 
+## Phase 7: Generate Feature Review
+
+After all checks pass, generate the automated Feature Review:
+
+```bash
+node scripts/worklog/generateDigest.mjs
+```
+
+This creates a human-readable digest in `docs/worklog/digests/` that includes:
+- Session timeline with your intentions for each work session
+- Commits with diffstats
+- Verification results
+- Duration and timestamps
+
+The digest is automatically generated from the worklog events that have been captured throughout your work on this feature.
+
+---
+
 ## Output
 
 When complete, summarize:
@@ -171,6 +189,9 @@ typecheck: ✓ passed
 lint:      ✓ passed  
 tests:     ✓ X passed
 ```
+
+### Feature Review
+- Digest generated at: `docs/worklog/digests/YYYY-MM/branch-name.md`
 
 ### Status
 Ready to push: **Yes** / **No** (with explanation if no)

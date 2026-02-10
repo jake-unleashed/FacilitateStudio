@@ -1,0 +1,1 @@
+node scripts/worklog/hooks/pre-push.mjs "$@"
