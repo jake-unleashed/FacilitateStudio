@@ -1,1 +1,2 @@
-npm test
+# Tests are run in /post-feature workflow, not on every commit
+# This keeps commits fast while maintaining quality through the post-feature process
