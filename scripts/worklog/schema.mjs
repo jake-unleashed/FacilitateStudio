@@ -78,6 +78,17 @@
  */
 
 /**
+ * Assistant response event (triggered by afterAgentResponse hook)
+ * @typedef {Object} AssistantResponseEvent
+ * @property {'assistant_response'} type
+ * @property {string} conversationId
+ * @property {string} generationId
+ * @property {string} intentSummary - Intention parsed from WORKLOG_START (or fallback)
+ * @property {'text'|'transcript'|'missing'} [source] - Where intentSummary came from
+ * @property {string} [responseHash] - Optional hash of assistant response text
+ */
+
+/**
  * Feature window determination rules:
  * - Feature ID defaults to current branch name
  * - A feature is considered "open" from first session_start or commit on a branch
@@ -94,6 +105,7 @@ export const EventTypes = {
   PUSH: 'push',
   FEATURE_DIGEST: 'feature_digest',
   TOOL: 'tool',
+  ASSISTANT_RESPONSE: 'assistant_response',
 };
 
 export const SessionStatus = {

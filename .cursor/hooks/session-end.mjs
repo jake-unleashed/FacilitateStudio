@@ -6,7 +6,7 @@
  * Reads hook input from stdin (JSON), extracts insights, logs event.
  */
 
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import crypto from 'node:crypto';
 
@@ -16,11 +16,13 @@ const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..', '..');
 
 // Dynamic imports with explicit paths
+// Use pathToFileURL for Windows compatibility — Node ESM import() requires file:// URLs,
+// not bare Windows paths like c:\...
 const schemaPath = join(projectRoot, 'scripts', 'worklog', 'schema.mjs');
 const loggerPath = join(projectRoot, 'scripts', 'worklog', 'logger.mjs');
 
-const { createBaseEvent, EventTypes, SessionStatus } = await import(schemaPath);
-const { appendEvent, getCurrentBranch, getEvents } = await import(loggerPath);
+const { createBaseEvent, EventTypes, SessionStatus } = await import(pathToFileURL(schemaPath).href);
+const { appendEvent, getCurrentBranch, getEvents } = await import(pathToFileURL(loggerPath).href);
 
 async function readStdin() {
   const chunks = [];

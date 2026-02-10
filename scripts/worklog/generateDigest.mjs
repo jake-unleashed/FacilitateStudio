@@ -8,6 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { getEvents, getCurrentBranch } from './logger.mjs';
 import { EventTypes } from './schema.mjs';
 
@@ -83,27 +84,46 @@ function calculateDuration(startTs, endTs) {
  * Groups sessions by conversation
  */
 function groupSessions(events) {
-  const sessions = [];
   const sessionMap = new Map();
   
   for (const event of events) {
     if (event.type === EventTypes.SESSION_START) {
       const key = `${event.conversationId}:${event.generationId}`;
-      sessionMap.set(key, {
-        start: event,
-        end: null,
-      });
+      const existing = sessionMap.get(key);
+      if (!existing) {
+        sessionMap.set(key, { start: event, end: null, response: null });
+      } else if (!existing.start) {
+        existing.start = event;
+      }
     } else if (event.type === EventTypes.SESSION_END) {
       const key = `${event.conversationId}:${event.generationId}`;
       const session = sessionMap.get(key);
-      if (session) {
+      if (!session) continue;
+
+      // Deduplicate: keep the "best" end event (prefer one with durationMs, else latest ts)
+      if (!session.end) {
         session.end = event;
-        sessions.push(session);
+      } else {
+        const prevHasDuration = session.end.durationMs != null;
+        const nextHasDuration = event.durationMs != null;
+        if (!prevHasDuration && nextHasDuration) {
+          session.end = event;
+        } else if (new Date(event.ts) > new Date(session.end.ts)) {
+          session.end = event;
+        }
+      }
+    } else if (event.type === EventTypes.ASSISTANT_RESPONSE) {
+      const key = `${event.conversationId}:${event.generationId}`;
+      const existing = sessionMap.get(key);
+      if (!existing) {
+        sessionMap.set(key, { start: null, end: null, response: event });
+      } else {
+        existing.response = event;
       }
     }
   }
   
-  return sessions;
+  return Array.from(sessionMap.values()).filter(s => s.start && s.end);
 }
 
 /**
@@ -127,8 +147,8 @@ function generateFeatureReview(window, verificationResults = null) {
   markdown += `## Summary\n\n`;
   if (sessions.length > 0) {
     const intentions = sessions
-      .map(s => s.start?.intentSummary)
-      .filter(Boolean)
+      .map(s => s.response?.intentSummary || s.start?.intentSummary)
+      .filter(intent => Boolean(intent) && !String(intent).startsWith('(worklog line missing)'))
       .slice(0, 3);
     
     if (intentions.length > 0) {
@@ -157,9 +177,8 @@ function generateFeatureReview(window, verificationResults = null) {
       markdown += `  \n`;
       markdown += `**Status**: ${end?.status || 'unknown'}\n\n`;
       
-      if (start.intentSummary) {
-        markdown += `**Intention**: ${start.intentSummary}\n\n`;
-      }
+      const intention = session.response?.intentSummary || start.intentSummary;
+      if (intention) markdown += `**Intention**: ${intention}\n\n`;
       
       if (end?.insights && end.insights.length > 0) {
         markdown += `**Insights**:\n`;
@@ -271,7 +290,18 @@ export async function generateCurrentFeatureDigest(verificationResults = null) {
 /**
  * CLI entry point
  */
-if (import.meta.url === `file://${process.argv[1]}`) {
+// On Windows, `process.argv[1]` is a filesystem path (often with backslashes),
+// so comparing `import.meta.url` to `file://${process.argv[1]}` is unreliable.
+// Use fileURLToPath + path.resolve for a robust "is main module" check.
+const isMain = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
   generateCurrentFeatureDigest()
     .then(digestPath => {
       if (digestPath) {

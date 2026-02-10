@@ -2,13 +2,18 @@
 /**
  * Cursor Hook: afterAgentResponse
  * 
- * Captures session events by parsing WORKLOG_START and WORKLOG_END lines
- * from the Agent's response text. Writes both session_start and session_end
- * events to the worklog.
+ * Captures the AI-written intention line by parsing WORKLOG_START from the
+ * assistant response. Cursor's `text` field may omit wrapper lines, so this hook
+ * can fall back to reading `transcript_path` and extracting the last WORKLOG_START.
+ *
+ * IMPORTANT: This hook writes a dedicated `assistant_response` event (not
+ * session_start/session_end) to avoid duplicating session events produced by
+ * beforeSubmitPrompt/stop hooks.
  */
 
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import crypto from 'node:crypto';
 
 // Determine project root - Cursor runs hooks from project root
 // but we need to be explicit about paths
@@ -17,11 +22,13 @@ const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..', '..');
 
 // Dynamic imports with explicit paths
+// Use pathToFileURL for Windows compatibility — Node ESM import() requires file:// URLs,
+// not bare Windows paths like c:\...
 const schemaPath = join(projectRoot, 'scripts', 'worklog', 'schema.mjs');
 const loggerPath = join(projectRoot, 'scripts', 'worklog', 'logger.mjs');
 
-const { createBaseEvent, EventTypes, SessionStatus } = await import(schemaPath);
-const { appendEvent, getCurrentBranch } = await import(loggerPath);
+const { createBaseEvent, EventTypes } = await import(pathToFileURL(schemaPath).href);
+const { appendEvent, getCurrentBranch } = await import(pathToFileURL(loggerPath).href);
 
 async function readStdin() {
   const chunks = [];
@@ -32,7 +39,9 @@ async function readStdin() {
 }
 
 /**
- * Parses WORKLOG_START and WORKLOG_END from Agent response text
+ * Parses WORKLOG_START from Agent response text.
+ * Searches ALL lines (not just the first) because the response text from
+ * Cursor may include thinking blocks or other metadata before the visible text.
  * @param {string} text - Full Agent response text
  * @returns {string} - Intention summary (from WORKLOG_START line or fallback)
  */
@@ -43,21 +52,37 @@ function parseWorklogLines(text) {
 
   const lines = text.split('\n');
   
-  // Parse first line for WORKLOG_START
-  const firstLine = lines[0]?.trim() || '';
-  const startMatch = firstLine.match(/^WORKLOG_START:\s*(.*)$/);
-  
-  if (!startMatch) {
-    return '(worklog line missing)';
+  // Search all lines for WORKLOG_START (it may not be line 0 due to thinking blocks etc.)
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const startMatch = trimmed.match(/^WORKLOG_START:\s*(.*)$/);
+    if (startMatch) {
+      let intention = startMatch[1].trim();
+      if (intention.length > 200) {
+        intention = intention.slice(0, 197) + '...';
+      }
+      return intention || '(worklog line missing - empty intention)';
+    }
   }
   
-  // Extract intention, limit to 200 chars
-  let intention = startMatch[1].trim();
-  if (intention.length > 200) {
-    intention = intention.slice(0, 197) + '...';
+  return '(worklog line missing)';
+}
+
+function parseWorklogFromTranscriptContent(content) {
+  if (!content || typeof content !== 'string') return null;
+
+  // Grab the last WORKLOG_START line from the transcript file, regardless of format.
+  // This works even if the transcript is JSON-ish, because we search raw text.
+  const re = /^WORKLOG_START:\s*(.*)$/gm;
+  let last = null;
+  for (;;) {
+    const m = re.exec(content);
+    if (!m) break;
+    last = m[1]?.trim() ?? '';
   }
-  
-  return intention || '(worklog line missing - empty intention)';
+  if (!last) return null;
+  if (last.length > 200) return last.slice(0, 197) + '...';
+  return last;
 }
 
 async function main() {
@@ -69,6 +94,7 @@ async function main() {
       conversation_id: conversationId,
       generation_id: generationId,
       text = '',
+      transcript_path: transcriptPath,
     } = hookData;
     
     // Fail open if missing required fields
@@ -78,29 +104,49 @@ async function main() {
     }
     
     const branch = await getCurrentBranch();
-    const intentSummary = parseWorklogLines(text);
-    
-    // Create session_start event
-    const sessionStartEvent = {
-      ...createBaseEvent(EventTypes.SESSION_START, branch),
+
+    let intentSummary = parseWorklogLines(text);
+    let source = intentSummary.startsWith('(worklog line missing)') ? 'missing' : 'text';
+
+    // If `text` doesn't include WORKLOG_START, fall back to transcript_path.
+    if (source === 'missing' && transcriptPath) {
+      try {
+        const fs = await import('node:fs/promises');
+        const transcriptContent = await fs.readFile(transcriptPath, 'utf8');
+        const fromTranscript = parseWorklogFromTranscriptContent(transcriptContent);
+        if (fromTranscript) {
+          intentSummary = fromTranscript;
+          source = 'transcript';
+        }
+      } catch {
+        // ignore and keep missing
+      }
+    }
+
+    const responseHash = crypto
+      .createHash('sha256')
+      .update(typeof text === 'string' ? text : '')
+      .digest('hex')
+      .slice(0, 12);
+
+    // Debug: keep a lightweight trace for diagnosis (safe, local-only)
+    const debugPath = join(projectRoot, '.git', 'worklog', 'hook-debug.log');
+    const debugLine =
+      `[${new Date().toISOString()}] ` +
+      `event=assistant_response source=${source} intentSummary=${JSON.stringify(intentSummary)} ` +
+      `transcriptPath=${JSON.stringify(transcriptPath || null)} textStart=${JSON.stringify(text.slice(0, 200))}\n`;
+    await import('node:fs/promises').then(fs => fs.appendFile(debugPath, debugLine, 'utf8')).catch(() => {});
+
+    const event = {
+      ...createBaseEvent(EventTypes.ASSISTANT_RESPONSE, branch),
       conversationId,
       generationId,
       intentSummary,
+      source,
+      responseHash,
     };
-    
-    // Create session_end event
-    const sessionEndEvent = {
-      ...createBaseEvent(EventTypes.SESSION_END, branch),
-      conversationId,
-      generationId,
-      status: SessionStatus.COMPLETED,
-      durationMs: 0, // Cannot calculate duration since we only run at end
-      insights: [], // No insights extraction in this version
-    };
-    
-    // Append both events
-    await appendEvent(sessionStartEvent);
-    await appendEvent(sessionEndEvent);
+
+    await appendEvent(event);
     
     process.exit(0);
   } catch (error) {
