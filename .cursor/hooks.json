@@ -6,6 +6,11 @@
         "command": "node .cursor/hooks/session-start.mjs"
       }
     ],
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/pre-tooluse-feature.mjs"
+      }
+    ],
     "stop": [
       {
         "command": "node .cursor/hooks/session-end.mjs"

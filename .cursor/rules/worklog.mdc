@@ -11,8 +11,23 @@ Every Agent response MUST follow this structure. This is non-negotiable.
 
 **First line** of your response must be exactly:
 ```
-WORKLOG_START: <one-line intention>
+WORKLOG_START: [<feature>] <one-line intention>
 ```
+
+### Feature Tag (Required)
+
+To make worklogs useful (instead of always showing the git branch like `mvp`), you MUST prefix the intention with a bracketed feature tag:
+
+```
+WORKLOG_START: [Worklog System] Improve feature-level logging
+```
+
+Rules for the feature tag:
+- The bracket value is used as the **feature** for indexing/digests.
+- Use a short, human-friendly name (2–5 words). Spaces are allowed.
+- Keep it stable across the feature so tables/digests group correctly.
+- If you are continuing the same feature, keep the same tag.
+- If you are switching features, update the tag to the new feature.
 
 **Last line** of your response must be exactly:
 ```
@@ -21,7 +36,7 @@ WORKLOG_END
 
 ## Rules
 
-1. **First line**: Start every response with `WORKLOG_START: <intention>` where the intention is a single short line (under 120 characters) summarizing what you are doing for this turn.
+1. **First line**: Start every response with `WORKLOG_START: [<feature>] <intention>` where the intention is a single short line (under 120 characters) summarizing what you are doing for this turn.
 
 2. **Last line**: End every response with exactly `WORKLOG_END`.
 

@@ -26,9 +26,11 @@ const projectRoot = join(__dirname, '..', '..');
 // not bare Windows paths like c:\...
 const schemaPath = join(projectRoot, 'scripts', 'worklog', 'schema.mjs');
 const loggerPath = join(projectRoot, 'scripts', 'worklog', 'logger.mjs');
+const featurePath = join(projectRoot, 'scripts', 'worklog', 'feature.mjs');
 
 const { createBaseEvent, EventTypes } = await import(pathToFileURL(schemaPath).href);
 const { appendEvent, getCurrentBranch } = await import(pathToFileURL(loggerPath).href);
+const { parseWorklogStartPayload, readCurrentFeature, writeCurrentFeature } = await import(pathToFileURL(featurePath).href);
 
 async function readStdin() {
   const chunks = [];
@@ -129,6 +131,26 @@ async function main() {
       .digest('hex')
       .slice(0, 12);
 
+    // Extract optional feature from the WORKLOG_START payload.
+    // Convention: WORKLOG_START: [Feature Name] Intention text
+    const parsed = parseWorklogStartPayload(intentSummary);
+    let featureId = parsed.featureId;
+    let featureTitle = parsed.featureTitle;
+    const intent = parsed.intent;
+
+    // If no feature tag was found, fall back to the current feature (sticky),
+    // instead of defaulting all the way back to the branch.
+    if (!featureId) {
+      const current = await readCurrentFeature(projectRoot);
+      featureId = current?.featureId || null;
+      featureTitle = current?.featureTitle || null;
+    }
+
+    if (featureId) {
+      intentSummary = intent || intentSummary;
+      await writeCurrentFeature(projectRoot, { featureId, featureTitle });
+    }
+
     // Debug: keep a lightweight trace for diagnosis (safe, local-only)
     const debugPath = join(projectRoot, '.git', 'worklog', 'hook-debug.log');
     const debugLine =
@@ -138,12 +160,13 @@ async function main() {
     await import('node:fs/promises').then(fs => fs.appendFile(debugPath, debugLine, 'utf8')).catch(() => {});
 
     const event = {
-      ...createBaseEvent(EventTypes.ASSISTANT_RESPONSE, branch),
+      ...createBaseEvent(EventTypes.ASSISTANT_RESPONSE, branch, featureId || null),
       conversationId,
       generationId,
       intentSummary,
       source,
       responseHash,
+      ...(featureTitle ? { featureTitle } : {}),
     };
 
     await appendEvent(event);

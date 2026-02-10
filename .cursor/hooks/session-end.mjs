@@ -20,9 +20,11 @@ const projectRoot = join(__dirname, '..', '..');
 // not bare Windows paths like c:\...
 const schemaPath = join(projectRoot, 'scripts', 'worklog', 'schema.mjs');
 const loggerPath = join(projectRoot, 'scripts', 'worklog', 'logger.mjs');
+const featureIndexPath = join(projectRoot, 'scripts', 'worklog', 'generateFeatureIndex.mjs');
 
 const { createBaseEvent, EventTypes, SessionStatus } = await import(pathToFileURL(schemaPath).href);
 const { appendEvent, getCurrentBranch, getEvents } = await import(pathToFileURL(loggerPath).href);
+const { generateFeatureIndex } = await import(pathToFileURL(featureIndexPath).href);
 
 async function readStdin() {
   const chunks = [];
@@ -57,16 +59,30 @@ async function calculateDuration(conversationId, generationId, branch) {
     const startEvent = events
       .filter(e => e.type === EventTypes.SESSION_START && e.generationId === generationId)
       .pop();
+
+    // Prefer feature from assistant_response for this generation (most accurate),
+    // fall back to feature from session_start if needed.
+    const responseEvent = events
+      .filter(e => e.type === EventTypes.ASSISTANT_RESPONSE && e.generationId === generationId)
+      .pop();
     
     if (startEvent) {
       const startTime = new Date(startEvent.ts);
       const endTime = new Date();
-      return endTime - startTime;
+      return {
+        durationMs: endTime - startTime,
+        featureId:
+          (typeof responseEvent?.feature === 'string' && responseEvent.feature) ||
+          (typeof startEvent.feature === 'string' ? startEvent.feature : null),
+        featureTitle:
+          (typeof responseEvent?.featureTitle === 'string' && responseEvent.featureTitle) ||
+          (typeof startEvent.featureTitle === 'string' ? startEvent.featureTitle : null),
+      };
     }
   } catch {
     // If we can't find start event, return null
   }
-  return null;
+  return { durationMs: null, featureId: null, featureTitle: null };
 }
 
 async function main() {
@@ -87,21 +103,34 @@ async function main() {
     }
     
     const branch = await getCurrentBranch();
-    const durationMs = await calculateDuration(conversationId, generationId, branch);
+    const { durationMs, featureId, featureTitle } = await calculateDuration(conversationId, generationId, branch);
     
     // Extract insights (currently empty, can be enhanced)
     const insights = extractInsights(conversationId, generationId);
     
     const event = {
-      ...createBaseEvent(EventTypes.SESSION_END, branch),
+      ...createBaseEvent(EventTypes.SESSION_END, branch, featureId),
       conversationId,
       generationId,
       status: Object.values(SessionStatus).includes(status) ? status : SessionStatus.UNKNOWN,
       durationMs,
       insights,
+      ...(featureTitle ? { featureTitle } : {}),
     };
     
     await appendEvent(event);
+
+    // Update human-readable feature index tables (best-effort, never block).
+    // - Local live index: .git/worklog/feature-index.md
+    // - Optional docs index: docs/worklog/feature-index.md (commit when desired)
+    try {
+      const localIndex = join(projectRoot, '.git', 'worklog', 'feature-index.md');
+      const docsIndex = join(projectRoot, 'docs', 'worklog', 'feature-index.md');
+      await generateFeatureIndex({ outPath: localIndex, branch });
+      await generateFeatureIndex({ outPath: docsIndex, branch });
+    } catch {
+      // ignore
+    }
     
     process.exit(0);
   } catch (error) {

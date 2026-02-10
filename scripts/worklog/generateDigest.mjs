@@ -16,7 +16,7 @@ import { EventTypes } from './schema.mjs';
  * Determines feature windows from events
  * A feature window is defined by:
  * - All events on the same branch between feature boundaries
- * - Boundaries: push events OR branch changes
+ * - Boundaries: push events OR feature changes
  */
 function identifyFeatureWindows(events) {
   const windows = [];
@@ -24,14 +24,15 @@ function identifyFeatureWindows(events) {
   
   for (const event of events) {
     const { branch, type, ts } = event;
+    const featureId = (typeof event.feature === 'string' && event.feature.trim()) ? event.feature.trim() : branch;
     
     // Start new window if:
     // 1. No current window
-    // 2. Branch changed
+    // 2. Feature changed
     // 3. Previous event was a push
     if (
       !currentWindow ||
-      currentWindow.branch !== branch ||
+      currentWindow.featureId !== featureId ||
       currentWindow.closed
     ) {
       if (currentWindow) {
@@ -39,7 +40,7 @@ function identifyFeatureWindows(events) {
       }
       currentWindow = {
         branch,
-        featureId: branch,
+        featureId,
         startTime: ts,
         endTime: ts,
         events: [],
@@ -258,12 +259,12 @@ export async function generateCurrentFeatureDigest(verificationResults = null) {
   // Determine output path
   const now = new Date();
   const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const sanitizedBranch = branch.replace(/[^a-zA-Z0-9-_]/g, '_');
+  const sanitizedFeatureId = String(currentWindow.featureId || branch).replace(/[^a-zA-Z0-9-_]/g, '_');
   
   const digestDir = path.join(process.cwd(), 'docs', 'worklog', 'digests', yearMonth);
   await fs.mkdir(digestDir, { recursive: true });
   
-  const digestPath = path.join(digestDir, `${sanitizedBranch}.md`);
+  const digestPath = path.join(digestDir, `${sanitizedFeatureId}.md`);
   await fs.writeFile(digestPath, markdown, 'utf8');
   
   console.log(`Feature digest generated: ${digestPath}`);
@@ -277,7 +278,7 @@ export async function generateCurrentFeatureDigest(verificationResults = null) {
   const lastCommit = commits[commits.length - 1]?.hash;
   
   await appendEvent({
-    ...createBaseEvent(EventTypes.FEATURE_DIGEST, branch),
+    ...createBaseEvent(EventTypes.FEATURE_DIGEST, branch, currentWindow.featureId),
     digestPath: path.relative(process.cwd(), digestPath),
     fromCommit: firstCommit || 'unknown',
     toCommit: lastCommit || 'unknown',

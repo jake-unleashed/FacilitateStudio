@@ -21,9 +21,11 @@ const projectRoot = join(__dirname, '..', '..');
 // not bare Windows paths like c:\...
 const schemaPath = join(projectRoot, 'scripts', 'worklog', 'schema.mjs');
 const loggerPath = join(projectRoot, 'scripts', 'worklog', 'logger.mjs');
+const featurePath = join(projectRoot, 'scripts', 'worklog', 'feature.mjs');
 
 const { createBaseEvent, EventTypes } = await import(pathToFileURL(schemaPath).href);
 const { appendEvent, getCurrentBranch } = await import(pathToFileURL(loggerPath).href);
+const { parseWorklogStartPayload, readCurrentFeature, writeCurrentFeature } = await import(pathToFileURL(featurePath).href);
 
 async function readStdin() {
   const chunks = [];
@@ -97,6 +99,21 @@ async function main() {
     
     const branch = await getCurrentBranch();
     const intentSummary = generateIntentionSummary(prompt, attachments);
+
+    // Determine feature for this session:
+    // - If the user prompt itself starts with a bracketed feature tag, use it.
+    // - Else, fall back to the last known current feature written by afterAgentResponse.
+    const fromPrompt = parseWorklogStartPayload(intentSummary);
+    let featureId = fromPrompt.featureId;
+    let featureTitle = fromPrompt.featureTitle;
+
+    if (featureId) {
+      await writeCurrentFeature(projectRoot, { featureId, featureTitle });
+    } else {
+      const current = await readCurrentFeature(projectRoot);
+      featureId = current?.featureId || null;
+      featureTitle = current?.featureTitle || null;
+    }
     
     // Optional: hash prompt for traceability without storing content
     const promptHash = crypto
@@ -106,11 +123,12 @@ async function main() {
       .slice(0, 12);
     
     const event = {
-      ...createBaseEvent(EventTypes.SESSION_START, branch),
+      ...createBaseEvent(EventTypes.SESSION_START, branch, featureId),
       conversationId,
       generationId,
       intentSummary,
       promptHash,
+      ...(featureTitle ? { featureTitle } : {}),
     };
     
     await appendEvent(event);

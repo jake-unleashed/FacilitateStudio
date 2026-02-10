@@ -22,6 +22,7 @@ process.chdir(projectRoot);
 // Now import - use relative path from worklog/hooks to worklog
 const { createBaseEvent, EventTypes } = await import('../schema.mjs');
 const { appendEvent, getCurrentBranch } = await import('../logger.mjs');
+const { readCurrentFeature } = await import('../feature.mjs');
 
 function getCommitRange(remote, localRef) {
   try {
@@ -76,14 +77,17 @@ async function main() {
     }
     
     const branch = await getCurrentBranch();
+    const currentFeature = await readCurrentFeature(projectRoot);
+    const featureId = currentFeature?.featureId || null;
     const localRef = `refs/heads/${branch}`;
     const { range, commits } = getCommitRange(remote, localRef);
     
     const event = {
-      ...createBaseEvent(EventTypes.PUSH, branch),
+      ...createBaseEvent(EventTypes.PUSH, branch, featureId),
       remote,
       range,
       commits,
+      ...(currentFeature?.featureTitle ? { featureTitle: currentFeature.featureTitle } : {}),
     };
     
     await appendEvent(event);
