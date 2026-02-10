@@ -205,14 +205,14 @@ describe('App', () => {
   it('opens Objects panel when Objects button is clicked', async () => {
     renderApp();
     await chooseStartFromScratch();
-    fireEvent.click(screen.getByText('Objects'));
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
   });
 
   it('opens Steps panel when Steps button is clicked', async () => {
     renderApp();
     await chooseStartFromScratch();
-    fireEvent.click(screen.getByText('Steps'));
+    fireEvent.click(screen.getByRole('button', { name: 'Steps' }));
     // The panel heading is "Steps", not "Training Flow"
     const stepsHeadings = screen.getAllByText('Steps');
     expect(stepsHeadings.length).toBeGreaterThan(0);
@@ -221,14 +221,14 @@ describe('App', () => {
   it('opens Add panel when Add button is clicked', async () => {
     renderApp();
     await chooseStartFromScratch();
-    fireEvent.click(screen.getByText('Add'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(screen.getByText('Add New')).toBeInTheDocument();
   });
 
   it('shows empty Objects panel for new project', async () => {
     renderApp();
     await chooseStartFromScratch();
-    fireEvent.click(screen.getByText('Objects'));
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
     // No objects should be listed in empty project
     expect(screen.queryByRole('button', { name: /Select/ })).not.toBeInTheDocument();
@@ -237,7 +237,7 @@ describe('App', () => {
   it('shows empty Steps panel with Add Step button for new project', async () => {
     renderApp();
     await chooseStartFromScratch();
-    fireEvent.click(screen.getByText('Steps'));
+    fireEvent.click(screen.getByRole('button', { name: 'Steps' }));
     // The panel heading is "Steps", not "Training Flow"
     const stepsHeadings = screen.getAllByText('Steps');
     expect(stepsHeadings.length).toBeGreaterThan(0);
@@ -247,7 +247,7 @@ describe('App', () => {
   it('shows Upload 3D Model option in Add panel', async () => {
     renderApp();
     await chooseStartFromScratch();
-    fireEvent.click(screen.getByText('Add'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
   });
 
@@ -286,11 +286,11 @@ describe('App', () => {
     await chooseStartFromScratch();
 
     // Open Objects panel
-    fireEvent.click(screen.getByText('Objects'));
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
     expect(screen.getByText('Scene Objects')).toBeInTheDocument();
 
     // Close it by clicking the same button again
-    fireEvent.click(screen.getByText('Objects'));
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
 
     // Panel header should no longer be visible
     await waitFor(() => {

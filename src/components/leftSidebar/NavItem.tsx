@@ -8,14 +8,18 @@ export interface NavItemProps {
   label: string;
   isActive: boolean;
   onClick: () => void;
+  compact?: boolean;
 }
 
-export const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClick }) => {
+export const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClick, compact = false }) => {
   return (
     <button
       onClick={onClick}
+      aria-label={label}
+      title={label}
       className={`
-        group relative flex w-full flex-col items-center justify-center gap-1.5 rounded-[20px] p-3 transition-all duration-300
+        group relative flex w-full flex-col items-center justify-center rounded-[20px] transition-all duration-300
+        ${compact ? 'gap-0 p-2' : 'gap-1.5 p-3'}
         ${
           isActive
             ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-1 ring-white/20'
@@ -24,11 +28,11 @@ export const NavItem = memo<NavItemProps>(({ icon: Icon, label, isActive, onClic
       `}
     >
       <Icon
-        size={22}
+        size={compact ? 20 : 22}
         strokeWidth={isActive ? 2.5 : 2}
         className="transition-transform duration-300 group-hover:scale-110"
       />
-      <span className="text-xs font-semibold tracking-tight">{label}</span>
+      {!compact && <span className="text-xs font-semibold tracking-tight">{label}</span>}
     </button>
   );
 });

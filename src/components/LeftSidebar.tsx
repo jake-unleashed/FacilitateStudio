@@ -231,21 +231,28 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   // Step IDs for sortable context
   const stepIds = useMemo(() => steps.map((step) => step.id), [steps]);
 
+  // NOTE: Open width is tuned for: compact strip + panel (`w-80`) + `ml-1` spacing.
   return (
     <div
       className={`
-        pointer-events-none absolute bottom-4 left-4 top-24 z-40 flex transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]
-        ${activeTab ? 'w-[26rem] gap-6' : 'w-20 gap-0'}
+        pointer-events-none absolute bottom-4 left-4 top-24 z-40 flex will-change-[width] transition-[width] duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]
+        ${activeTab ? 'w-[23rem]' : 'w-20'}
     `}
     >
       {/* Floating Navigation Strip - Tier 1 Rounding (32px) */}
-      <div className="pointer-events-auto flex h-fit w-20 shrink-0 -translate-y-16 flex-col items-center gap-2 self-center rounded-[32px] border border-white/40 bg-white/70 p-2 shadow-glass backdrop-blur-xl">
+      <div
+        className={`
+          pointer-events-auto flex h-fit shrink-0 -translate-y-16 flex-col items-center gap-2 self-center rounded-[32px] border border-white/40 bg-white/70 p-2 shadow-glass backdrop-blur-xl transform-gpu will-change-[width,transform] transition-[width,transform] duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]
+          ${activeTab ? 'w-11 -translate-x-1' : 'w-20 translate-x-0'}
+        `}
+      >
         <NavItem
           id="add"
           icon={Plus}
           label="Add"
           isActive={activeTab === 'add'}
           onClick={handleAddClick}
+          compact={!!activeTab}
         />
         <NavItem
           id="objects"
@@ -253,6 +260,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
           label="Objects"
           isActive={activeTab === 'objects'}
           onClick={handleObjectsClick}
+          compact={!!activeTab}
         />
         <NavItem
           id="steps"
@@ -260,18 +268,21 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
           label="Steps"
           isActive={activeTab === 'steps'}
           onClick={handleStepsClick}
+          compact={!!activeTab}
         />
       </div>
 
       {/* Floating Content Panel - Tier 1 Rounding (32px) */}
       <div
         className={`
-          pointer-events-auto flex flex-1 origin-left flex-col overflow-hidden rounded-[32px] border border-white/40 bg-white/70 shadow-glass backdrop-blur-xl transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]
-          ${activeTab ? 'translate-x-0 opacity-100' : 'w-0 flex-none -translate-x-8 border-0 p-0 opacity-0'}
+          origin-left overflow-hidden rounded-[32px] backdrop-blur-xl
+          transform-gpu will-change-[width,opacity,transform,margin-left]
+          transition-[width,opacity,transform,margin-left] duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]
+          ${activeTab ? 'pointer-events-auto ml-1 flex w-80 translate-x-0 flex-col border border-white/40 bg-white/70 opacity-100 shadow-glass' : 'pointer-events-none ml-0 flex w-0 -translate-x-2 flex-col border border-white/0 bg-white/0 opacity-0 shadow-none'}
       `}
       >
         {/* Header */}
-        <div className="flex h-16 min-w-[20rem] shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-white/10 px-6 backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold tracking-tight text-slate-800">
               {activeTab === 'add' && 'Add New'}
@@ -300,7 +311,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
         {/* Content Area */}
         <div
           ref={scrollContainerRef}
-          className="custom-scrollbar min-w-[20rem] flex-1 space-y-5 overflow-y-auto p-5"
+          className="custom-scrollbar flex-1 space-y-5 overflow-y-auto p-5"
         >
           {activeTab === 'add' && (
             <AddPanel

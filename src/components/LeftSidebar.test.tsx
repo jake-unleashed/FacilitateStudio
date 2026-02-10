@@ -123,33 +123,56 @@ describe('LeftSidebar', () => {
 
   it('renders navigation buttons', () => {
     renderWithProvider(<LeftSidebar {...defaultProps} />);
+    // Expanded mode: labels should be visible
     expect(screen.getByText('Add')).toBeInTheDocument();
     expect(screen.getByText('Objects')).toBeInTheDocument();
     expect(screen.getByText('Steps')).toBeInTheDocument();
+
+    // Accessible names should be present regardless of visual mode
+    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Objects' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Steps' })).toBeInTheDocument();
   });
 
   it('calls setActiveTab when Add button is clicked', () => {
     renderWithProvider(<LeftSidebar {...defaultProps} />);
-    fireEvent.click(screen.getByText('Add'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith('add');
   });
 
   it('calls setActiveTab when Objects button is clicked', () => {
     renderWithProvider(<LeftSidebar {...defaultProps} />);
-    fireEvent.click(screen.getByText('Objects'));
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith('objects');
   });
 
   it('calls setActiveTab when Steps button is clicked', () => {
     renderWithProvider(<LeftSidebar {...defaultProps} />);
-    fireEvent.click(screen.getByText('Steps'));
+    fireEvent.click(screen.getByRole('button', { name: 'Steps' }));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith('steps');
   });
 
   it('toggles tab off when clicking active tab', () => {
     renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
-    fireEvent.click(screen.getByText('Add'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(defaultProps.setActiveTab).toHaveBeenCalledWith(null);
+  });
+
+  it('collapses the nav strip when a panel is open', () => {
+    const { rerender } = renderWithProvider(<LeftSidebar {...defaultProps} />);
+
+    // Closed/expanded: label visible and strip width wide
+    expect(screen.getByText('Add')).toBeInTheDocument();
+    const addButton = screen.getByRole('button', { name: 'Add' });
+    expect(addButton.parentElement).toHaveClass('w-20');
+
+    // Open/compact: label hidden and strip width narrow
+    rerender(<LeftSidebar {...defaultProps} activeTab="add" />);
+    expect(screen.queryByText('Add')).not.toBeInTheDocument();
+    const addButtonCompact = screen.getByRole('button', { name: 'Add' });
+    expect(addButtonCompact.parentElement).toHaveClass('w-11');
+    // Sidebar is anchored; it should not shift horizontally when opening.
+    expect(addButtonCompact.parentElement?.parentElement).toHaveClass('left-4');
   });
 
   describe('Add Panel', () => {
@@ -204,11 +227,9 @@ describe('LeftSidebar', () => {
   describe('Steps Panel', () => {
     it('shows Steps title when steps tab is active', () => {
       renderWithProvider(<LeftSidebar {...defaultProps} activeTab="steps" />);
-      // Use getAllByText since "Steps" appears in both the nav button and the panel heading
-      const stepsElements = screen.getAllByText('Steps');
-      expect(stepsElements.length).toBeGreaterThan(0);
-      // Check that the panel heading exists
-      expect(stepsElements.some((el) => el.tagName === 'H2')).toBe(true);
+      // In compact mode, the nav label is hidden; the panel heading should remain.
+      expect(screen.getAllByText('Steps')).toHaveLength(1);
+      expect(screen.getByRole('heading', { name: 'Steps' })).toBeInTheDocument();
     });
 
     it('renders all steps when provided', () => {
