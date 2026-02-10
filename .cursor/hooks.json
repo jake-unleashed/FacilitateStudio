@@ -10,6 +10,11 @@
       {
         "command": "node .cursor/hooks/session-end.mjs"
       }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "node .cursor/hooks/agent-response-worklog.mjs"
+      }
     ]
   }
 }

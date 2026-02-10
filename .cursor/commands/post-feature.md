@@ -172,7 +172,11 @@ This creates a human-readable digest in `docs/worklog/digests/` that includes:
 - Verification results
 - Duration and timestamps
 
-The digest is automatically generated from the worklog events that have been captured throughout your work on this feature.
+### About the Worklog
+
+The worklog is populated by the Agent's `WORKLOG_START` / `WORKLOG_END` lines (see `.cursor/rules/worklog.mdc`). If those were used during the feature, the digest will include full session intentions; if not, sessions may show "(worklog line missing)" or have fewer entries.
+
+**Important**: You are not required to run `/post-feature` for logging to occur—worklog capture happens automatically on every Agent response. However, when you do run this command, the digest is regenerated and reflects all events so far.
 
 ---
 

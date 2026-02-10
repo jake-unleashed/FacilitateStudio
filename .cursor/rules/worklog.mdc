@@ -1,0 +1,47 @@
+---
+description: Mandatory worklog lines for every Agent response
+alwaysApply: true
+---
+
+# Worklog: Mandatory Response Format
+
+Every Agent response MUST follow this structure. This is non-negotiable.
+
+## Required Format
+
+**First line** of your response must be exactly:
+```
+WORKLOG_START: <one-line intention>
+```
+
+**Last line** of your response must be exactly:
+```
+WORKLOG_END
+```
+
+## Rules
+
+1. **First line**: Start every response with `WORKLOG_START: <intention>` where the intention is a single short line (under 120 characters) summarizing what you are doing for this turn.
+
+2. **Last line**: End every response with exactly `WORKLOG_END`.
+
+3. **Incomplete responses**: A response that does not start with WORKLOG_START and end with WORKLOG_END is incomplete. Add them before sending.
+
+4. **Pre-send check**: Before sending your response, verify:
+   - First line is `WORKLOG_START: <intention>`
+   - Last line is `WORKLOG_END`
+
+## Example
+
+```
+WORKLOG_START: Add thumbnail generation for starter assets
+
+[Your full response content here, explaining what you're doing, 
+showing code changes, etc.]
+
+WORKLOG_END
+```
+
+## Why This Matters
+
+These lines are automatically parsed by the worklog system to track all development work. Every feature implementation is logged with your intention summaries, creating an automatic development history that feeds into feature digests and project documentation.

@@ -24,9 +24,33 @@ This directory contains the automatic worklog system that tracks all development
 
 ## How It Works
 
-1. **Cursor Hooks** (`.cursor/hooks.json`) capture AI session events
-2. **Git Hooks** (`.husky/`) capture commit and push events
-3. **Generator** (`scripts/worklog/generateDigest.mjs`) creates Feature Reviews
+### Response-Based Logging (Primary Method)
+
+The worklog system primarily captures AI work through **response-based logging**:
+
+1. **Agent writes worklog lines**: When working in Agent mode (Cmd+K / Agent Chat), the AI must output two special lines in every response:
+   - **First line**: `WORKLOG_START: <one-line intention>` 
+   - **Last line**: `WORKLOG_END`
+   
+2. **Hook captures automatically**: The `afterAgentResponse` hook (`.cursor/hooks/agent-response-worklog.mjs`) runs after every Agent response, parses these lines, and writes `session_start` + `session_end` events to the worklog.
+
+3. **Rule enforcement**: The rule file `.cursor/rules/worklog.mdc` (with `alwaysApply: true`) ensures the AI includes these lines in every Agent response.
+
+This approach provides reliable logging that depends on the AI writing the lines (which it does via the rule) rather than depending on specific Cursor hook invocations that may vary by context.
+
+### Legacy Hooks (Best-Effort)
+
+The following Cursor hooks remain active and will add events when Cursor invokes them:
+
+1. **Cursor Hooks** (`.cursor/hooks.json`):
+   - `beforeSubmitPrompt` → captures user prompt and generates intention summary
+   - `stop` → captures when agent loop completes
+   
+2. **Git Hooks** (`.husky/`):
+   - `post-commit` → captures commit metadata
+   - `pre-push` → captures push events
+
+3. **Generator** (`scripts/worklog/generateDigest.mjs`) → creates Feature Reviews from all captured events
 
 ## Privacy & Security
 
