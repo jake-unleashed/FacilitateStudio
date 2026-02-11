@@ -87,6 +87,10 @@ src/
 └── test/                # Test setup and utilities
 ```
 
+### Reference folder (local-only)
+
+The `Reference/` folder is **ignored by git** and is intended for local-only materials (including whole external projects) that should not be committed.
+
 ---
 
 ## Tech Stack

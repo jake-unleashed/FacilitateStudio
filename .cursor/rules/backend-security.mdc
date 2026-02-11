@@ -1,0 +1,94 @@
+# Backend Security & Maintainability (AI-Managed)
+
+This project’s backend must remain **secure-by-construction** because it will be written and maintained by AI agents over time.
+
+These rules apply to **all backend work** (database, auth, storage, serverless functions, API routes).
+
+---
+
+## Non-negotiable Security Invariants
+
+1. **No secrets in the browser**
+   - Never expose:
+     - OpenAI keys
+     - Database passwords
+     - Supabase **service role** key
+     - Any signing keys used to generate privileged tokens/URLs
+   - If a feature “needs a secret,” it must run server-side.
+
+2. **RLS is the primary access control**
+   - All user-owned tables must have **Row Level Security** enabled.
+   - Policies must enforce:
+     - user can only read/write their own data
+     - published/public data is explicitly scoped and read-only
+   - Never rely on “client filters” for security.
+
+3. **Validate all external input**
+   - API route inputs must be schema-validated (Zod or equivalent).
+   - Reject unknown fields by default.
+   - Never accept arbitrary JSON blobs without bounds checks (size limits).
+
+4. **Least privilege by default**
+   - Public endpoints are view-only and return minimal data.
+   - Avoid “admin” capabilities unless explicitly required.
+
+5. **Avoid high-risk primitives**
+   - No raw SQL string concatenation.
+   - No dynamic eval/Function.
+   - No storing untrusted HTML without sanitization.
+
+---
+
+## Recommended MVP Architecture Rules (Simple + Robust)
+
+### Prefer direct-to-platform with RLS (MVP)
+
+- If using Supabase (recommended):
+  - The frontend uses the **anon key** + user session token.
+  - RLS policies enforce ownership and access.
+  - **Do not** build a large custom API layer unless needed.
+
+### Keep custom server routes for privileged work only
+
+- AI/OpenAI calls (key must stay server-side)
+- Optional: generating signed URLs if your storage policy requires it
+
+---
+
+## Publishing Rules (Share Links)
+
+- Treat `share_token` as **secret** (unguessable, high entropy).
+- “Published view” is **read-only**.
+- Prefer **snapshot publish** for MVP:
+  - stable links
+  - simpler security + fewer edge cases
+
+---
+
+## Storage / Upload Rules
+
+- Prefer **direct-to-object-storage uploads** (browser → storage).
+- Enforce:
+  - file size limits (server-side and/or storage policy)
+  - allowlisted extensions and MIME checks
+- Never proxy large binaries through serverless functions unless unavoidable.
+
+---
+
+## AI Endpoint Rules
+
+- AI endpoints must include:
+  - rate limiting (per-user and per-IP fallback)
+  - timeouts (AbortController pattern)
+  - structured outputs (JSON) + strict parsing
+  - safe error messages (don’t leak secrets or internals)
+
+---
+
+## CI / Review Rules (for AI agents)
+
+- Any backend change must include:
+  - a short doc update explaining the security impact
+  - tests for critical paths when feasible (auth, CRUD, publish retrieval)
+- Never disable validation, auth, RLS, or rate limits “temporarily.”
+

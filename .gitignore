@@ -32,3 +32,7 @@ npm-debug.log*
 
 # Worklog (local only - never commit raw events)
 .git/worklog/
+
+# Local reference materials (NOT committed)
+# This folder may contain whole external projects used only for reference.
+Reference/
