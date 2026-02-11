@@ -22,6 +22,8 @@ interface StepConfigurationPhaseProps {
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
   latestRecordingEndPositionRef?: React.MutableRefObject<LatestRecordingEndTransformRefValue | null>;
+  onIntroVisibilityChange?: (visible: boolean) => void;
+  onRequestPanelTransition?: (apply: () => void) => void;
 }
 
 export function StepConfigurationPhase({
@@ -35,13 +37,96 @@ export function StepConfigurationPhase({
   onStopRecordingPosition,
   recordingPositionForStepId,
   latestRecordingEndPositionRef,
+  onIntroVisibilityChange,
+  onRequestPanelTransition,
 }: StepConfigurationPhaseProps): JSX.Element {
   const { state, actions } = useGuidedWorkflow();
   const totalSteps = steps.length;
 
-  const [isIntroVisible, setIsIntroVisible] = useState(state.stepSetupEntryMode !== 'resume');
+  // Keep step setup linear: when entering with entryMode "intro" (from prior phase),
+  // always show the intro panel first, even if the user has seen it before.
+  // Only skip it when explicitly resuming from finish.
+  const [isIntroVisible, setIsIntroVisible] = useState(state.stepSetupEntryMode === 'intro');
   const [currentSubScreen, setCurrentSubScreen] = useState<'type' | 'settings'>(
     state.stepSetupEntryMode === 'resume' ? state.stepSetupResume?.subScreen ?? 'settings' : 'type'
+  );
+
+  // --- Local content transition (intro ↔ steps, step ↔ step) ---
+  const TRANSITION_DURATION = 250;
+  const [transitionState, setTransitionState] = useState<'idle' | 'exiting' | 'entering'>('idle');
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const isTransitioning = transitionState !== 'idle';
+
+  const prefersReducedMotion = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }, []);
+
+  useEffect(() => {
+    onIntroVisibilityChange?.(isIntroVisible);
+    return () => onIntroVisibilityChange?.(false);
+  }, [isIntroVisible, onIntroVisibilityChange]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  const contentTransitionClasses = useMemo(() => {
+    const easing = 'ease-[cubic-bezier(0.25,0.8,0.25,1)]';
+    switch (transitionState) {
+      case 'idle':
+        return `transition-[opacity,transform] duration-[250ms] ${easing} opacity-100 translate-y-0`;
+      case 'exiting':
+        return `transition-[opacity,transform] duration-[250ms] ${easing} opacity-0 -translate-y-2`;
+      case 'entering':
+        // No transition property — snap to start position instantly before enter animation
+        return 'opacity-0 translate-y-2';
+      default:
+        return 'opacity-100 translate-y-0';
+    }
+  }, [transitionState]);
+
+  const runContentTransition = useCallback(
+    (apply: () => void) => {
+      if (prefersReducedMotion) {
+        apply();
+        setTransitionState('idle');
+        return;
+      }
+
+      // Clear any in-flight transition
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      // Phase 1: exit animation on current content
+      setTransitionState('exiting');
+
+      transitionTimeoutRef.current = setTimeout(() => {
+        // Phase 2: swap content (invisible, no CSS transition)
+        apply();
+        setTransitionState('entering');
+
+        // Phase 3: after browser paints the entering frame, transition to idle (triggers enter animation)
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = requestAnimationFrame(() => {
+            setTransitionState('idle');
+            rafRef.current = null;
+          });
+        });
+        transitionTimeoutRef.current = null;
+      }, TRANSITION_DURATION);
+    },
+    [prefersReducedMotion]
   );
 
   const hasAppliedResumeRef = useRef(false);
@@ -86,67 +171,86 @@ export function StepConfigurationPhase({
 
   if (isIntroVisible) {
     return (
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-slate-800">Set up your steps</h2>
-          <p className="text-sm font-medium text-slate-600">
-            Next, you’ll choose what the trainee will do in each step. We’ll go step by step.
-          </p>
-        </div>
+      <div className={contentTransitionClasses}>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold text-slate-800">Set up your steps</h2>
+            <p className="text-sm font-medium text-slate-600">
+              Next, you’ll choose what the trainee will do in each step. We’ll go step by step.
+            </p>
+          </div>
 
-        <div className="rounded-[20px] border border-white/40 bg-white/50 p-4">
-          <p className="text-sm font-medium text-slate-700">
-            You can always change these settings later.
-          </p>
-        </div>
+          <div className="rounded-[20px] border border-white/40 bg-white/50 p-4">
+            <p className="text-sm font-medium text-slate-700">
+              You can always change these settings later.
+            </p>
+          </div>
 
-        <div className="flex items-center justify-between border-t border-white/20 pt-4">
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={actions.previousPhase}
-            className="rounded-[20px]"
-          >
-            Back
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => {
-              actions.markStepSetupIntroSeen();
-              actions.setCurrentStepIndex(0);
-              setCurrentSubScreen('type');
-              setIsIntroVisible(false);
-            }}
-            className="rounded-[20px]"
-          >
-            Start step 1
-          </Button>
+          <div className="flex items-center justify-between border-t border-white/20 pt-4">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={actions.previousPhase}
+              className="rounded-[20px]"
+              disabled={isTransitioning}
+            >
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                if (isTransitioning) return;
+                const apply = () => {
+                  actions.markStepSetupIntroSeen();
+                  actions.setCurrentStepIndex(0);
+                  setCurrentSubScreen('type');
+                  setIsIntroVisible(false);
+                };
+                if (onRequestPanelTransition) {
+                  onRequestPanelTransition(apply);
+                } else {
+                  runContentTransition(apply);
+                }
+              }}
+              className="rounded-[20px]"
+              disabled={isTransitioning}
+            >
+              Start step 1
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <StepSetupStep
-      key={currentStep.id}
-      step={currentStep}
-      stepIndex={clampedIndex}
-      totalSteps={totalSteps}
-      isLastStep={isLastStep}
-      objects={objects}
-      selectedObjectId={selectedObjectId}
-      onUpdateStep={onUpdateStep}
-      onUpdateObject={onUpdateObject}
-      onFocusObject={onFocusObject}
-      onStartRecordingPosition={onStartRecordingPosition}
-      onStopRecordingPosition={onStopRecordingPosition}
-      recordingPositionForStepId={recordingPositionForStepId}
-      latestRecordingEndPositionRef={latestRecordingEndPositionRef}
-      onRequestShowIntro={() => setIsIntroVisible(true)}
-      currentSubScreen={currentSubScreen}
-      onSetCurrentSubScreen={setCurrentSubScreen}
-    />
+    <div className={contentTransitionClasses}>
+      <StepSetupStep
+        key={currentStep.id}
+        step={currentStep}
+        stepIndex={clampedIndex}
+        totalSteps={totalSteps}
+        isLastStep={isLastStep}
+        objects={objects}
+        selectedObjectId={selectedObjectId}
+        onUpdateStep={onUpdateStep}
+        onUpdateObject={onUpdateObject}
+        onFocusObject={onFocusObject}
+        onStartRecordingPosition={onStartRecordingPosition}
+        onStopRecordingPosition={onStopRecordingPosition}
+        recordingPositionForStepId={recordingPositionForStepId}
+        latestRecordingEndPositionRef={latestRecordingEndPositionRef}
+        onRequestShowIntro={() => {
+          if (isTransitioning) return;
+          runContentTransition(() => setIsIntroVisible(true));
+        }}
+        currentSubScreen={currentSubScreen}
+        onSetCurrentSubScreen={setCurrentSubScreen}
+        isTransitioning={isTransitioning}
+        runContentTransition={runContentTransition}
+      />
+    </div>
   );
 }
 
@@ -167,6 +271,8 @@ function StepSetupStep({
   onRequestShowIntro,
   currentSubScreen,
   onSetCurrentSubScreen,
+  isTransitioning,
+  runContentTransition,
 }: {
   step: SimStep;
   stepIndex: number;
@@ -184,6 +290,8 @@ function StepSetupStep({
   onRequestShowIntro: () => void;
   currentSubScreen: 'type' | 'settings';
   onSetCurrentSubScreen: (screen: 'type' | 'settings') => void;
+  isTransitioning: boolean;
+  runContentTransition: (apply: () => void) => void;
 }): JSX.Element {
   const { state, actions } = useGuidedWorkflow();
 
@@ -245,21 +353,34 @@ function StepSetupStep({
   }, [controller.selectedType, isChooserScreen, state.stepSetupBlankStepIds, step.id]);
 
   const handleGoPrevious = useCallback(() => {
+    if (isTransitioning) return;
     controller.flushPendingUpdates();
     if (isChooserScreen) {
       if (stepIndex === 0) {
         onRequestShowIntro();
         return;
       }
-      onSetCurrentSubScreen('settings');
-      actions.setCurrentStepIndex(Math.max(stepIndex - 1, 0));
+      runContentTransition(() => {
+        onSetCurrentSubScreen('settings');
+        actions.setCurrentStepIndex(Math.max(stepIndex - 1, 0));
+      });
       return;
     }
 
     onSetCurrentSubScreen('type');
-  }, [actions, controller, isChooserScreen, onRequestShowIntro, onSetCurrentSubScreen, stepIndex]);
+  }, [
+    actions,
+    controller,
+    isChooserScreen,
+    isTransitioning,
+    onRequestShowIntro,
+    onSetCurrentSubScreen,
+    runContentTransition,
+    stepIndex,
+  ]);
 
   const handleGoNext = useCallback(() => {
+    if (isTransitioning) return;
     controller.flushPendingUpdates();
 
     if (isChooserScreen) {
@@ -271,8 +392,10 @@ function StepSetupStep({
       }
 
       if (!isLastStep) {
-        onSetCurrentSubScreen('type');
-        actions.setCurrentStepIndex(Math.min(stepIndex + 1, totalSteps - 1));
+        runContentTransition(() => {
+          onSetCurrentSubScreen('type');
+          actions.setCurrentStepIndex(Math.min(stepIndex + 1, totalSteps - 1));
+        });
         return;
       }
 
@@ -288,8 +411,10 @@ function StepSetupStep({
     }
 
     if (!isLastStep) {
-      onSetCurrentSubScreen('type');
-      actions.setCurrentStepIndex(Math.min(stepIndex + 1, totalSteps - 1));
+      runContentTransition(() => {
+        onSetCurrentSubScreen('type');
+        actions.setCurrentStepIndex(Math.min(stepIndex + 1, totalSteps - 1));
+      });
       return;
     }
     actions.nextPhase();
@@ -299,12 +424,18 @@ function StepSetupStep({
     controller,
     isChooserScreen,
     isLastStep,
+    isTransitioning,
     onSetCurrentSubScreen,
+    runContentTransition,
     stepIndex,
     totalSteps,
   ]);
 
-  const canAdvance = controller.selectedType !== null;
+  const hasMoveItemEndTransform = Boolean(step.endPosition || step.endRotation || step.endScale);
+  const hasMoveItemRequirements = Boolean(controller.effectiveTargetObjectId) && hasMoveItemEndTransform;
+  const canAdvance =
+    controller.selectedType !== null &&
+    (controller.selectedType !== 'move-item' || hasMoveItemRequirements);
   const isRecording = controller.isRecordingPosition;
 
   const isBlankSelected = chooserSelection === 'blank';
@@ -442,7 +573,7 @@ function StepSetupStep({
           size="md"
           onClick={handleGoPrevious}
           className="rounded-[20px]"
-          disabled={isRecording}
+          disabled={isRecording || isTransitioning}
         >
           {isConfigScreen
             ? 'Back'
@@ -456,7 +587,12 @@ function StepSetupStep({
           size="md"
           onClick={handleGoNext}
           className="rounded-[20px]"
-          disabled={(isChooserScreen && chooserSelection === null) || (isConfigScreen && !canAdvance) || isRecording}
+          disabled={
+            (isChooserScreen && chooserSelection === null) ||
+            (isConfigScreen && !canAdvance) ||
+            isRecording ||
+            isTransitioning
+          }
         >
           {isConfigScreen ? (isLastStep ? 'Finish setup' : 'Done') : 'Continue'}
         </Button>

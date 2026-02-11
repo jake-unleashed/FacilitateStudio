@@ -177,7 +177,6 @@ export function ModelUploadPhase({
 
       {hasLibraryAssets ? (
         <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Your library</h3>
           <AssetLibraryPanel
             starterAssets={starterAssets ?? []}
             recentAssets={recentAssets ?? []}

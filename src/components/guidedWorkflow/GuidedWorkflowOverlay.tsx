@@ -73,6 +73,7 @@ export function GuidedWorkflowOverlay({
   const [isSubmenuOpen, setIsSubmenuOpen] = useState(false);
   const [positioningScreen, setPositioningScreen] =
     useState<PositioningScreen>('object-selection');
+  const [isStepSetupIntroVisible, setIsStepSetupIntroVisible] = useState(false);
 
   // --- Phase transition animation state ---
   const TRANSITION_DURATION = 250;
@@ -87,44 +88,50 @@ export function GuidedWorkflowOverlay({
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }, []);
 
+  const runPanelTransition = useCallback(
+    (apply: () => void) => {
+      // Clear any in-flight transition
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      if (prefersReducedMotion) {
+        apply();
+        setTransitionState('idle');
+        return;
+      }
+
+      // Phase 1: exit animation on current content
+      setTransitionState('exiting');
+
+      transitionTimeoutRef.current = setTimeout(() => {
+        // Phase 2: swap content (invisible, no CSS transition)
+        apply();
+        setTransitionState('entering');
+
+        // Phase 3: after browser paints the entering frame, transition to idle (triggers enter animation)
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = requestAnimationFrame(() => {
+            setTransitionState('idle');
+            rafRef.current = null;
+          });
+        });
+        transitionTimeoutRef.current = null;
+      }, TRANSITION_DURATION);
+    },
+    [prefersReducedMotion]
+  );
+
   // Detect phase changes and run exit → enter animation
   useEffect(() => {
     if (state.currentPhase === displayedPhase) return;
-
-    // Clear any in-flight transition
-    if (transitionTimeoutRef.current) {
-      clearTimeout(transitionTimeoutRef.current);
-      transitionTimeoutRef.current = null;
-    }
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
-    if (prefersReducedMotion) {
-      setDisplayedPhase(state.currentPhase);
-      setTransitionState('idle');
-      return;
-    }
-
-    // Phase 1: exit animation on current content
-    setTransitionState('exiting');
-
-    transitionTimeoutRef.current = setTimeout(() => {
-      // Phase 2: swap content (invisible, no CSS transition)
-      setDisplayedPhase(state.currentPhase);
-      setTransitionState('entering');
-
-      // Phase 3: after browser paints the entering frame, transition to idle (triggers enter animation)
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = requestAnimationFrame(() => {
-          setTransitionState('idle');
-          rafRef.current = null;
-        });
-      });
-      transitionTimeoutRef.current = null;
-    }, TRANSITION_DURATION);
-  }, [state.currentPhase, displayedPhase, prefersReducedMotion]);
+    runPanelTransition(() => setDisplayedPhase(state.currentPhase));
+  }, [displayedPhase, runPanelTransition, state.currentPhase]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -141,10 +148,10 @@ export function GuidedWorkflowOverlay({
       case 'idle':
         return `transition-[opacity,transform] duration-[250ms] ${easing} opacity-100 translate-y-0`;
       case 'exiting':
-        return `transition-[opacity,transform] duration-[250ms] ${easing} opacity-0 -translate-y-2`;
+        return `pointer-events-none transition-[opacity,transform] duration-[250ms] ${easing} opacity-0 -translate-y-2`;
       case 'entering':
         // No transition property — snap to start position instantly before enter animation
-        return 'opacity-0 translate-y-2';
+        return 'pointer-events-none opacity-0 translate-y-2';
       default:
         return 'opacity-100 translate-y-0';
     }
@@ -176,6 +183,8 @@ export function GuidedWorkflowOverlay({
   const isModelPositioning = displayedPhase === 'model-positioning';
   const isStepConfiguration = displayedPhase === 'step-configuration';
   const isFinish = displayedPhase === 'finish';
+  const sidePanelTopClass =
+    isStepConfiguration && !isStepSetupIntroVisible ? 'top-20' : 'top-24';
   const shouldShowOverlayNav =
     !isStepCreation &&
     !(isModelUpload && isCentered && isSubmenuOpen) &&
@@ -194,6 +203,7 @@ export function GuidedWorkflowOverlay({
   useEffect(() => {
     // Prevent stale submenu state when navigating between phases.
     setIsSubmenuOpen(false);
+    setIsStepSetupIntroVisible(false);
     if (displayedPhase !== 'model-positioning') {
       setPositioningScreen('object-selection');
     }
@@ -224,7 +234,7 @@ export function GuidedWorkflowOverlay({
         className={
           isCentered
             ? 'pointer-events-auto flex h-full w-full items-center justify-center px-6 pt-8 pb-16'
-            : `pointer-events-auto absolute left-4 ${isStepConfiguration ? 'top-20' : 'top-24'} w-[420px] max-w-[calc(100%-32px)]`
+            : `pointer-events-auto absolute left-4 ${sidePanelTopClass} w-[420px] max-w-[calc(100%-32px)]`
         }
       >
         <div
@@ -291,6 +301,8 @@ export function GuidedWorkflowOverlay({
                 onStopRecordingPosition={onStopRecordingPosition}
                 recordingPositionForStepId={recordingPositionForStepId}
                 latestRecordingEndPositionRef={latestRecordingEndPositionRef}
+                onIntroVisibilityChange={setIsStepSetupIntroVisible}
+                onRequestPanelTransition={runPanelTransition}
               />
             ) : isFinish ? (
               <FinishPhase onPreviewClick={onPreviewClick} onPublishClick={onPublishClick} />

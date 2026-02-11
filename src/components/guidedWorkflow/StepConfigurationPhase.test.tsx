@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { SimStep } from '../../types';
 import { GuidedWorkflowProvider } from '../../contexts/GuidedWorkflowContext';
@@ -55,7 +55,7 @@ describe('StepConfigurationPhase', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: /start step 1/i }));
-    expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('Step 1 of 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /leave blank for now/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
 
@@ -86,11 +86,12 @@ describe('StepConfigurationPhase', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: /start step 1/i }));
+    await screen.findByText('Step 1 of 2');
     await userEvent.click(screen.getByRole('button', { name: /Info Card/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
 
-    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('Step 2 of 2')).toBeInTheDocument();
     expect(screen.getByText('Attach harness')).toBeInTheDocument();
   });
 
@@ -114,7 +115,7 @@ describe('StepConfigurationPhase', () => {
     expect(screen.getByText(/set up your steps/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /start step 1/i }));
 
-    expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('Step 1 of 2')).toBeInTheDocument();
     expect(screen.getByText('Inspect equipment')).toBeInTheDocument();
   });
 
@@ -138,7 +139,10 @@ describe('StepConfigurationPhase', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: /start step 1/i }));
+    await screen.findByText('Step 1 of 2');
     expect(screen.getByRole('button', { name: /leave blank for now/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    });
   });
 });
