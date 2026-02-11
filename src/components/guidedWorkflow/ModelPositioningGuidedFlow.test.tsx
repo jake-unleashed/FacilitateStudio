@@ -36,6 +36,7 @@ describe('Guided model positioning flow', () => {
     onUpdateStep: vi.fn(),
     onDeleteStep: vi.fn(),
     onReorderSteps: vi.fn(),
+    onRequestHome: vi.fn(),
     objects: [] as SceneObject[],
     selectedObjectId: null as string | null,
     onUpdateObject: vi.fn(),

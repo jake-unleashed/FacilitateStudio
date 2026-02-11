@@ -4,6 +4,7 @@ import { HomePage } from './pages/HomePage';
 import { EditorPage } from './pages/EditorPage';
 import { PreviewPage } from './pages/PreviewPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { RouteTransitionProvider } from './contexts/RouteTransitionContext';
 
 const PublishedSimulationPage = lazy(async () => {
   const mod = await import('./pages/PublishedSimulationPage');
@@ -23,13 +24,15 @@ function App() {
       }
     >
       <ErrorBoundary>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/editor" element={<EditorPage />} />
-          <Route path="/editor/:id" element={<EditorPage />} />
-          <Route path="/preview/:id" element={<PreviewPage />} />
-          <Route path="/published" element={<PublishedSimulationPage />} />
-        </Routes>
+        <RouteTransitionProvider>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/editor" element={<EditorPage />} />
+            <Route path="/editor/:id" element={<EditorPage />} />
+            <Route path="/preview/:id" element={<PreviewPage />} />
+            <Route path="/published" element={<PublishedSimulationPage />} />
+          </Routes>
+        </RouteTransitionProvider>
       </ErrorBoundary>
     </Suspense>
   );

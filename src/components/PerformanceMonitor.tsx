@@ -6,7 +6,7 @@ import { Activity, Cpu, Monitor, X } from 'lucide-react';
 // Types
 // ============================================================================
 
-interface PerformanceStats {
+export interface PerformanceStats {
   fps: number;
   frameTime: number;
   drawCalls: number;

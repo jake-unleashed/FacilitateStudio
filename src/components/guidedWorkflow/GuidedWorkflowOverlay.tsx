@@ -4,6 +4,7 @@ import { useGuidedWorkflow } from '../../hooks/useGuidedWorkflow';
 import type { FocusMode, SceneObject, SimStep } from '../../types';
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import type { LatestRecordingEndTransformRefValue } from '../../hooks/editor/useRecordingEndTransform';
+import { BrandLogo } from '../topBar/BrandLogo';
 import { StepCreationPhase } from './phases/StepCreationPhase';
 import { ModelUploadPhase } from './phases/ModelUploadPhase';
 import { ModelPositioningPhase, type PositioningScreen } from './phases/ModelPositioningPhase';
@@ -16,6 +17,8 @@ export interface GuidedWorkflowOverlayProps {
   onUpdateStep: (step: SimStep) => void;
   onDeleteStep: (stepId: string) => void;
   onReorderSteps: (previousOrder: string[], newOrder: string[]) => void;
+  /** Called when user requests going Home (save-guarded). */
+  onRequestHome: () => void;
   /** Optional batch boundary for grouping many step/object changes into one undo entry. */
   onBatchStart?: () => void;
   /** Optional batch boundary for grouping many step/object changes into one undo entry. */
@@ -45,6 +48,7 @@ export function GuidedWorkflowOverlay({
   onUpdateStep,
   onDeleteStep,
   onReorderSteps,
+  onRequestHome,
   onBatchStart,
   onBatchEnd,
   objects,
@@ -197,6 +201,13 @@ export function GuidedWorkflowOverlay({
 
   return (
     <div className="pointer-events-none absolute inset-0 z-50">
+      {/* Home button - persistent brand mark */}
+      <div className="pointer-events-auto fixed left-4 top-4 z-[70]">
+        <div className="rounded-[20px] border border-white/40 bg-white/70 px-4 py-2.5 shadow-glass-sm backdrop-blur-xl transition-all duration-300 hover:bg-white/80">
+          <BrandLogo onClick={onRequestHome} />
+        </div>
+      </div>
+
       {/* Skip setup button - persistent throughout all guided phases */}
       <div className={`pointer-events-auto fixed z-[70] ${skipPlacementClass}`}>
         <button

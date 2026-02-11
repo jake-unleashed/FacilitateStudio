@@ -1,24 +1,15 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, type RootState } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
 import * as THREE from 'three';
 
 import type { FocusMode, SceneObject, SimStep } from '../types';
 import type { PreviewOutlineTarget } from './preview/types';
-import { PerformanceMonitorScene, PerformanceMonitorUI } from './PerformanceMonitor';
+import { PerformanceMonitorScene, type PerformanceStats } from './PerformanceMonitor';
 import { SceneContent } from './scene/SceneContent';
 
 // Check if we're in development mode (Vite provides this)
 const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
-
-// Performance stats type for the monitor
-interface PerformanceStats {
-  fps: number;
-  frameTime: number;
-  drawCalls: number;
-  triangles: number;
-  memory: number;
-}
 
 interface MainCanvasProps {
   objects: SceneObject[];
@@ -35,6 +26,8 @@ interface MainCanvasProps {
   onFirstFrame?: () => void;
   /** Show performance monitor (defaults to true in development) */
   showPerformanceMonitor?: boolean;
+  /** Optional callback for dev perf stats (e.g. DebugMenu). */
+  onPerformanceStats?: (stats: PerformanceStats | null) => void;
   /** Callback when drag operation starts (for undo/redo batching) */
   onDragStart?: () => void;
   /** Callback when drag operation ends (for undo/redo batching) */
@@ -97,6 +90,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onCanvasReady,
   onFirstFrame,
   showPerformanceMonitor = IS_DEV,
+  onPerformanceStats,
   onDragStart,
   onDragEnd,
   recordingPositionForStepId,
@@ -109,7 +103,6 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
 }) => {
-  const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
   const [previewOutlineTarget, setPreviewOutlineTarget] = useState<PreviewOutlineTarget | null>(null);
 
   // Track if we've notified about canvas being ready
@@ -117,8 +110,14 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   const hasNotifiedFirstFrameRef = useRef(false);
 
   const handlePerfStats = useCallback((stats: PerformanceStats) => {
-    setPerfStats(stats);
-  }, []);
+    onPerformanceStats?.(stats);
+  }, [onPerformanceStats]);
+
+  // Keep parent cleared when monitor is disabled.
+  useEffect(() => {
+    if (showPerformanceMonitor) return;
+    onPerformanceStats?.(null);
+  }, [onPerformanceStats, showPerformanceMonitor]);
 
   const handleCreated = useCallback(
     (state: RootState) => {
@@ -187,8 +186,6 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
           {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}
         </Canvas>
       </div>
-
-      {showPerformanceMonitor && <PerformanceMonitorUI stats={perfStats} position="top-left" />}
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { Project } from '../../types/project';
 import { createErrorPopup, type PopupOptions } from '../../contexts/PopupContext';
+import { useRouteTransition } from '../../contexts/RouteTransitionContext';
 import type { SceneObject, SimStep } from '../../types';
 import type { UseProjectAutoSaveResult } from '../useProjectAutoSave';
 
@@ -57,7 +58,7 @@ export interface UseEditorNavigationGuardsResult {
  * Also owns the “save overlay” state for navigation flows.
  */
 export function useEditorNavigationGuards({
-  navigate,
+  navigate: _navigate,
   currentProject,
   isDirty,
   flushPendingStepEdits,
@@ -68,6 +69,7 @@ export function useEditorNavigationGuards({
   flushSaveNow,
   showPopup,
 }: UseEditorNavigationGuardsArgs): UseEditorNavigationGuardsResult {
+  const { transitionTo } = useRouteTransition();
   const [exitOverlay, setExitOverlay] = useState<ExitOverlayState>(null);
   const pendingExitActionRef = useRef<(() => void) | null>(null);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
@@ -119,9 +121,9 @@ export function useEditorNavigationGuards({
 
       const doNavigate = () => {
         if (destination.type === 'home') {
-          navigate('/');
+          void transitionTo('/');
         } else {
-          navigate(`/preview/${destination.projectId}`);
+          void transitionTo(`/preview/${destination.projectId}`);
         }
       };
 
@@ -165,7 +167,14 @@ export function useEditorNavigationGuards({
         setExitOverlay({ mode: 'error', errorMessage: message });
       }
     },
-    [flushPendingStepEdits, recordingPositionForStepId, stopRecording, getCurrentState, flushSave, navigate]
+    [
+      flushPendingStepEdits,
+      recordingPositionForStepId,
+      stopRecording,
+      getCurrentState,
+      flushSave,
+      transitionTo,
+    ]
   );
 
   const handleRequestHome = useCallback(async () => {
@@ -184,8 +193,8 @@ export function useEditorNavigationGuards({
       action();
       return;
     }
-    navigate('/');
-  }, [navigate]);
+    void transitionTo('/');
+  }, [transitionTo]);
 
   const handleManualSave = useCallback(async () => {
     try {

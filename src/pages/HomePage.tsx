@@ -1,10 +1,10 @@
 import { memo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Plus, Clock, Layers, Trash2 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { useProjects } from '../hooks/useProjects';
 import { ProjectMetadata } from '../types/project';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
+import { useRouteTransition } from '../contexts/RouteTransitionContext';
 
 // =============================================================================
 // Sub-components
@@ -229,19 +229,19 @@ const SectionHeader = memo(function SectionHeader({ icon, title }: SectionHeader
  * - Empty state for new users
  */
 export function HomePage(): JSX.Element {
-  const navigate = useNavigate();
+  const { transitionTo } = useRouteTransition();
   const { getProjectMetadata, deleteProject, isLoading } = useProjects();
   const recentProjects = getProjectMetadata();
 
   const handleCreateNew = useCallback(() => {
-    navigate('/editor');
-  }, [navigate]);
+    void transitionTo('/editor');
+  }, [transitionTo]);
 
   const handleOpenProject = useCallback(
     (id: string) => {
-      navigate(`/editor/${id}`);
+      void transitionTo(`/editor/${id}`);
     },
-    [navigate]
+    [transitionTo]
   );
 
   const handleDeleteProject = useCallback(

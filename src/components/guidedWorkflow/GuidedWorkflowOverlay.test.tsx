@@ -21,6 +21,7 @@ const defaultProps: GuidedWorkflowOverlayProps = {
   onUpdateStep: vi.fn(),
   onDeleteStep: vi.fn(),
   onReorderSteps: vi.fn(),
+  onRequestHome: vi.fn(),
   objects: [meshObject],
   onUpdateObject: vi.fn(),
   onUploadAsset: vi.fn().mockResolvedValue(undefined),

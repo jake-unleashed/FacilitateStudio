@@ -1,20 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bug, Box, Play } from 'lucide-react';
+import { Activity, Bug, Box, ChevronDown, Cpu, Monitor, Play } from 'lucide-react';
 import { Button } from './Button';
+import type { PerformanceStats } from './PerformanceMonitor';
 
 interface DebugMenuProps {
   onAddCube: () => void;
   onPopulateTestSteps?: () => void;
   hasSelectedObject: boolean;
+  /** Whether performance monitoring is enabled in this build/runtime (typically dev-only). */
+  performanceEnabled?: boolean;
+  performanceStats?: PerformanceStats | null;
 }
 
 export const DebugMenu: React.FC<DebugMenuProps> = ({
   onAddCube,
   onPopulateTestSteps,
   hasSelectedObject,
+  performanceEnabled = false,
+  performanceStats = null,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const prevHasSelectedObjectRef = useRef(hasSelectedObject);
+
+  const getFpsColor = (fps: number) => {
+    if (fps >= 55) return 'text-emerald-600';
+    if (fps >= 30) return 'text-amber-600';
+    return 'text-red-600';
+  };
 
   // Close debug menu only when object details panel opens (transition from false to true)
   useEffect(() => {
@@ -88,6 +100,86 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
                     <Play size={14} className="text-green-500" />
                     <span className="text-slate-700">Populate Test Steps</span>
                   </Button>
+                </>
+              )}
+
+              {performanceEnabled && (
+                <>
+                  {/* Performance Stats (dev) */}
+                  <p className="mt-2 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Performance
+                  </p>
+                  <details className="group rounded-[20px] border border-white/40 bg-white/60 p-3">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] text-left text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-500/10 [&::-webkit-details-marker]:hidden">
+                      <span className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-[12px] bg-white/60 text-slate-500 shadow-sm">
+                          <Activity size={14} />
+                        </span>
+                        <span>Show performance stats</span>
+                      </span>
+                      <ChevronDown
+                        size={16}
+                        className="text-slate-400 transition-transform duration-200 group-open:rotate-180"
+                        aria-hidden="true"
+                      />
+                    </summary>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 font-mono text-xs">
+                      {!performanceStats ? (
+                        <div className="col-span-2 rounded-[16px] border border-white/40 bg-white/50 px-3 py-2 text-slate-500">
+                          Collecting stats…
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-1.5 text-slate-500">
+                            <Monitor size={12} aria-hidden="true" />
+                            <span>FPS</span>
+                          </div>
+                          <div className={`text-right font-bold ${getFpsColor(performanceStats.fps)}`}>
+                            {performanceStats.fps}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-slate-500">
+                            <Cpu size={12} aria-hidden="true" />
+                            <span>Frame</span>
+                          </div>
+                          <div className="text-right font-medium text-slate-700">
+                            {performanceStats.frameTime}ms
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-slate-500">
+                            <span aria-hidden="true">▶</span>
+                            <span>Draws</span>
+                          </div>
+                          <div className="text-right font-medium text-slate-700">
+                            {performanceStats.drawCalls}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-slate-500">
+                            <span aria-hidden="true">△</span>
+                            <span>Tris</span>
+                          </div>
+                          <div className="text-right font-medium text-slate-700">
+                            {performanceStats.triangles > 1000
+                              ? `${(performanceStats.triangles / 1000).toFixed(1)}k`
+                              : performanceStats.triangles}
+                          </div>
+
+                          {performanceStats.memory > 0 && (
+                            <>
+                              <div className="flex items-center gap-1.5 text-slate-500">
+                                <span aria-hidden="true">⬢</span>
+                                <span>Mem</span>
+                              </div>
+                              <div className="text-right font-medium text-slate-700">
+                                {performanceStats.memory}MB
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </details>
                 </>
               )}
             </div>

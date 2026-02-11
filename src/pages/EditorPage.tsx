@@ -42,6 +42,7 @@ import { useEditorNavigationGuards } from '../hooks/editor/useEditorNavigationGu
 import { useRecordingEndTransform } from '../hooks/editor/useRecordingEndTransform';
 import type { LatestRecordingEndTransformRefValue } from '../hooks/editor/useRecordingEndTransform';
 import { useGuidedWorkflow } from '../hooks/useGuidedWorkflow';
+import type { PerformanceStats } from '../components/PerformanceMonitor';
 import {
   calculateChildWorldPosition,
   applyChildLocalTransform,
@@ -1470,6 +1471,9 @@ function EditorPageContent() {
 
   const hasSelectedObject = useMemo(() => !!selectedObjectForSidebar, [selectedObjectForSidebar]);
 
+  // Dev-only: performance stats surfaced inside DebugMenu.
+  const [performanceStats, setPerformanceStats] = useState<PerformanceStats | null>(null);
+
   // Show loading state while initializing or loading projects
   if (isLoadingProjects || !isInitialized) {
     return (
@@ -1493,6 +1497,7 @@ function EditorPageContent() {
           onSceneReady={handleSceneReady}
           onCanvasReady={handleCanvasReady}
           onFirstFrame={handleFirstFrame}
+          onPerformanceStats={setPerformanceStats}
           onDragStart={beginBatch}
           onDragEnd={endBatch}
           recordingPositionForStepId={recordingPositionForStepId}
@@ -1539,6 +1544,7 @@ function EditorPageContent() {
           onStopRecordingPosition={handleStopRecordingPosition}
           recordingPositionForStepId={recordingPositionForStepId}
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
+          onRequestHome={handleRequestHome}
           onPreviewClick={
             projectId
               ? () => {
@@ -1616,6 +1622,8 @@ function EditorPageContent() {
                 onAddCube={handleAddDebugCube}
                 onPopulateTestSteps={handlePopulateTestSteps}
                 hasSelectedObject={hasSelectedObject}
+                performanceEnabled={import.meta.env.DEV ?? process.env.NODE_ENV === 'development'}
+                performanceStats={performanceStats}
               />
             ),
             publishModal: currentProject ? (
@@ -1683,6 +1691,8 @@ interface GuidedWorkflowEntryProps {
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
   latestRecordingEndPositionRef?: React.MutableRefObject<LatestRecordingEndTransformRefValue | null>;
+  /** Called when user requests going Home (save-guarded). */
+  onRequestHome: () => void;
   onPreviewClick?: () => void;
   onPublishClick?: () => void;
   editorChrome: {
@@ -1723,6 +1733,7 @@ function GuidedWorkflowEntry({
   onStopRecordingPosition,
   recordingPositionForStepId,
   latestRecordingEndPositionRef,
+  onRequestHome,
   onPreviewClick,
   onPublishClick,
 }: GuidedWorkflowEntryProps) {
@@ -1864,6 +1875,7 @@ function GuidedWorkflowEntry({
             onUpdateStep={onUpdateStep}
             onDeleteStep={onDeleteStep}
             onReorderSteps={onReorderSteps}
+            onRequestHome={onRequestHome}
             onBatchStart={onBatchStart}
             onBatchEnd={onBatchEnd}
             objects={objects}
