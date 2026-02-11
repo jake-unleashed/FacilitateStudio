@@ -1,12 +1,13 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 12/02/2026, 9:56:23 am
+**Updated**: 12/02/2026, 10:33:07 am
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Backend (`backend`) | Research backend documentation and plan first implementation item | 2026-02-11 22:41 | 2026-02-11 22:56 | 15m | 6 | 0 | 0 |  |
-| Backend MVP (`backend-mvp`) | Review backend documentation and plan next task | 2026-02-11 22:53 | 2026-02-11 22:56 | 2m | 0 | 0 | 0 |  |
+| Backend MVP (`backend-mvp`) | Review backend documentation and plan next task | 2026-02-11 22:53 | 2026-02-11 23:33 | 39m | 3 | 0 | 0 |  |
+| Backlog (`backlog`) | Researching backlog documentation to determine next work item | 2026-02-11 23:25 | 2026-02-11 23:32 | 7m | 0 | 0 | 0 |  |
+| Backend (`backend`) | Research backend documentation and plan first implementation item | 2026-02-11 22:41 | 2026-02-11 23:04 | 23m | 8 | 1 | 1 |  |
 | Repo Hygiene (`repo-hygiene`) | Ignore local Reference project folder and commit/push the remaining docs/plans | 2026-02-11 05:45 | 2026-02-11 22:39 | 16h 53m | 2 | 0 | 0 |  |
 | Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-11 05:45 | 2h 56m | 12 | 2 | 2 |  |
 | Git (`git`) | Commit and push the finished feature | 2026-02-11 03:29 | 2026-02-11 03:33 | 3m | 1 | 0 | 0 |  |
