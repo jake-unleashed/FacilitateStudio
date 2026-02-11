@@ -27,6 +27,16 @@ A 3D simulation editor for creating interactive tutorials and step-by-step guide
 - Node.js 18+ 
 - npm 9+
 
+### Environment variables
+
+Copy `.env.example` to `.env.local` and fill in required values.
+
+- **Supabase (required for backend/auth work)**:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+- **OpenAI (required for SOP upload)**:
+  - `OPENAI_API_KEY`
+
 ### Installation
 
 ```bash

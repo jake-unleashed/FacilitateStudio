@@ -5,7 +5,7 @@ overview: |
 todos:
   - id: b1-client-setup
     content: "B1: Supabase client setup + env vars + package install"
-    status: pending
+    status: completed
   - id: b2-schema-rls
     content: "B2: DB migrations — tables, RLS policies, storage buckets (security-critical)"
     status: pending
