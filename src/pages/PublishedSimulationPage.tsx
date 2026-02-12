@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { usePopup } from '../contexts/PopupContext';
-import { useProjects } from '../hooks/useProjects';
 import { fetchPublishedSnapshotByToken } from '../services/publishService';
 import { SceneObject, SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
@@ -12,23 +11,16 @@ import { clearAssetResolver, setAssetResolver } from '../utils/modelCache';
 import { seedStarterAssets, shouldReseedLibrary } from '../utils/starterAssets/seedStarterAssets';
 
 /**
- * PublishedSimulationPage - Creator-only published view (MVP).
- *
- * Loads a project by `projectId` from IndexedDB and runs the same preview experience.
- * This works for the creator in their own browser. Phase 2 will load from backend storage.
+ * PublishedSimulationPage renders a published simulation snapshot by share token.
  */
 export function PublishedSimulationPage(): JSX.Element {
   const [searchParams] = useSearchParams();
   const { showPopup } = usePopup();
-  const { getProject, isLoading: isLoadingProjects } = useProjects();
-
-  const projectIdParam = useMemo(() => searchParams.get('projectId'), [searchParams]);
   const tokenParam = useMemo(() => searchParams.get('token'), [searchParams]);
   const invalidReason = useMemo(() => {
-    if (projectIdParam) return null;
     if (!tokenParam) return 'missingToken';
     return null;
-  }, [projectIdParam, tokenParam]);
+  }, [tokenParam]);
 
   // Project state
   const [project, setProject] = useState<{
@@ -49,46 +41,11 @@ export function PublishedSimulationPage(): JSX.Element {
 
   // Load project data
   useEffect(() => {
-    if (isLoadingProjects || isInitialized) return;
+    if (isInitialized) return;
 
     let isCancelled = false;
 
     const loadProject = async () => {
-      if (projectIdParam) {
-        try {
-          const loadedProject = await getProject(projectIdParam);
-          if (isCancelled) {
-            return;
-          }
-
-          if (loadedProject) {
-            setProject({
-              objects: loadedProject.objects,
-              steps: loadedProject.steps,
-              name: loadedProject.name,
-            });
-            setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
-            setIsInitialized(true);
-            return;
-          }
-        } catch (error) {
-          console.error('[PublishedSimulationPage] Failed to load project:', error);
-          showPopup({
-            type: 'error',
-            title: 'Simulation Load Failed',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'Unable to load this simulation right now. Please try again.',
-          });
-        }
-
-        // Not found in this browser's storage (expected for non-creator)
-        setProject(null);
-        setIsInitialized(true);
-        return;
-      }
-
       if (!tokenParam) {
         setIsInitialized(true);
         setProject(null);
@@ -146,7 +103,7 @@ export function PublishedSimulationPage(): JSX.Element {
       isCancelled = true;
       clearAssetResolver();
     };
-  }, [getProject, isLoadingProjects, isInitialized, projectIdParam, showPopup, tokenParam]);
+  }, [isInitialized, showPopup, tokenParam]);
 
   // Handle camera controls ready
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
@@ -229,7 +186,7 @@ export function PublishedSimulationPage(): JSX.Element {
   }, [currentPreviewStep?.id]);
 
   // Loading
-  if (isLoadingProjects || !isInitialized) {
+  if (!isInitialized) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-100">
         <div className="text-slate-500">Loading published simulation...</div>
@@ -249,30 +206,13 @@ export function PublishedSimulationPage(): JSX.Element {
     );
   }
 
-  // Not found in storage (expected for non-creator)
+  // Invalid or unavailable published link.
   if (!project) {
-    // Token-based publish (backend) flow.
-    if (tokenParam && !projectIdParam) {
-      return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
-            <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
-            <p className="mb-6 text-sm text-slate-600">This link is invalid or no longer available.</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
-          <h2 className="mb-2 text-xl font-bold text-slate-800">
-            This simulation isn’t available in your browser
-          </h2>
-          <p className="mb-2 text-sm text-slate-600">
-            Published simulations currently only work for the creator in their own browser.
-          </p>
-          <p className="mb-6 text-sm text-slate-600">Full sharing is coming soon.</p>
+          <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
+          <p className="mb-6 text-sm text-slate-600">This link is invalid or no longer available.</p>
         </div>
       </div>
     );

@@ -29,7 +29,7 @@ todos:
     status: completed
   - id: b9-migration-flow
     content: "B9: Local-to-cloud project migration flow"
-    status: pending
+    status: completed
   - id: b10-asset-upload
     content: "B10: Cloud asset upload + storage bucket wiring"
     status: completed
@@ -41,13 +41,13 @@ todos:
     status: completed
   - id: b13-publish-snapshot
     content: "B13: Publish snapshot creation + asset manifest"
-    status: pending
+    status: completed
   - id: b14-published-viewer
     content: "B14: Published viewer loads from backend by share token"
-    status: pending
+    status: completed
   - id: b15-publish-modal
     content: "B15: PublishModal UX update (async publish + loading)"
-    status: pending
+    status: completed
   - id: b16-ai-hardening
     content: "B16: AI endpoint auth + rate limiting + logging"
     status: pending

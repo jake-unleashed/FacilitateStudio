@@ -1,8 +1,10 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import { Plus, Clock, Layers, Trash2, LogOut } from 'lucide-react';
 import { Button } from '../components/Button';
+import { LocalProjectMigration } from '../components/LocalProjectMigration';
 import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
+import { useLocalProjectMigration } from '../hooks/useLocalProjectMigration';
 import { useProjects } from '../hooks/useProjects';
 import { ProjectMetadata } from '../types/project';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
@@ -265,9 +267,23 @@ export function HomePage(): JSX.Element {
   const { transitionTo } = useRouteTransition();
   const { user, signOut } = useAuth();
   const { showPopup } = usePopup();
-  const { getProjectMetadata, deleteProject, isLoading, error, clearError } = useProjects();
+  const { getProjectMetadata, saveProject, deleteProject, isLoading, error, clearError } = useProjects();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const recentProjects = getProjectMetadata();
+  const {
+    showMigrationPrompt,
+    localOnlyProjects,
+    importProgress,
+    isImporting,
+    importError,
+    migrationSummary,
+    dismiss,
+    importAll,
+  } = useLocalProjectMigration({
+    userId: user?.id,
+    isProjectsLoading: isLoading,
+    saveProject,
+  });
 
   const handleCreateNew = useCallback(() => {
     void transitionTo('/editor');
@@ -315,6 +331,10 @@ export function HomePage(): JSX.Element {
       setIsSigningOut(false);
     }
   }, [showPopup, signOut, transitionTo]);
+
+  const handleImportLocalProjects = useCallback(() => {
+    void importAll();
+  }, [importAll]);
 
   return (
     <div className="relative min-h-screen w-full bg-slate-100 selection:bg-blue-500/30 selection:text-white">
@@ -392,6 +412,18 @@ export function HomePage(): JSX.Element {
             icon={<Clock size={14} className="text-slate-400" aria-hidden="true" />}
             title="Recent"
           />
+
+          {showMigrationPrompt ? (
+            <LocalProjectMigration
+              projectCount={localOnlyProjects.length}
+              isImporting={isImporting}
+              progress={importProgress}
+              importError={importError}
+              migrationSummary={migrationSummary}
+              onImport={handleImportLocalProjects}
+              onDismiss={dismiss}
+            />
+          ) : null}
 
           {error ? (
             <div className="mb-4 flex items-center justify-between gap-3 rounded-[16px] border border-amber-200/70 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
