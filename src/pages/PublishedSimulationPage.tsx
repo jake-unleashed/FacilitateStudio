@@ -4,6 +4,7 @@ import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { usePopup } from '../contexts/PopupContext';
 import { useProjects } from '../hooks/useProjects';
+import { resolvePublishedTokenToProjectId } from '../services/publishService';
 import { SceneObject, SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
@@ -19,7 +20,19 @@ export function PublishedSimulationPage(): JSX.Element {
   const { showPopup } = usePopup();
   const { getProject, isLoading: isLoadingProjects } = useProjects();
 
-  const projectId = useMemo(() => searchParams.get('projectId'), [searchParams]);
+  const projectIdParam = useMemo(() => searchParams.get('projectId'), [searchParams]);
+  const tokenParam = useMemo(() => searchParams.get('token'), [searchParams]);
+  const resolvedProjectId = useMemo(() => {
+    if (projectIdParam) return projectIdParam;
+    if (!tokenParam) return null;
+    return resolvePublishedTokenToProjectId(tokenParam);
+  }, [projectIdParam, tokenParam]);
+  const invalidReason = useMemo(() => {
+    if (projectIdParam) return null;
+    if (!tokenParam) return 'missingProjectId';
+    if (!resolvedProjectId) return 'invalidToken';
+    return null;
+  }, [projectIdParam, tokenParam, resolvedProjectId]);
 
   // Project state
   const [project, setProject] = useState<{
@@ -45,14 +58,14 @@ export function PublishedSimulationPage(): JSX.Element {
     let isCancelled = false;
 
     const loadProject = async () => {
-      if (!projectId) {
+      if (!resolvedProjectId) {
         setIsInitialized(true);
         setProject(null);
         return;
       }
 
       try {
-        const loadedProject = await getProject(projectId);
+        const loadedProject = await getProject(resolvedProjectId);
         if (isCancelled) {
           return;
         }
@@ -89,7 +102,7 @@ export function PublishedSimulationPage(): JSX.Element {
     return () => {
       isCancelled = true;
     };
-  }, [projectId, getProject, isLoadingProjects, isInitialized, showPopup]);
+  }, [resolvedProjectId, getProject, isLoadingProjects, isInitialized, showPopup]);
 
   // Handle camera controls ready
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
@@ -181,12 +194,25 @@ export function PublishedSimulationPage(): JSX.Element {
   }
 
   // Missing / invalid link
-  if (!projectId) {
+  if (invalidReason === 'missingProjectId') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
           <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
           <p className="mb-6 text-sm text-slate-600">This link is missing a project ID.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (invalidReason === 'invalidToken') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
+          <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
+          <p className="mb-6 text-sm text-slate-600">
+            This link is invalid or no longer available in this browser.
+          </p>
         </div>
       </div>
     );

@@ -1,28 +1,24 @@
 import type { PublishURLResult } from '../types/publish';
+import type { Project } from '../types/project';
+import { publishProject } from '../services/publishService';
 
 /**
- * Generate a shareable URL for a project (MVP).
+ * Generate a backend-backed publish URL for a project.
  *
- * This MVP uses a project-ID-based URL that loads the project from IndexedDB.
- * - Works for the creator in their own browser (same origin + same storage).
- * - Will NOT work for other people/devices until Phase 2 (backend storage).
- *
- * @param projectId - The project ID to publish
- * @returns The publish result with URL and warning message
- * @throws {Error} If projectId is empty or invalid
+ * @param project - The project to publish
+ * @param userId - Authenticated user ID
+ * @returns The publish result with URL and share token
+ * @throws {Error} If project/userId is empty or invalid
  */
-export function generatePublishURL(projectId: string): PublishURLResult {
-  if (!projectId || !projectId.trim()) {
+export async function generatePublishURL(project: Project, userId: string): Promise<PublishURLResult> {
+  if (!project.id || !project.id.trim()) {
     throw new Error('Project ID is required to generate a publish URL');
   }
+  if (!userId || !userId.trim()) {
+    throw new Error('Authenticated user ID is required to generate a publish URL');
+  }
 
-  // URL-encode the project ID to handle special characters safely
-  const encodedProjectId = encodeURIComponent(projectId.trim());
-
-  return {
-    url: `${window.location.origin}/published?projectId=${encodedProjectId}`,
-    warning: 'Share this link to let others experience your simulation.',
-  };
+  return publishProject(project, userId.trim());
 }
 
 /**

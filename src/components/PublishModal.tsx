@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, ExternalLink, X } from 'lucide-react';
 import type { Project } from '../types/project';
 import { Button } from './Button';
 import { usePopup, createErrorPopup, createSuccessPopup } from '../contexts/PopupContext';
 import { copyToClipboard, generatePublishURL } from '../utils/publishUtils';
+import { useAuth } from '../contexts/AuthContext';
+import { getExistingPublish, unpublishProject } from '../services/publishService';
 
 export interface PublishModalProps {
   project: Project;
@@ -35,22 +37,123 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
  */
 export function PublishModal({ project, isOpen, onClose }: PublishModalProps): JSX.Element | null {
   const { showPopup } = usePopup();
+  const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const [publishUrl, setPublishUrl] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isLoadingPublishState, setIsLoadingPublishState] = useState(false);
+  const [isUnpublishing, setIsUnpublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [isPublished, setIsPublished] = useState(false);
 
-  const publish = useMemo(() => {
-    try {
-      return generatePublishURL(project.id);
-    } catch (error) {
-      console.error('[PublishModal] Failed to generate publish URL:', error);
-      // Return a fallback result to prevent crashes
-      return {
-        url: '',
-        warning: 'Unable to generate publish link. Please ensure the project has been saved.',
-      };
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setPublishError(null);
+
+    if (!user?.id || !project.id.trim()) {
+      setPublishUrl('');
+      setIsPublished(false);
+      return;
     }
-  }, [project.id]);
+
+    let isCancelled = false;
+
+    const loadExistingPublish = async (): Promise<void> => {
+      setIsLoadingPublishState(true);
+      try {
+        const existing = await getExistingPublish(project.id, user.id);
+        if (isCancelled) return;
+        if (existing?.isActive) {
+          setPublishUrl(existing.url);
+          setIsPublished(true);
+        } else {
+          setPublishUrl('');
+          setIsPublished(false);
+        }
+      } catch (error) {
+        if (isCancelled) return;
+        console.error('[PublishModal] Failed to load existing publish state:', error);
+        setPublishError('Unable to check publish status right now. You can still try publishing.');
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingPublishState(false);
+        }
+      }
+    };
+
+    void loadExistingPublish();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, project.id, user?.id]);
+
+  const statusText = useMemo(() => {
+    if (!user?.id) return 'Sign in to publish and share this simulation.';
+    if (!project.id.trim()) return 'Save this project first, then publish a share link.';
+    if (isLoadingPublishState) return 'Checking publish status...';
+    if (isPublishing) return 'Publishing... Copying assets...';
+    if (isUnpublishing) return 'Unpublishing link...';
+    if (isPublished) return 'This simulation is published. You can copy the link or republish updates.';
+    return 'Create a shareable link that anyone can open.';
+  }, [isLoadingPublishState, isPublished, isPublishing, isUnpublishing, project.id, user?.id]);
+
+  const handlePublish = useCallback(async () => {
+    if (!user?.id) {
+      setPublishError('You need to be signed in to publish.');
+      return;
+    }
+    if (!project.id.trim()) {
+      setPublishError('Save this project before publishing.');
+      return;
+    }
+
+    setPublishError(null);
+    setIsPublishing(true);
+    try {
+      const result = await generatePublishURL(project, user.id);
+      setPublishUrl(result.url);
+      setIsPublished(true);
+      showPopup(createSuccessPopup('Published', 'Your share link is ready.'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to publish simulation.';
+      setPublishError(message);
+      showPopup(createErrorPopup('Publish failed', message));
+    } finally {
+      setIsPublishing(false);
+    }
+  }, [project, showPopup, user?.id]);
+
+  const handleUnpublish = useCallback(async () => {
+    if (!user?.id) {
+      setPublishError('You need to be signed in to unpublish.');
+      return;
+    }
+    if (!project.id.trim()) {
+      setPublishError('Project ID is missing; cannot unpublish.');
+      return;
+    }
+
+    setPublishError(null);
+    setIsUnpublishing(true);
+    try {
+      await unpublishProject(project.id, user.id);
+      setPublishUrl('');
+      setIsPublished(false);
+      showPopup(createSuccessPopup('Unpublished', 'Your published link has been disabled.'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to unpublish simulation.';
+      setPublishError(message);
+      showPopup(createErrorPopup('Unpublish failed', message));
+    } finally {
+      setIsUnpublishing(false);
+    }
+  }, [project.id, showPopup, user?.id]);
+
+  const isBusy = isPublishing || isLoadingPublishState || isUnpublishing;
 
   // Focus trap + restore focus on close/unmount.
   useEffect(() => {
@@ -115,11 +218,11 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   }, [isOpen, onClose]);
 
   const handleCopy = useCallback(async () => {
-    if (!publish.url) {
+    if (!publishUrl) {
       showPopup(createErrorPopup('Copy failed', 'No valid URL to copy'));
       return;
     }
-    const ok = await copyToClipboard(publish.url);
+    const ok = await copyToClipboard(publishUrl);
     if (ok) {
       showPopup(createSuccessPopup('Link copied', 'Your published link has been copied to clipboard.'));
     } else {
@@ -130,15 +233,15 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
         )
       );
     }
-  }, [publish.url, showPopup]);
+  }, [publishUrl, showPopup]);
 
   const handleOpen = useCallback(() => {
-    if (!publish.url) {
+    if (!publishUrl) {
       showPopup(createErrorPopup('Cannot open', 'No valid URL to open'));
       return;
     }
-    window.open(publish.url, '_blank', 'noopener,noreferrer');
-  }, [publish.url, showPopup]);
+    window.open(publishUrl, '_blank', 'noopener,noreferrer');
+  }, [publishUrl, showPopup]);
 
   if (!isOpen) return null;
 
@@ -177,7 +280,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
               id="publish-modal-description"
               className="mt-1 text-xs leading-relaxed text-slate-500"
             >
-              {publish.warning}
+              {statusText}
             </p>
           </div>
 
@@ -197,7 +300,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
           <div className="flex items-center gap-2">
             <input
               ref={inputRef}
-              value={publish.url}
+              value={publishUrl}
               readOnly
               className="h-11 w-full rounded-[20px] border border-white/50 bg-white/60 px-4 text-sm text-slate-800 shadow-sm outline-none ring-blue-500/30 focus:ring-2"
               aria-label="Published link"
@@ -207,6 +310,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
               variant="secondary"
               size="md"
               onClick={handleCopy}
+              disabled={isBusy || !publishUrl}
               className="h-11 whitespace-nowrap rounded-[20px] px-4"
             >
               <Copy size={16} className="mr-2" />
@@ -214,11 +318,38 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
             </Button>
           </div>
 
+          {publishError && (
+            <p className="mt-3 rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {publishError}
+            </p>
+          )}
+
           <div className="mt-4 flex items-center justify-end gap-2">
+            {isPublished && (
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={handleUnpublish}
+                disabled={isBusy}
+                className="rounded-[20px] border-red-200 text-red-700 hover:bg-red-50"
+              >
+                Unpublish
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handlePublish}
+              disabled={isBusy || !user?.id || !project.id.trim()}
+              className="rounded-[20px]"
+            >
+              {isPublishing ? 'Publishing...' : isPublished ? 'Update publish' : 'Publish'}
+            </Button>
             <Button
               variant="secondary"
               size="md"
               onClick={handleOpen}
+              disabled={isBusy || !publishUrl}
               className="rounded-[20px]"
             >
               <ExternalLink size={16} className="mr-2" />
