@@ -36,3 +36,4 @@ npm-debug.log*
 # Local reference materials (NOT committed)
 # This folder may contain whole external projects used only for reference.
 Reference/
+.vercel

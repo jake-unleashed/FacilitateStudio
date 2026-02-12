@@ -7,34 +7,34 @@ todos:
     status: completed
   - id: t2-welcome-modal
     content: "T2: Welcome Modal - Entry point component"
-    status: pending
+    status: completed
   - id: t3-workflow-context
     content: "T3: Workflow Context - State management infrastructure"
-    status: pending
+    status: completed
   - id: t4-overlay-container
     content: "T4: Overlay Container - Phase routing and layout"
-    status: pending
+    status: completed
   - id: t5-step-creation
     content: "T5: Step Creation Phase - SOP/manual step creation"
-    status: pending
+    status: completed
   - id: t6-model-upload
     content: "T6: Model Upload Phase - Guided upload experience"
-    status: pending
+    status: completed
   - id: t7-model-positioning
     content: "T7: Model Positioning Phase - Positioning guidance"
-    status: pending
+    status: completed
   - id: t8-step-config
     content: "T8: Step Configuration Phase - Per-step type assignment"
-    status: pending
+    status: completed
   - id: t9-finish
     content: "T9: Finish Phase - Completion and transition"
-    status: pending
+    status: completed
   - id: t10-integration
     content: "T10: Integration - Wire into EditorPage"
-    status: pending
+    status: completed
   - id: t11-polish
     content: "T11: Polish - Animations, edge cases, accessibility"
-    status: pending
+    status: completed
 isProject: false
 ---
 

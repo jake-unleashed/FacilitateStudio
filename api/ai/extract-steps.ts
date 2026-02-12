@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import * as Sentry from '@sentry/node';
 import { createClient } from '@supabase/supabase-js';
 import {
   getExtractSopStepsSystemPrompt,
@@ -11,14 +10,6 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-const sentryDsn = process.env.SENTRY_DSN;
-
-if (sentryDsn) {
-  Sentry.init({
-    dsn: sentryDsn,
-    environment: process.env.NODE_ENV ?? 'production',
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -94,8 +85,15 @@ function logRequest(event: {
 }
 
 function captureServerException(error: unknown, extra: Record<string, unknown>): void {
-  if (!sentryDsn) return;
-  Sentry.captureException(error, { extra });
+  // Keep edge runtime compatible by avoiding Node-only SDK usage here.
+  // Structured error logs are still emitted for production observability.
+  console.error(
+    JSON.stringify({
+      event: 'ai_extract_steps_error',
+      error: error instanceof Error ? error.message : String(error),
+      ...extra,
+    })
+  );
 }
 
 // ---------------------------------------------------------------------------
