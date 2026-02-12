@@ -17,7 +17,7 @@ todos:
     status: pending
   - id: b5-route-protection
     content: "B5: Route protection + sign-out UX"
-    status: pending
+    status: completed
   - id: b6-supabase-persistence
     content: "B6: Supabase persistence adapter for projects"
     status: pending

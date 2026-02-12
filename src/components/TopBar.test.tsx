@@ -4,6 +4,25 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { TopBar } from './TopBar';
 
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    session: null,
+    isLoading: false,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+vi.mock('../contexts/PopupContext', () => ({
+  usePopup: () => ({
+    popup: null,
+    showPopup: vi.fn(),
+    dismissPopup: vi.fn(),
+  }),
+}));
+
 // Helper to render with router context
 function renderTopBar(props: { title: string; onTitleChange: (title: string) => void }) {
   return render(

@@ -5,6 +5,27 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { HomePage } from './HomePage';
 import { ProjectMetadata } from '../types/project';
 
+const mockSignOut = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    session: null,
+    isLoading: false,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: mockSignOut,
+  }),
+}));
+
+vi.mock('../contexts/PopupContext', () => ({
+  usePopup: () => ({
+    popup: null,
+    showPopup: vi.fn(),
+    dismissPopup: vi.fn(),
+  }),
+}));
+
 // Mock useProjects hook
 const mockDeleteProject = vi.fn();
 const mockGetProjectMetadata = vi.fn<() => ProjectMetadata[]>();

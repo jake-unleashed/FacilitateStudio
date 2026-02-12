@@ -1,6 +1,8 @@
-import { memo, useCallback } from 'react';
-import { Plus, Clock, Layers, Trash2 } from 'lucide-react';
+import { memo, useCallback, useState } from 'react';
+import { Plus, Clock, Layers, Trash2, LogOut } from 'lucide-react';
 import { Button } from '../components/Button';
+import { useAuth } from '../contexts/AuthContext';
+import { usePopup } from '../contexts/PopupContext';
 import { useProjects } from '../hooks/useProjects';
 import { ProjectMetadata } from '../types/project';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
@@ -230,7 +232,10 @@ const SectionHeader = memo(function SectionHeader({ icon, title }: SectionHeader
  */
 export function HomePage(): JSX.Element {
   const { transitionTo } = useRouteTransition();
+  const { user, signOut } = useAuth();
+  const { showPopup } = usePopup();
   const { getProjectMetadata, deleteProject, isLoading } = useProjects();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const recentProjects = getProjectMetadata();
 
   const handleCreateNew = useCallback(() => {
@@ -250,6 +255,26 @@ export function HomePage(): JSX.Element {
     },
     [deleteProject]
   );
+
+  const handleSignOut = useCallback(async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      await transitionTo('/auth');
+    } catch (error) {
+      console.error('[HomePage] Failed to sign out:', error);
+      showPopup({
+        type: 'error',
+        title: 'Sign Out Failed',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Unable to sign out right now. Please try again.',
+      });
+    } finally {
+      setIsSigningOut(false);
+    }
+  }, [showPopup, signOut, transitionTo]);
 
   return (
     <div className="relative min-h-screen w-full bg-slate-100 selection:bg-blue-500/30 selection:text-white">
@@ -272,6 +297,28 @@ export function HomePage(): JSX.Element {
         className="pointer-events-none fixed right-1/4 top-1/3 h-[300px] w-[300px] rounded-full bg-purple-400/10 blur-[80px]"
         aria-hidden="true"
       />
+
+      <div className="absolute right-6 top-6 z-20">
+        <div className="flex items-center gap-2 rounded-[20px] border border-white/60 bg-white/70 px-2 py-1.5 shadow-glass-sm backdrop-blur-sm">
+          <span className="max-w-[220px] truncate px-2 text-xs font-semibold text-slate-500">
+            {user?.email ?? 'Signed in'}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void handleSignOut();
+            }}
+            disabled={isSigningOut}
+            aria-label="Sign out"
+            className="gap-1.5 rounded-[14px] px-3 py-1.5 text-xs"
+          >
+            <LogOut size={12} aria-hidden="true" />
+            {isSigningOut ? 'Signing out...' : 'Sign out'}
+          </Button>
+        </div>
+      </div>
 
       {/* Main content */}
       <main className="relative z-10 mx-auto w-full max-w-4xl px-6 py-16 sm:py-24">

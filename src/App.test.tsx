@@ -7,6 +7,18 @@ import App from './App';
 
 const WELCOME_TIMEOUT_MS = 6000;
 
+vi.mock('./contexts/AuthContext', () => ({
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+  useAuth: () => ({
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    session: null,
+    isLoading: false,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 // Mock the MainCanvas component since Three.js doesn't work in jsdom
 vi.mock('./components/MainCanvas', () => ({
   MainCanvas: ({

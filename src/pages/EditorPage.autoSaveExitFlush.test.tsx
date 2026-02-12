@@ -9,6 +9,17 @@ import { EditorPage } from './EditorPage';
 const saveProjectMock = vi.fn().mockResolvedValue(undefined);
 const captureThumbnailMock = vi.fn();
 
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    session: null,
+    isLoading: false,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock('../hooks/useProjects', () => {
   return {
     useProjects: () => ({
