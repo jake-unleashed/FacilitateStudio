@@ -6,6 +6,8 @@ import {
 
 export const config = { runtime: 'edge' };
 const MAX_EXTRACTED_STEPS = 50;
+const MAX_INPUT_TEXT_LENGTH = 100_000;
+const MAX_FILENAME_LENGTH = 256;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
@@ -44,6 +46,10 @@ function parseLimit(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.floor(parsed);
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename.replace(/["\r\n]/g, '_').slice(0, MAX_FILENAME_LENGTH);
 }
 
 function checkRateLimit(
@@ -203,7 +209,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const data = await req.json().catch(() => ({}));
     text = typeof data?.text === 'string' ? data.text.trim() : undefined;
-    filename = typeof data?.filename === 'string' ? data.filename : undefined;
+    filename = typeof data?.filename === 'string' ? sanitizeFilename(data.filename) : undefined;
   } catch {
     return finalize(json({ error: 'Invalid JSON body' }, { status: 400 }), false);
   }
@@ -214,11 +220,18 @@ export default async function handler(req: Request): Promise<Response> {
       false
     );
   }
+  if (text.length > MAX_INPUT_TEXT_LENGTH) {
+    return finalize(
+      json(
+        { error: `Text exceeds maximum length of ${MAX_INPUT_TEXT_LENGTH} characters` },
+        { status: 400 }
+      ),
+      false
+    );
+  }
 
   // --- Resolve API key ---
-  const apiKey =
-    process.env.OPENAI_API_KEY ??
-    (process as unknown as { env?: Record<string, string | undefined> }).env?.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     return finalize(

@@ -17,6 +17,8 @@ dotenv.config();
 // Keep this fixed to match the Vite dev proxy target.
 const PORT = 8787;
 const MAX_EXTRACTED_STEPS = 50;
+const MAX_INPUT_TEXT_LENGTH = 100_000;
+const MAX_FILENAME_LENGTH = 256;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
@@ -55,6 +57,10 @@ function parseLimit(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.floor(parsed);
+}
+
+function sanitizeFilename(filename) {
+  return filename.replace(/["\r\n]/g, '_').slice(0, MAX_FILENAME_LENGTH);
 }
 
 function checkRateLimit(key, limit, now) {
@@ -165,10 +171,16 @@ app.post('/api/ai/extract-steps', async (req, res) => {
   }
 
   const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-  const filename = typeof req.body?.filename === 'string' ? req.body.filename : undefined;
+  const filename =
+    typeof req.body?.filename === 'string' ? sanitizeFilename(req.body.filename) : undefined;
 
   if (!text) {
     return finalize(400, { error: 'Missing or empty "text" field' });
+  }
+  if (text.length > MAX_INPUT_TEXT_LENGTH) {
+    return finalize(400, {
+      error: `Text exceeds maximum length of ${MAX_INPUT_TEXT_LENGTH} characters`,
+    });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;

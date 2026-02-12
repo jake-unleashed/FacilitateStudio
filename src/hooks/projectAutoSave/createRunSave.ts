@@ -108,7 +108,9 @@ export function createRunSave({
           inFlightSaveRef.current = null;
         }
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        console.error('[createRunSave] Save promise chain failed:', error);
+      });
 
     return next;
   };

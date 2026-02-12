@@ -88,7 +88,14 @@ export function EditorPage() {
 function EditorPageContent() {
   const { id: projectId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
-  const { getProject, saveProject, createProject, isLoading: isLoadingProjects } = useProjects();
+  const {
+    getProject,
+    saveProject,
+    createProject,
+    isLoading: isLoadingProjects,
+    error: projectsError,
+    clearError: clearProjectsError,
+  } = useProjects();
 
   // Editor state
   const [activeTab, setActiveTab] = useState<SidebarSection | null>(null);
@@ -326,6 +333,17 @@ function EditorPageContent() {
       clearUploadError();
     }
   }, [uploadLastError, showPopup, clearUploadError]);
+
+  // Surface persistence errors that happen outside explicit load/save flows.
+  useEffect(() => {
+    if (!projectsError) return;
+    showPopup({
+      type: 'error',
+      title: 'Cloud Sync Failed',
+      message: projectsError,
+    });
+    clearProjectsError();
+  }, [projectsError, showPopup, clearProjectsError]);
 
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

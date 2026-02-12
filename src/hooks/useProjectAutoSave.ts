@@ -201,7 +201,9 @@ export function useProjectAutoSave({
     cancelScheduledSave();
     timeoutRef.current = setTimeout(() => {
       // Never allow unhandled rejections from background autosave
-      void runSave({ includeThumbnail: true }).catch(() => {});
+      void runSave({ includeThumbnail: true }).catch((error: unknown) => {
+        console.error('[useProjectAutoSave] Background autosave failed:', error);
+      });
     }, debounceMs);
 
     return () => {
