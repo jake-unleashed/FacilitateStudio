@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { ChildMesh } from '../types';
+import type { ChildMesh, SceneObject, SimStep } from '../types';
 import type { Project } from '../types/project';
 import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
