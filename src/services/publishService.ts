@@ -3,6 +3,7 @@ import type { ChildMesh, SceneObject, SimStep } from '../types';
 import type { Project } from '../types/project';
 import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
+import { syncAssetToCloud } from '../utils/modelAssetStore';
 
 const USER_ASSETS_BUCKET = 'user-assets';
 const PUBLISHED_ASSETS_BUCKET = 'published-assets';
@@ -109,6 +110,20 @@ async function getAssetRowByAssetId(assetId: string, userId: string): Promise<As
   return (data as AssetRow | null) ?? null;
 }
 
+async function ensureAssetInCloud(assetId: string, userId: string): Promise<AssetRow> {
+  let row = await getAssetRowByAssetId(assetId, userId);
+  if (row) return row;
+
+  await syncAssetToCloud(assetId, { userId });
+
+  row = await getAssetRowByAssetId(assetId, userId);
+  if (row) return row;
+
+  throw new Error(
+    `Asset "${assetId}" could not be found locally or in cloud storage. Try re-uploading the model, then publish again.`
+  );
+}
+
 async function copyAssetToPublishedBucket(args: {
   projectId: string;
   userId: string;
@@ -207,17 +222,25 @@ export async function publishProject(project: Project, userId: string): Promise<
   const assetIds = collectProjectAssetIds(project);
   const assetManifest: Record<string, AssetManifestEntry> = {};
 
-  for (const assetId of assetIds) {
-    const row = await getAssetRowByAssetId(assetId, userId);
-    if (!row) {
-      throw new Error(`Asset "${assetId}" was referenced by this project but was not found in cloud storage.`);
+  // Process assets concurrently (capped at 4 to avoid overwhelming Supabase Storage).
+  const CONCURRENCY = 4;
+  for (let i = 0; i < assetIds.length; i += CONCURRENCY) {
+    const batch = assetIds.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (assetId) => {
+        const row = await ensureAssetInCloud(assetId, userId);
+        const entry = await copyAssetToPublishedBucket({
+          projectId,
+          userId,
+          assetId,
+          row,
+        });
+        return { assetId, entry };
+      })
+    );
+    for (const { assetId, entry } of results) {
+      assetManifest[assetId] = entry;
     }
-    assetManifest[assetId] = await copyAssetToPublishedBucket({
-      projectId,
-      userId,
-      assetId,
-      row,
-    });
   }
 
   const snapshot = toPublishedSnapshot(project, assetManifest);
@@ -301,6 +324,7 @@ export async function getExistingPublish(
 
 /**
  * Disable an existing published link for a project (owner-only).
+ * Also removes copied assets from the published-assets bucket to free storage.
  */
 export async function unpublishProject(projectId: string, userId: string): Promise<void> {
   if (!projectId?.trim()) {
@@ -320,6 +344,38 @@ export async function unpublishProject(projectId: string, userId: string): Promi
     .eq('owner_id', userId);
   if (error) {
     throw new Error(`Failed to unpublish project: ${error.message}`);
+  }
+
+  // Best-effort cleanup: remove copied assets from the published-assets bucket.
+  // Files are stored as {userId}/{projectId}/{assetId}/{filename}, so we need to
+  // list the asset-ID sub-folders first, then list/remove files inside each.
+  try {
+    const projectPrefix = `${userId}/${projectId}`;
+    const { data: assetFolders } = await supabase.storage
+      .from(PUBLISHED_ASSETS_BUCKET)
+      .list(projectPrefix, { limit: 200 });
+
+    if (assetFolders && assetFolders.length > 0) {
+      const pathsToRemove: string[] = [];
+      for (const folder of assetFolders) {
+        const folderPath = `${projectPrefix}/${folder.name}`;
+        const { data: files } = await supabase.storage
+          .from(PUBLISHED_ASSETS_BUCKET)
+          .list(folderPath, { limit: 100 });
+        if (files) {
+          for (const file of files) {
+            pathsToRemove.push(`${folderPath}/${file.name}`);
+          }
+        }
+      }
+      if (pathsToRemove.length > 0) {
+        await supabase.storage.from(PUBLISHED_ASSETS_BUCKET).remove(pathsToRemove);
+      }
+    }
+  } catch (cleanupError) {
+    // Non-critical: published assets are publicly readable but won't be linked
+    // after the snapshot is deactivated. Log and continue.
+    console.warn('[publishService] Failed to clean up published assets:', cleanupError);
   }
 }
 

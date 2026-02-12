@@ -11,6 +11,17 @@ const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
+// Lazily purge expired entries to prevent unbounded memory growth in long-lived
+// edge isolates. Runs at most once per minute.
+let lastPurge = 0;
+function purgeExpiredEntries(now: number): void {
+  if (now - lastPurge < 60_000) return;
+  lastPurge = now;
+  for (const [key, entry] of rateLimitStore) {
+    if (entry.resetAt <= now) rateLimitStore.delete(key);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -147,6 +158,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   // --- Rate limiting ---
   const now = Date.now();
+  purgeExpiredEntries(now);
   const userLimit = parseLimit(
     process.env.AI_RATE_LIMIT_PER_USER,
     DEFAULT_USER_LIMIT_PER_MINUTE

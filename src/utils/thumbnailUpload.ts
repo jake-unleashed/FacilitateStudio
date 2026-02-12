@@ -2,7 +2,10 @@ import { supabase } from '../lib/supabase';
 
 const THUMBNAIL_BUCKET = 'thumbnails';
 const THUMBNAIL_STORAGE_PREFIX = 'thumb://';
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
+// 24 hours — thumbnails are non-sensitive, and short TTLs cause broken images
+// during long editing sessions. The user would need to reload after a full day
+// for thumbnails to expire, which is a much better UX than the previous 1-hour window.
+const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
 
 function parseDataUrl(dataUrl: string): { mimeType: string; base64Data: string } | null {
   const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl);

@@ -21,6 +21,15 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
 const rateLimitStore = new Map();
+
+// Periodically purge expired rate-limit entries to prevent unbounded memory growth.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore) {
+    if (entry.resetAt <= now) rateLimitStore.delete(key);
+  }
+}, 5 * 60_000); // every 5 minutes
+
 const sentryDsn = process.env.SENTRY_DSN;
 
 if (sentryDsn) {
@@ -77,7 +86,10 @@ function getClientIp(req) {
   return req.ip || 'unknown';
 }
 
-const supabaseUrl = process.env.SUPABASE_URL;
+// SUPABASE_URL is the canonical server-side env var (set on Vercel).
+// Fall back to the VITE-prefixed client var for local dev where .env.local
+// typically only defines VITE_SUPABASE_URL.
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin =
   supabaseUrl && supabaseServiceRoleKey

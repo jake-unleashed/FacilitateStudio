@@ -20,7 +20,13 @@ interface ProjectRow {
 }
 
 async function mapProjectRowToProject(row: ProjectRow): Promise<Project> {
-  const resolvedThumbnail = await resolveThumbnailUrl(row.thumbnail_url);
+  let resolvedThumbnail: string | undefined;
+  try {
+    resolvedThumbnail = await resolveThumbnailUrl(row.thumbnail_url);
+  } catch {
+    // Don't let a single failed thumbnail break the entire project list.
+    resolvedThumbnail = undefined;
+  }
   return {
     id: row.id,
     name: row.name,
@@ -30,6 +36,22 @@ async function mapProjectRowToProject(row: ProjectRow): Promise<Project> {
     objects: row.data?.objects ?? [],
     steps: row.data?.steps ?? [],
   };
+}
+
+/**
+ * Resolve an array of project rows with concurrency-limited thumbnail resolution.
+ * Prevents flooding the Supabase Storage signed-URL endpoint when the user
+ * has many projects.
+ */
+async function mapProjectRowsConcurrently(rows: ProjectRow[]): Promise<Project[]> {
+  const CONCURRENCY = 6;
+  const results: Project[] = [];
+  for (let i = 0; i < rows.length; i += CONCURRENCY) {
+    const batch = rows.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(mapProjectRowToProject));
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 async function requireAuthenticatedUserId(): Promise<string> {
@@ -58,13 +80,8 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
     }
 
     const rows = (data ?? []) as ProjectRow[];
-    return Promise.all(
-      rows.map((row) =>
-        mapProjectRowToProject({
-        ...row,
-        data: null,
-      })
-      )
+    return mapProjectRowsConcurrently(
+      rows.map((row) => ({ ...row, data: null }))
     );
   }
 

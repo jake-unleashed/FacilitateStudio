@@ -262,11 +262,10 @@ export async function deleteCloudAsset(
   assetId: string,
   userId?: string
 ): Promise<void> {
-  const { error: storageError } = await supabase.storage.from(USER_ASSETS_BUCKET).remove([storageKey]);
-  if (storageError) {
-    throw new Error(`Failed to delete cloud asset file: ${storageError.message}`);
-  }
-
+  // Delete the metadata row FIRST, then the storage object.
+  // If storage deletion fails afterward, we get an orphaned file (harmless, recoverable).
+  // The opposite order (storage first) would leave a metadata row pointing to nothing,
+  // which causes errors on subsequent reads.
   let query = supabase.from('assets').delete().eq('storage_key', storageKey);
   if (userId) query = query.eq('owner_id', userId);
   // If we know the UUID assetId, also target the row PK (faster + safer).
@@ -279,6 +278,13 @@ export async function deleteCloudAsset(
   const { error: rowDeleteError } = await query;
   if (rowDeleteError) {
     throw new Error(`Failed to delete cloud asset metadata: ${rowDeleteError.message}`);
+  }
+
+  const { error: storageError } = await supabase.storage.from(USER_ASSETS_BUCKET).remove([storageKey]);
+  if (storageError) {
+    // Log but don't throw — the metadata is already gone, so the asset is logically deleted.
+    // The orphaned storage object will not be referenced by any row.
+    console.warn(`[cloudAssetStore] Orphaned storage object after metadata deletion: ${storageError.message}`);
   }
 }
 

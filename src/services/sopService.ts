@@ -98,11 +98,30 @@ export async function extractStepsFromFile(
       headers.Authorization = `Bearer ${session.access_token}`;
     }
 
-    const response = await fetch('/api/ai/extract-steps', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text, filename: file.name }),
-    });
+    // The server-side OpenAI call has a 12 s timeout. Allow extra headroom for
+    // network round-trip, auth verification, and body parsing.
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(() => controller.abort(), 30_000);
+
+    let response: Response;
+    try {
+      response = await fetch('/api/ai/extract-steps', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text, filename: file.name }),
+        signal: controller.signal,
+      });
+    } catch (fetchError) {
+      if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+        throw new SOPServiceError(
+          'The request timed out. Please try again.',
+          true
+        );
+      }
+      throw fetchError;
+    } finally {
+      clearTimeout(fetchTimeout);
+    }
 
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('application/json')) {

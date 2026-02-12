@@ -39,6 +39,17 @@ export function PublishedSimulationPage(): JSX.Element {
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
   const [, setControlsReady] = useState(false);
 
+  // Clean up the asset resolver ONLY when the component unmounts.
+  // This must be a separate effect from the data-loading effect below because
+  // the data-loading effect re-runs when `isInitialized` changes — its cleanup
+  // would clear the resolver at exactly the moment it's needed by child
+  // components that mount in the same render cycle.
+  useEffect(() => {
+    return () => {
+      clearAssetResolver();
+    };
+  }, []);
+
   // Load project data
   useEffect(() => {
     if (isInitialized) return;
@@ -101,7 +112,6 @@ export function PublishedSimulationPage(): JSX.Element {
 
     return () => {
       isCancelled = true;
-      clearAssetResolver();
     };
   }, [isInitialized, showPopup, tokenParam]);
 

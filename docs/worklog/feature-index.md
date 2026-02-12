@@ -1,11 +1,15 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 12/02/2026, 1:30:28 pm
+**Updated**: 12/02/2026, 6:01:08 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Dev Server Debug (`dev-server-debug`) | Explain why localhost:3000 is a white page | 2026-02-12 02:06 | 2026-02-12 02:30 | 23m | 10 | 1 | 0 |  |
+| Published Assets (`published-assets`) | Explain incognito ?Asset not found <uuid>? in published links | 2026-02-12 03:00 | 2026-02-12 07:01 | 4h 0m | 7 | 0 | 0 |  |
+| Backend Review (`backend-review`) | Deep-dive audit of backend implementation for issues, improvements, and correctness | 2026-02-12 06:55 | 2026-02-12 06:56 | 0m | 1 | 0 | 0 |  |
+| Cloud Models (`cloud-models`) | Explain why cloud projects load but models don?t render | 2026-02-12 02:36 | 2026-02-12 02:59 | 23m | 2 | 0 | 0 |  |
+| Git Push (`git-push`) | Committed remaining changes and pushed to origin | 2026-02-12 02:35 | 2026-02-12 02:35 | 0m | 0 | 0 | 0 |  |
+| Dev Server Debug (`dev-server-debug`) | Explain why localhost:3000 is a white page | 2026-02-12 02:06 | 2026-02-12 02:35 | 28m | 12 | 2 | 1 |  |
 | MVP Planning (`mvp-planning`) | Deep dive analysis of remaining MVP tasks and priorities | 2026-02-12 01:59 | 2026-02-12 02:30 | 31m | 4 | 0 | 0 |  |
 | Backend MVP (`backend-mvp`) | Review backend documentation and plan next task | 2026-02-11 22:53 | 2026-02-12 02:05 | 3h 11m | 42 | 16 | 18 |  |
 | Planning (`planning`) | Reviewing backend docs and worklog to determine next priorities | 2026-02-12 00:38 | 2026-02-12 01:55 | 1h 16m | 3 | 0 | 0 |  |

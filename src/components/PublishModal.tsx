@@ -95,7 +95,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
     if (!user?.id) return 'Sign in to publish and share this simulation.';
     if (!project.id.trim()) return 'Save this project first, then publish a share link.';
     if (isLoadingPublishState) return 'Checking publish status...';
-    if (isPublishing) return 'Publishing... Copying assets...';
+    if (isPublishing) return 'Publishing... Syncing and copying assets...';
     if (isUnpublishing) return 'Unpublishing link...';
     if (isPublished) return 'This simulation is published. You can copy the link or republish updates.';
     return 'Create a shareable link that anyone can open.';
