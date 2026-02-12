@@ -9,6 +9,17 @@ import { EditorPage } from './EditorPage';
 const saveProjectMock = vi.fn();
 const captureThumbnailMock = vi.fn();
 
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: null,
+    session: null,
+    isLoading: false,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
+
 vi.mock('../hooks/useProjects', () => {
   return {
     useProjects: () => ({
@@ -156,8 +167,8 @@ describe('EditorPage auto-save + selection stability', () => {
     // Trigger a change that causes auto-save (objects update)
     fireEvent.click(screen.getByRole('button', { name: 'Update First' }));
 
-    // Auto-save is debounced by 1s
-    await vi.advanceTimersByTimeAsync(1000);
+    // Auto-save is debounced (cloud-friendly debounce)
+    await vi.advanceTimersByTimeAsync(2500);
 
     // Thumbnail capture happened, but selection should remain (sidebar stays mounted)
     expect(captureThumbnailMock).toHaveBeenCalledTimes(1);

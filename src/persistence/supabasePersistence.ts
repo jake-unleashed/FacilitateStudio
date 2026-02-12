@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type { Project } from '../types/project';
 import type { AsyncProjectPersistence } from './projectPersistence';
+import { resolveThumbnailUrl } from '../utils/thumbnailUpload';
 
 interface ProjectDataRow {
   objects?: Project['objects'];
@@ -18,13 +19,14 @@ interface ProjectRow {
   deleted_at: string | null;
 }
 
-function mapProjectRowToProject(row: ProjectRow): Project {
+async function mapProjectRowToProject(row: ProjectRow): Promise<Project> {
+  const resolvedThumbnail = await resolveThumbnailUrl(row.thumbnail_url);
   return {
     id: row.id,
     name: row.name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    thumbnail: row.thumbnail_url ?? undefined,
+    thumbnail: resolvedThumbnail,
     objects: row.data?.objects ?? [],
     steps: row.data?.steps ?? [],
   };
@@ -56,11 +58,13 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
     }
 
     const rows = (data ?? []) as ProjectRow[];
-    return rows.map((row) =>
-      mapProjectRowToProject({
+    return Promise.all(
+      rows.map((row) =>
+        mapProjectRowToProject({
         ...row,
         data: null,
       })
+      )
     );
   }
 

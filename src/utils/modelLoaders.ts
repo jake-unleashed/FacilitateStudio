@@ -11,6 +11,7 @@ export { analyzeModelTextures, type TextureReport } from './modelLoaders/texture
 
 export { loadModelFromBase64 } from './modelLoaders/loadFromBase64';
 export { loadModelFromArrayBuffer } from './modelLoaders/loadFromArrayBuffer';
+export { loadModelFromUrl } from './modelLoaders/loadFromUrl';
 export { loadAndPreprocessModel, loadAndPreprocessModelFromArrayBuffer } from './modelLoaders/preprocess';
 
 export { getLoaderForFileType } from './modelLoaders/loaderFactory';

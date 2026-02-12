@@ -94,6 +94,7 @@ vi.mock('../components/MainCanvas', () => {
     const first = objects[0];
     return (
       <div data-testid="mock-main-canvas">
+        <div data-testid="mock-first-name">{first?.name ?? 'none'}</div>
         <button
           onClick={() => {
             onCanvasReady?.(document.createElement('canvas'));
@@ -163,6 +164,9 @@ describe('EditorPage exit flush (Home click)', () => {
 
     // Make a change (dirty).
     fireEvent.click(screen.getByRole('button', { name: 'Update First' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-first-name').textContent).toBe('Cube 1 Updated');
+    });
 
     // Click the Home logo button (it has title="Back to Home").
     fireEvent.click(screen.getByTitle('Back to Home'));

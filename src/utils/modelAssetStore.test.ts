@@ -19,6 +19,14 @@ import {
   clearLegacyStorage,
 } from './modelAssetStore';
 
+vi.mock('./cloudAssetStore', () => ({
+  getCloudAssetById: vi.fn(),
+  downloadAssetFromCloud: vi.fn(),
+  listUserAssets: vi.fn(),
+  uploadAssetToCloud: vi.fn(),
+  deleteCloudAsset: vi.fn(),
+}));
+
 // Mock IndexedDB with fake-indexeddb
 vi.mock('idb', async () => {
   const { openDB } = await vi.importActual<typeof import('idb')>('idb');
@@ -208,6 +216,37 @@ describe('modelAssetStore', () => {
       // When no legacy assets, should return 0
       const result = await migrateLegacyAssets();
       expect(typeof result).toBe('number');
+    });
+  });
+
+  describe('cloud fallback (authenticated)', () => {
+    it('falls back to cloud when missing locally and caches the blob', async () => {
+      const { getCloudAssetById, downloadAssetFromCloud } = await import('./cloudAssetStore');
+
+      const cloudBlob = new Blob(['cloud-bytes'], { type: 'application/octet-stream' });
+      (getCloudAssetById as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({
+        assetId: 'asset-cloud-1',
+        storageKey: 'test-user/library/asset-cloud-1/model.glb',
+        createdAt: new Date().toISOString(),
+        metadata: {
+          id: 'asset-cloud-1',
+          name: 'model.glb',
+          fileType: 'glb',
+          fileSize: cloudBlob.size,
+          uploadDate: new Date().toISOString(),
+          metrics: undefined,
+          children: undefined,
+        },
+      });
+      (downloadAssetFromCloud as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(cloudBlob);
+
+      const fromCloud = await getAsset('asset-cloud-1', { userId: 'test-user' });
+      expect(fromCloud).not.toBeNull();
+      expect(fromCloud?.metadata.id).toBe('asset-cloud-1');
+
+      const cached = await getAsset('asset-cloud-1');
+      expect(cached).not.toBeNull();
+      expect(cached?.metadata.id).toBe('asset-cloud-1');
     });
   });
 });

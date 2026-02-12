@@ -151,10 +151,18 @@ function EditorPageContent() {
     canUndo,
     canRedo,
     setCurrentState: setUndoRedoState,
-    getCurrentState,
     undoStackSize,
     redoStackSize,
   } = useUndoRedo(initialEditorState, { maxHistory: 50, enableKeyboardShortcuts: true });
+
+  // ---------------------------------------------------------------------------
+  // Save Snapshot Source of Truth
+  // ---------------------------------------------------------------------------
+  // `useUndoRedo.getCurrentState()` can lag by a render under heavy batching. For
+  // save-before-navigation we want the latest React state synchronously.
+  const latestSaveStateRef = useRef({ objects: INITIAL_OBJECTS, steps: INITIAL_STEPS, simulationTitle: 'New Simulation' });
+  latestSaveStateRef.current = { objects, steps, simulationTitle };
+  const getCurrentStateForSave = useCallback(() => latestSaveStateRef.current, []);
 
   // Global popup hook for displaying errors and notifications
   const { showPopup } = usePopup();
@@ -345,7 +353,7 @@ function EditorPageContent() {
     steps,
     saveProject,
     captureThumbnail: handleCaptureThumbnail,
-    debounceMs: 1000,
+    debounceMs: 2500,
   });
 
   const flushPendingStepEdits = useCallback(() => {
@@ -369,7 +377,7 @@ function EditorPageContent() {
     flushPendingStepEdits,
     recordingPositionForStepId,
     stopRecording: handleStopRecordingPosition,
-    getCurrentState,
+    getCurrentState: getCurrentStateForSave,
     flushSave,
     flushSaveNow,
     showPopup,

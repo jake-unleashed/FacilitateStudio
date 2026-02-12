@@ -2,6 +2,19 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Project, ProjectMetadata } from '../types/project';
 import { createProjectPersistence, createSupabasePersistence } from '../persistence/projectPersistence';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  isBase64Thumbnail,
+  toThumbnailStorageRef,
+  uploadThumbnailToStorage,
+} from '../utils/thumbnailUpload';
+
+const CLOUD_SAVE_RETRY_DELAY_MS = 1500;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 /**
  * Return type for the useProjects hook.
@@ -238,14 +251,77 @@ export function useProjects(): UseProjectsResult {
       }
 
       // Signed in: save to cloud; keep a local copy best-effort for fallback/offline.
+      const previousProject = projects.find((existing) => existing.id === updated.id);
+      const previousThumbnail =
+        previousProject && !isBase64Thumbnail(previousProject.thumbnail)
+          ? previousProject.thumbnail
+          : undefined;
+      const shouldUploadThumbnail = isBase64Thumbnail(updated.thumbnail);
+      const projectForCloudSave: Project = {
+        ...updated,
+        // Never send base64 thumbnail blobs to the projects table.
+        thumbnail: shouldUploadThumbnail ? previousThumbnail : updated.thumbnail,
+      };
+
+      const saveToCloudWithRetry = async (projectToSave: Project): Promise<void> => {
+        try {
+          await cloudPersistence.saveProject(projectToSave);
+        } catch (firstError) {
+          await delay(CLOUD_SAVE_RETRY_DELAY_MS);
+          try {
+            await cloudPersistence.saveProject(projectToSave);
+          } catch {
+            throw firstError;
+          }
+        }
+      };
+
       try {
-        await cloudPersistence.saveProject(updated);
+        await saveToCloudWithRetry(projectForCloudSave);
         if (isMountedRef.current) {
           setError(null);
         }
         void localPersistence.saveProject(updated).catch((localErr) => {
           console.warn('[useProjects] Failed to save local fallback copy:', localErr);
         });
+
+        if (shouldUploadThumbnail && updated.thumbnail && user?.id) {
+          const thumbnailDataUrl = updated.thumbnail;
+          void (async () => {
+            const uploadResult = await uploadThumbnailToStorage(thumbnailDataUrl, user.id, updated.id);
+            if (!uploadResult) {
+              return;
+            }
+
+            const thumbnailRef = toThumbnailStorageRef(uploadResult.storagePath);
+            const projectWithCloudThumbnail: Project = {
+              ...updated,
+              thumbnail: thumbnailRef,
+            };
+
+            try {
+              await cloudPersistence.saveProject(projectWithCloudThumbnail);
+              void localPersistence.saveProject(projectWithCloudThumbnail).catch((localErr) => {
+                console.warn('[useProjects] Failed to cache uploaded thumbnail ref locally:', localErr);
+              });
+
+              if (isMountedRef.current) {
+                setProjects((currentProjects) =>
+                  currentProjects.map((existingProject) =>
+                    existingProject.id === updated.id
+                      ? { ...existingProject, thumbnail: thumbnailRef }
+                      : existingProject
+                  )
+                );
+              }
+            } catch (thumbnailPersistError) {
+              console.warn(
+                '[useProjects] Thumbnail uploaded but failed to persist cloud thumbnail reference:',
+                thumbnailPersistError
+              );
+            }
+          })();
+        }
       } catch (err) {
         console.error('[useProjects] Failed to save project to cloud:', err);
         // Ensure the user's work is still persisted locally.
@@ -260,7 +336,7 @@ export function useProjects(): UseProjectsResult {
         throw err;
       }
     },
-    [cloudPersistence, localPersistence]
+    [cloudPersistence, localPersistence, projects, user?.id]
   );
 
   /**

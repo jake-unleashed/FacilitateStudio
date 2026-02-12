@@ -10,7 +10,7 @@
  * Designed for clean separation between storage/processing and scene logic.
  */
 
-import { useCallback, useState, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import type { SceneObject } from '../types';
 import {
   AssetMetadata,
@@ -23,6 +23,7 @@ import {
   saveAsset,
   getAsset,
   getRecentAssets,
+  syncAssetToCloud,
   updateAssetMetadata,
   deleteAsset,
   blobToArrayBuffer,
@@ -36,6 +37,7 @@ import { serializeMetrics } from './modelUpload/metrics';
 import { useModelUploadInit } from './modelUpload/useModelUploadInit';
 import { useAutoResetProgress } from './modelUpload/useAutoResetProgress';
 import { getStarterAssetIds } from '../utils/starterAssets/seedStarterAssets';
+import { supabase } from '../lib/supabase';
 
 // Re-export types for convenience
 export type { UploadProgress };
@@ -90,6 +92,28 @@ interface UseModelUploadReturn {
 
 export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUploadReturn {
   const { onSuccess, onError } = options;
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void supabase.auth.getUser().then(({ data }) => {
+      if (isActive) {
+        setUserId(data.user?.id);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isActive) {
+        setUserId(session?.user.id);
+      }
+    });
+
+    return () => {
+      isActive = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(INITIAL_UPLOAD_PROGRESS);
   const [recentAssets, setRecentAssets] = useState<AssetMetadata[]>([]);
@@ -97,7 +121,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   // This allows the button to stay usable while showing the error
   const [lastError, setLastError] = useState<string | null>(null);
   const hasMigratedRef = useRef(false);
-  useModelUploadInit({ setRecentAssets, hasMigratedRef });
+  useModelUploadInit({ setRecentAssets, hasMigratedRef, userId });
 
   // Separate starter assets from recent uploads
   const starterAssetIds = useMemo(() => new Set(getStarterAssetIds()), []);
@@ -163,13 +187,13 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
   const refreshRecentAssets = useCallback(async () => {
     try {
-      setRecentAssets(await getRecentAssets(20));
+      setRecentAssets(await (userId ? getRecentAssets(20, { userId }) : getRecentAssets(20)));
     } catch (error) {
       console.error('[useModelUpload] Failed to refresh recent assets:', error);
       // Non-critical error - don't show popup, but set error for toast display
       setLastError('Failed to load asset library. Try refreshing the page.');
     }
-  }, []);
+  }, [userId]);
 
   // ---------------------------------------------------------------------------
   // Core: Process Asset (shared between upload and add-from-library)
@@ -195,7 +219,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           setProgress('processing', 50, { fileName: assetName });
         }
 
-        const assetData = await getAsset(assetId);
+        const assetData = await (userId ? getAsset(assetId, { userId }) : getAsset(assetId));
         if (!assetData) {
           setError(assetName, 'Asset not found');
           return null;
@@ -253,7 +277,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       onSuccess?.(result);
       return result;
     },
-    [onSuccess, setProgress, setError]
+    [onSuccess, setProgress, setError, userId]
   );
 
   // ---------------------------------------------------------------------------
@@ -283,6 +307,12 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           setError(file.name, msg);
           return null;
         }
+        if (userId && !starterAssetIds.has(metadata.id)) {
+          void syncAssetToCloud(metadata.id, { userId }).catch((cloudError) => {
+            console.warn('[useModelUpload] Cloud upload failed; keeping local copy:', cloudError);
+            setLastError('Model saved locally, but cloud sync failed. We will retry on next upload.');
+          });
+        }
 
         // Stage 3-4: Process and add to scene
         const result = await processAsset(
@@ -306,7 +336,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         return null;
       }
     },
-    [processAsset, refreshRecentAssets, setProgress, setError]
+    [processAsset, refreshRecentAssets, setProgress, setError, setLastError, starterAssetIds, userId]
   );
 
   // ---------------------------------------------------------------------------
@@ -344,13 +374,18 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   const removeAsset = useCallback(
     async (assetId: string): Promise<void> => {
       try {
-        await deleteAsset(assetId);
+        const hasUserId = typeof userId === 'string' && userId.length > 0;
+        if (hasUserId) {
+          await deleteAsset(assetId, { userId });
+        } else {
+          await deleteAsset(assetId);
+        }
         await refreshRecentAssets();
       } catch (error) {
         console.error('[useModelUpload] Failed to remove asset:', error);
       }
     },
-    [refreshRecentAssets]
+    [refreshRecentAssets, userId]
   );
 
   // ---------------------------------------------------------------------------

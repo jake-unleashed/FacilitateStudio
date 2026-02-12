@@ -11,9 +11,11 @@ import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAsset
 export function useModelUploadInit({
   setRecentAssets,
   hasMigratedRef,
+  userId,
 }: {
   setRecentAssets: React.Dispatch<React.SetStateAction<AssetMetadata[]>>;
   hasMigratedRef: React.MutableRefObject<boolean>;
+  userId?: string;
 }): void {
   useEffect(() => {
     const init = async () => {
@@ -44,13 +46,13 @@ export function useModelUploadInit({
 
       // Load recent assets
       try {
-        setRecentAssets(await getRecentAssets(20));
+        setRecentAssets(await (userId ? getRecentAssets(20, { userId }) : getRecentAssets(20)));
       } catch (error) {
         console.error('[useModelUpload] Failed to load recent assets:', error);
       }
     };
 
     init();
-  }, [setRecentAssets, hasMigratedRef]);
+  }, [setRecentAssets, hasMigratedRef, userId]);
 }
 

@@ -12,7 +12,13 @@ export interface Project {
   createdAt: string;
   /** ISO timestamp of when the project was last modified */
   updatedAt: string;
-  /** Optional base64 thumbnail image (future feature) */
+  /**
+   * Optional thumbnail reference.
+   *
+   * Allowed forms:
+   * - Base64 data URL (local-only, e.g. `data:image/jpeg;base64,...`)
+   * - Storage reference (persisted, e.g. `thumb://{userId}/{projectId}.jpg`)
+   */
   thumbnail?: string;
   /** All scene objects in the project */
   objects: SceneObject[];

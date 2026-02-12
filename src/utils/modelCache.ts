@@ -15,6 +15,7 @@ import { ModelMetrics, STORAGE_CONFIG } from '../types/model';
 import { getAsset, updateAssetMetadata, blobToArrayBuffer } from './modelAssetStore';
 import { loadAndPreprocessModelFromArrayBuffer, PreprocessedModel } from './modelLoaders';
 import { deepCloneGroup } from './deepCloneModel';
+import { supabase } from '../lib/supabase';
 
 // =============================================================================
 // Types
@@ -172,7 +173,18 @@ export function getCacheStats(): { size: number; maxSize: number } {
  * Uses ArrayBuffer-based loading for proper embedded texture support.
  */
 async function loadModelInternal(assetId: string): Promise<CachedModel> {
-  const assetData = await getAsset(assetId);
+  // Prefer session-based lookup to avoid any network roundtrip during model loads.
+  // (We only need a best-effort user id for cloud fallback.)
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError) {
+    console.warn('[modelCache] Failed to resolve current session for cloud fallback:', sessionError);
+  }
+  const userId = session?.user?.id;
+
+  const assetData = await getAsset(assetId, userId ? { userId } : undefined);
   if (!assetData) {
     throw new Error(`Asset not found: ${assetId}`);
   }

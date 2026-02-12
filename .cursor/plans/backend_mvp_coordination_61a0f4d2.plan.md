@@ -26,19 +26,19 @@ todos:
     status: completed
   - id: b8-autosave-cloud
     content: "B8: Wire auto-save + thumbnail upload to cloud"
-    status: pending
+    status: completed
   - id: b9-migration-flow
     content: "B9: Local-to-cloud project migration flow"
     status: pending
   - id: b10-asset-upload
     content: "B10: Cloud asset upload + storage bucket wiring"
-    status: pending
+    status: completed
   - id: b11-model-cache-url
     content: "B11: Model cache URL fallback — load models from cloud"
-    status: pending
+    status: completed
   - id: b12-model-upload-cloud
     content: "B12: Wire useModelUpload to cloud storage"
-    status: pending
+    status: completed
   - id: b13-publish-snapshot
     content: "B13: Publish snapshot creation + asset manifest"
     status: pending

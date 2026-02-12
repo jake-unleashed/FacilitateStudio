@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { Plus, Clock, Layers, Trash2, LogOut } from 'lucide-react';
 import { Button } from '../components/Button';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,6 +7,7 @@ import { useProjects } from '../hooks/useProjects';
 import { ProjectMetadata } from '../types/project';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
 import { useRouteTransition } from '../contexts/RouteTransitionContext';
+import { extractThumbnailStoragePath, resolveThumbnailUrl } from '../utils/thumbnailUpload';
 
 // =============================================================================
 // Sub-components
@@ -86,6 +87,36 @@ interface ProjectCardProps {
  * Features hover effects and a delete button that appears on hover.
  */
 const ProjectCard = memo(function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
+  const [thumbnailSrc, setThumbnailSrc] = useState<string | undefined>(() => {
+    if (!project.thumbnail) return undefined;
+    // Base64 data URLs and normal URLs can be used directly.
+    return extractThumbnailStoragePath(project.thumbnail) ? undefined : project.thumbnail;
+  });
+
+  useEffect(() => {
+    if (!project.thumbnail) {
+      setThumbnailSrc(undefined);
+      return;
+    }
+
+    // Base64 / normal URL: render immediately.
+    if (!extractThumbnailStoragePath(project.thumbnail)) {
+      setThumbnailSrc(project.thumbnail);
+      return;
+    }
+
+    // Storage ref: resolve to a short-lived signed URL for display.
+    let cancelled = false;
+    void resolveThumbnailUrl(project.thumbnail).then((resolved) => {
+      if (cancelled) return;
+      setThumbnailSrc(resolved);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project.thumbnail]);
+
   const handleClick = useCallback(() => {
     onOpen(project.id);
   }, [onOpen, project.id]);
@@ -119,9 +150,9 @@ const ProjectCard = memo(function ProjectCard({ project, onOpen, onDelete }: Pro
     >
       {/* Thumbnail */}
       <div className="relative mb-3 flex aspect-video w-full items-center justify-center overflow-hidden rounded-[12px] border border-white/60 bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-50 shadow-inner">
-        {project.thumbnail ? (
+        {thumbnailSrc ? (
           <img
-            src={project.thumbnail}
+            src={thumbnailSrc}
             alt={`${project.name} preview`}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />

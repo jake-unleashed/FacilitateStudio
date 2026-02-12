@@ -19,6 +19,13 @@ import {
   parseFileType,
   validateModelFile,
 } from '../types/model';
+import {
+  deleteCloudAsset,
+  downloadAssetFromCloud,
+  getCloudAssetById,
+  listUserAssets,
+  uploadAssetToCloud,
+} from './cloudAssetStore';
 
 // Re-export types for convenience
 export type { AssetMetadata, ModelMetrics };
@@ -33,6 +40,11 @@ interface StoredAsset {
   id: string;
   metadata: AssetMetadata;
   blob: Blob;
+}
+
+interface CloudAssetOptions {
+  userId?: string;
+  projectId?: string;
 }
 
 interface ModelAssetDB extends DBSchema {
@@ -80,9 +92,18 @@ async function getDB(): Promise<IDBPDatabase<ModelAssetDB>> {
  * Generate a unique asset ID.
  */
 function generateAssetId(): string {
+  // `crypto.randomUUID()` is supported in modern browsers, but can be missing in
+  // some test environments. Fall back to a low-collision ID when unavailable.
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
   const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 9);
+  const random = Math.random().toString(36).slice(2, 10);
   return `asset_${timestamp}_${random}`;
+}
+
+function isStarterAsset(assetId: string): boolean {
+  return assetId.startsWith('starter:');
 }
 
 /**
@@ -125,6 +146,38 @@ export async function saveAsset(file: File): Promise<AssetMetadata> {
     }
     throw error;
   }
+}
+
+/**
+ * Best-effort cloud sync for a locally stored asset.
+ * Local persistence remains the source of truth for immediate UX.
+ */
+export async function syncAssetToCloud(
+  assetId: string,
+  options: CloudAssetOptions
+): Promise<void> {
+  const userId = options.userId;
+  if (!userId || isStarterAsset(assetId)) {
+    return;
+  }
+
+  const localAsset = await getAsset(assetId);
+  if (!localAsset) {
+    return;
+  }
+
+  await uploadAssetToCloud(localAsset.blob, userId, assetId, {
+    filename: localAsset.metadata.name,
+    fileType: localAsset.metadata.fileType,
+    fileSize: localAsset.metadata.fileSize,
+    projectId: options.projectId,
+    extra: {
+      metrics: localAsset.metadata.metrics,
+      children: localAsset.metadata.children,
+      thumbnail: localAsset.metadata.thumbnail,
+      thumbnail_updated_at: localAsset.metadata.thumbnailUpdatedAt,
+    },
+  });
 }
 
 /**
@@ -189,17 +242,52 @@ export async function assetExists(assetId: string): Promise<boolean> {
  * @returns The asset data or null if not found
  */
 export async function getAsset(
-  assetId: string
+  assetId: string,
+  options?: CloudAssetOptions
 ): Promise<{ blob: Blob; metadata: AssetMetadata } | null> {
   const db = await getDB();
   const stored = await db.get('assets', assetId);
 
-  if (!stored) return null;
+  if (stored) {
+    return {
+      blob: stored.blob,
+      metadata: stored.metadata,
+    };
+  }
 
-  return {
-    blob: stored.blob,
-    metadata: stored.metadata,
-  };
+  if (!options?.userId || isStarterAsset(assetId)) {
+    return null;
+  }
+
+  try {
+    const cloudAsset = await getCloudAssetById(assetId, options.userId);
+    if (!cloudAsset) {
+      return null;
+    }
+
+    const blob = await downloadAssetFromCloud(cloudAsset.storageKey);
+    await upsertAssetFromBlob({
+      id: assetId,
+      name: cloudAsset.metadata.name,
+      fileType: cloudAsset.metadata.fileType,
+      uploadDate: cloudAsset.metadata.uploadDate,
+      blob,
+      metadataOverrides: {
+        metrics: cloudAsset.metadata.metrics,
+        children: cloudAsset.metadata.children,
+        thumbnail: cloudAsset.metadata.thumbnail,
+        thumbnailUpdatedAt: cloudAsset.metadata.thumbnailUpdatedAt,
+      },
+    });
+
+    return {
+      blob,
+      metadata: cloudAsset.metadata,
+    };
+  } catch (error) {
+    console.warn(`[modelAssetStore] Cloud fallback failed for asset ${assetId}:`, error);
+    return null;
+  }
 }
 
 /**
@@ -244,7 +332,19 @@ export async function updateAssetMetadata(
 /**
  * Delete an asset by ID.
  */
-export async function deleteAsset(assetId: string): Promise<void> {
+export async function deleteAsset(assetId: string, options?: CloudAssetOptions): Promise<void> {
+  const userId = options?.userId;
+  if (userId && !isStarterAsset(assetId)) {
+    try {
+      const cloudAsset = await getCloudAssetById(assetId, userId);
+      if (cloudAsset) {
+        await deleteCloudAsset(cloudAsset.storageKey, assetId, userId);
+      }
+    } catch (error) {
+      console.warn(`[modelAssetStore] Failed to delete cloud copy for asset ${assetId}:`, error);
+    }
+  }
+
   const db = await getDB();
   await db.delete('assets', assetId);
 }
@@ -254,23 +354,67 @@ export async function deleteAsset(assetId: string): Promise<void> {
  *
  * @param limit - Maximum number of assets to return
  */
-export async function getRecentAssets(limit = 20): Promise<AssetMetadata[]> {
+export async function getRecentAssets(limit = 20, options?: CloudAssetOptions): Promise<AssetMetadata[]> {
   const db = await getDB();
-  const allAssets = await db.getAll('assets');
+  const localAssets = (await db.getAll('assets')).map((a) => a.metadata);
+  const userId = options?.userId;
+  if (!userId) {
+    return localAssets
+      .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
+      .slice(0, limit);
+  }
 
-  return allAssets
-    .map((a) => a.metadata)
-    .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
-    .slice(0, limit);
+  try {
+    const cloudAssets = await listUserAssets(userId, Math.max(limit, 50));
+    const merged = new Map<string, AssetMetadata>();
+
+    for (const cloudAsset of cloudAssets) {
+      merged.set(cloudAsset.assetId, cloudAsset.metadata);
+    }
+    for (const local of localAssets) {
+      if (!merged.has(local.id) || isStarterAsset(local.id)) {
+        merged.set(local.id, local);
+      }
+    }
+
+    return Array.from(merged.values())
+      .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
+      .slice(0, limit);
+  } catch (error) {
+    console.warn('[modelAssetStore] Failed to load cloud recent assets, using local cache only:', error);
+    return localAssets
+      .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
+      .slice(0, limit);
+  }
 }
 
 /**
  * Get all asset metadata.
  */
-export async function getAllAssets(): Promise<AssetMetadata[]> {
+export async function getAllAssets(options?: CloudAssetOptions): Promise<AssetMetadata[]> {
   const db = await getDB();
-  const allAssets = await db.getAll('assets');
-  return allAssets.map((a) => a.metadata);
+  const localAssets = (await db.getAll('assets')).map((a) => a.metadata);
+  const userId = options?.userId;
+  if (!userId) {
+    return localAssets;
+  }
+
+  try {
+    const cloudAssets = await listUserAssets(userId, 500);
+    const merged = new Map<string, AssetMetadata>();
+    for (const cloudAsset of cloudAssets) {
+      merged.set(cloudAsset.assetId, cloudAsset.metadata);
+    }
+    for (const local of localAssets) {
+      if (!merged.has(local.id) || isStarterAsset(local.id)) {
+        merged.set(local.id, local);
+      }
+    }
+    return Array.from(merged.values());
+  } catch (error) {
+    console.warn('[modelAssetStore] Failed to load cloud asset list, using local cache only:', error);
+    return localAssets;
+  }
 }
 
 /**

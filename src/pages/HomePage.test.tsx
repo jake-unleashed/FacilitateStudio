@@ -26,6 +26,19 @@ vi.mock('../contexts/PopupContext', () => ({
   }),
 }));
 
+const { mockResolveThumbnailUrl } = vi.hoisted(() => ({
+  mockResolveThumbnailUrl: vi.fn<() => Promise<string | undefined>>(),
+}));
+vi.mock('../utils/thumbnailUpload', async () => {
+  const actual = await vi.importActual<typeof import('../utils/thumbnailUpload')>(
+    '../utils/thumbnailUpload'
+  );
+  return {
+    ...actual,
+    resolveThumbnailUrl: mockResolveThumbnailUrl,
+  };
+});
+
 // Mock useProjects hook
 const mockDeleteProject = vi.fn().mockResolvedValue(undefined);
 const mockGetProjectMetadata = vi.fn<() => ProjectMetadata[]>();
@@ -109,6 +122,13 @@ const sampleProjectsWithThumbnails: ProjectMetadata[] = [
     thumbnail: 'data:image/jpeg;base64,mockThumbnailData123',
   },
   {
+    id: 'project-with-cloud-thumb',
+    name: 'Project With Cloud Thumb',
+    createdAt: '2024-01-15T10:00:00.000Z',
+    updatedAt: '2024-01-15T11:00:00.000Z',
+    thumbnail: 'thumb://test-user-id/project-with-cloud-thumb.jpg',
+  },
+  {
     id: 'project-without-thumbnail',
     name: 'Project Without Thumbnail',
     createdAt: '2024-01-14T10:00:00.000Z',
@@ -123,6 +143,7 @@ describe('HomePage', () => {
     mockGetProjectMetadata.mockReturnValue([]);
     mockIsLoading = false;
     mockError = null;
+    mockResolveThumbnailUrl.mockResolvedValue(undefined);
   });
 
   describe('branding', () => {
@@ -425,6 +446,21 @@ describe('HomePage', () => {
       // Check for the transition and transform classes that enable hover effects
       expect(thumbnailImg).toHaveClass('transition-transform');
       expect(thumbnailImg).toHaveClass('group-hover:scale-105');
+    });
+  });
+
+  describe('thumbnail rendering', () => {
+    it('resolves thumb:// thumbnails to signed URLs for display', async () => {
+      mockResolveThumbnailUrl.mockResolvedValue('https://example.com/signed.jpg');
+      mockGetProjectMetadata.mockReturnValue(sampleProjectsWithThumbnails);
+
+      renderHomePage();
+
+      await waitFor(() => {
+        const img = screen.getByAltText('Project With Cloud Thumb preview') as HTMLImageElement;
+        expect(img).toBeInTheDocument();
+        expect(img.src).toContain('https://example.com/signed.jpg');
+      });
     });
   });
 });
