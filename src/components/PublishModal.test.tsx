@@ -74,15 +74,17 @@ describe('PublishModal', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders modal when isOpen is true', () => {
+  it('renders modal when isOpen is true', async () => {
     renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     // Check project name is displayed somewhere in the modal
     expect(screen.getByText(/test simulation/i)).toBeInTheDocument();
   });
 
-  it('shows empty URL when not yet published', () => {
+  it('shows empty URL when not yet published', async () => {
     renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
     const input = screen.getByLabelText(/published link/i) as HTMLInputElement;
     expect(input.value).toBe('');
   });
@@ -258,8 +260,9 @@ describe('PublishModal', () => {
     expect(mockUnpublishProject).toHaveBeenCalledWith(mockProject.id, 'user-1');
   });
 
-  it('has proper accessibility attributes', () => {
+  it('has proper accessibility attributes', async () => {
     renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
