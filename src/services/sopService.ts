@@ -9,6 +9,7 @@ import {
   processDocument,
   DocumentProcessingError,
 } from '../utils/documentProcessor';
+import { supabase } from '../lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,9 +87,20 @@ export async function extractStepsFromFile(
 
   let data: { steps?: string[]; error?: string };
   try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+
     const response = await fetch('/api/ai/extract-steps', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ text, filename: file.name }),
     });
 
@@ -102,6 +114,12 @@ export async function extractStepsFromFile(
 
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new SOPServiceError(
+          'You need to be signed in to analyze SOP documents.',
+          false
+        );
+      }
       throw new SOPServiceError(
         String(body?.error || `Server error (${response.status})`),
         response.status >= 500
