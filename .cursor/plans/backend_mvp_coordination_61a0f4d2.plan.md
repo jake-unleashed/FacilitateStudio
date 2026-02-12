@@ -8,19 +8,19 @@ todos:
     status: completed
   - id: b2-schema-rls
     content: "B2: DB migrations — tables, RLS policies, storage buckets (security-critical)"
-    status: pending
+    status: completed
   - id: b3-auth-context
     content: "B3: AuthContext + useAuth hook + session management"
-    status: pending
+    status: completed
   - id: b4-auth-ui
     content: "B4: Auth UI — sign in / sign up page"
-    status: pending
+    status: completed
   - id: b5-route-protection
     content: "B5: Route protection + sign-out UX"
     status: completed
   - id: b6-supabase-persistence
     content: "B6: Supabase persistence adapter for projects"
-    status: pending
+    status: in_progress
   - id: b7-homepage-cloud
     content: "B7: Wire HomePage + useProjects to cloud"
     status: pending

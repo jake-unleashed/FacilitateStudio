@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import type { Project } from '../types/project';
+import { SupabaseProjectPersistence } from './supabasePersistence';
 
 export const PROJECTS_STORAGE_KEY = 'facilitate-studio-projects';
 const PROJECTS_DB_NAME = 'facilitate-studio-projects-db';
@@ -319,4 +320,12 @@ export class LocalStorageProjectPersistence implements ProjectPersistence {
  */
 export function createProjectPersistence(): IndexedDBProjectPersistence {
   return new IndexedDBProjectPersistence();
+}
+
+/**
+ * Create the Supabase-backed persistence instance.
+ * Used by cloud project flows.
+ */
+export function createSupabasePersistence(): SupabaseProjectPersistence {
+  return new SupabaseProjectPersistence();
 }
