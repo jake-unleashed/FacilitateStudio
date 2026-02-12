@@ -383,9 +383,13 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         await refreshRecentAssets();
       } catch (error) {
         console.error('[useModelUpload] Failed to remove asset:', error);
+        setError(
+          assetId,
+          error instanceof Error ? error.message : 'Failed to remove asset. Please try again.'
+        );
       }
     },
-    [refreshRecentAssets, userId]
+    [refreshRecentAssets, setError, userId]
   );
 
   // ---------------------------------------------------------------------------

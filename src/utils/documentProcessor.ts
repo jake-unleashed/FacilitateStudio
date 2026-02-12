@@ -17,16 +17,10 @@ type PdfJsModule = {
 
 async function loadPdfJs(): Promise<PdfJsModule> {
   const pdfjsLib = (await import('pdfjs-dist')) as unknown as PdfJsModule;
-
-  // Vite's `?url` suffix resolves the worker file to its served URL at build time.
-  const workerModule = (await import(
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore — Vite-specific import suffix; TypeScript doesn't know about ?url
-    'pdfjs-dist/build/pdf.worker.min.mjs?url'
-  )) as unknown as { default: string };
+  const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
   if (!isPdfJsConfigured) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
     isPdfJsConfigured = true;
   }
 

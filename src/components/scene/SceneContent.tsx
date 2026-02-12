@@ -8,6 +8,12 @@ import { isChildPathWithinSubtree } from '../../utils/previewTargeting';
 import { SceneContentView } from './sceneContent/SceneContentView';
 import { useRecordingObjects } from './sceneContent/useRecordingObjects';
 import { calculateCanDrag } from './sceneContent/dragPolicy';
+import {
+  getChildPathFromObject,
+  stopNativeImmediatePropagation,
+} from './sceneContent/pointerEventUtils';
+import { usePreviewTargetHover } from './sceneContent/usePreviewTargetHover';
+import { useDragStateLifecycle } from './sceneContent/useDragStateLifecycle';
 import type { DragState } from './DragHandler';
 export interface SceneContentProps {
   objects: SceneObject[];
@@ -72,7 +78,6 @@ export function SceneContent({
   const { invalidate, scene, camera, gl } = useThree();
   const hasNotifiedSceneRef = useRef(false);
 
-  // Expose the Three.js scene to parent callers (used for occlusion-aware edit focus).
   useEffect(() => {
     if (!onSceneReady) return;
     if (hasNotifiedSceneRef.current) return;
@@ -81,37 +86,28 @@ export function SceneContent({
     onSceneReady(scene);
   }, [onSceneReady, scene]);
 
-  // Parse the selection ID to separate parent and child selection
   const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
   const selectedParentId = parsedSelection?.objectId ?? null;
   const selectedChildPath = parsedSelection?.childPath ?? null;
 
   const selectedObject = objects.find((obj) => obj.id === selectedParentId) || null;
 
-  // Preview outline target parsing (kept separate from selection state)
   const previewOutlineParentId = previewOutlineTarget?.objectId ?? null;
   const previewOutlineChildPath = previewOutlineTarget?.childPath ?? null;
 
-  // Force a render frame when preview outline target changes
   useEffect(() => {
     if (previewMode) {
       invalidate();
     }
   }, [previewMode, previewOutlineTarget, invalidate]);
 
-  // Drag state management
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoveredHit, setHoveredHit] = useState<{ objectId: string; childPath: string | null } | null>(null);
   const [isRecentlyDragged, setIsRecentlyDragged] = useState(false);
-  const [isPreviewTargetHovering, setIsPreviewTargetHovering] = useState(false);
-
-  const previewRaycasterRef = useRef(new THREE.Raycaster());
-  const previewPointerNdcRef = useRef(new THREE.Vector2());
+  const hasMovedRef = useDragStateLifecycle({ dragState, setDragState });
 
   const handleHoverStart = useCallback((objectId: string, e: ThreeEvent<PointerEvent>) => {
-    const hitChildPathRaw =
-      (e.object as unknown as { userData?: { childPath?: unknown } })?.userData?.childPath;
-    const hitChildPath = typeof hitChildPathRaw === 'string' ? hitChildPathRaw : null;
+    const hitChildPath = getChildPathFromObject(e.object);
     setHoveredHit({ objectId, childPath: hitChildPath });
   }, []);
 
@@ -119,41 +115,8 @@ export function SceneContent({
     setHoveredHit((prev) => (prev?.objectId === objectId ? null : prev));
   }, []);
 
-  // Ref to track hasMoved synchronously (avoids stale closure issues in event handlers)
-  const hasMovedRef = useRef(false);
-
-  // Keep hasMovedRef in sync with dragState (for cases where state drives re-renders)
-  useEffect(() => {
-    hasMovedRef.current = dragState?.hasMoved ?? false;
-  }, [dragState?.hasMoved]);
-
-  // Ref to store the drag state for use in global pointer up listener
-  const dragStateRef = useRef<DragState | null>(null);
-  useEffect(() => {
-    dragStateRef.current = dragState;
-  }, [dragState]);
-
-  // Global safety listener for pointer up events (see original comments)
-  useEffect(() => {
-    const handleGlobalPointerUp = () => {
-      if (dragStateRef.current) {
-        setDragState(null);
-      }
-    };
-
-    window.addEventListener('pointerup', handleGlobalPointerUp);
-    window.addEventListener('pointercancel', handleGlobalPointerUp);
-
-    return () => {
-      window.removeEventListener('pointerup', handleGlobalPointerUp);
-      window.removeEventListener('pointercancel', handleGlobalPointerUp);
-    };
-  }, []);
-
-  // Track if we've already notified parent
   const hasNotifiedRef = useRef(false);
 
-  // Poll each frame until controls are ready - guarantees we capture them
   useFrame(() => {
     if (controlsRef.current && onCameraControlsReady && !hasNotifiedRef.current) {
       hasNotifiedRef.current = true;
@@ -186,9 +149,7 @@ export function SceneContent({
 
         const targetChildPath = previewStep.targetChildPath ?? null;
         if (targetChildPath) {
-          const clickedChildPath =
-            (e.object as unknown as { userData?: { childPath?: unknown } })?.userData?.childPath;
-          const clickedChildPathStr = typeof clickedChildPath === 'string' ? clickedChildPath : null;
+          const clickedChildPathStr = getChildPathFromObject(e.object);
 
           const isWithinTargetSubtree = isChildPathWithinSubtree(targetChildPath, clickedChildPathStr);
 
@@ -212,7 +173,7 @@ export function SceneContent({
       if (canDrag) {
         e.stopPropagation();
         e.nativeEvent.stopPropagation();
-        (e.nativeEvent as unknown as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
+        stopNativeImmediatePropagation(e.nativeEvent);
       }
 
       const clickPoint = e.point;
@@ -299,88 +260,20 @@ export function SceneContent({
     ]
   );
 
-  const hoveredObjectId = hoveredHit?.objectId ?? null;
-  // Note: childPath is still tracked in hoveredHit for editor hover UX and debugging,
-  // but preview/published cursor targeting uses raycasting for reliability.
-
-  // In preview/published, use raycasting against the actual scene to determine whether the
-  // cursor is currently over the outlined clickable target. This is more reliable than relying
-  // on per-object hover callbacks (which can be affected by overlays and mesh transitions).
-  useEffect(() => {
-    if (!previewMode) {
-      setIsPreviewTargetHovering(false);
-      return;
-    }
-
-    // Only show pointer when there's a current outlined target (i.e. a clickable move-item step).
-    if (!previewOutlineParentId) {
-      setIsPreviewTargetHovering(false);
-      return;
-    }
-
-    const dom = gl.domElement;
-
-    const computeIsHoveringTarget = (event: PointerEvent): boolean => {
-      const rect = dom.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      previewPointerNdcRef.current.set(x, y);
-
-      previewRaycasterRef.current.setFromCamera(previewPointerNdcRef.current, camera);
-      const intersections = previewRaycasterRef.current.intersectObjects(scene.children, true);
-
-      for (const hit of intersections) {
-        const hitSceneObjectId = (hit.object as unknown as { userData?: { sceneObjectId?: unknown } })?.userData
-          ?.sceneObjectId;
-        if (hitSceneObjectId !== previewOutlineParentId) continue;
-
-        if (!previewOutlineChildPath) return true;
-
-        const hitChildPathRaw =
-          (hit.object as unknown as { userData?: { childPath?: unknown } })?.userData?.childPath;
-        const hitChildPath = typeof hitChildPathRaw === 'string' ? hitChildPathRaw : null;
-        return isChildPathWithinSubtree(previewOutlineChildPath, hitChildPath);
-      }
-
-      return false;
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const next = computeIsHoveringTarget(event);
-      setIsPreviewTargetHovering((prev) => (prev === next ? prev : next));
-    };
-
-    const handlePointerLeave = () => {
-      setIsPreviewTargetHovering(false);
-    };
-
-    dom.addEventListener('pointermove', handlePointerMove);
-    dom.addEventListener('pointerleave', handlePointerLeave);
-
-    return () => {
-      dom.removeEventListener('pointermove', handlePointerMove);
-      dom.removeEventListener('pointerleave', handlePointerLeave);
-    };
-  }, [
+  const isPreviewTargetHovering = usePreviewTargetHover({
     previewMode,
     previewOutlineParentId,
     previewOutlineChildPath,
     gl,
     camera,
     scene,
-  ]);
+  });
 
-  const isCursorHovering = useMemo(() => {
-    if (!previewMode) {
-      return hoveredObjectId !== null;
-    }
-
-    return isPreviewTargetHovering;
-  }, [
-    previewMode,
-    hoveredObjectId,
-    isPreviewTargetHovering,
-  ]);
+  const hoveredObjectId = hoveredHit?.objectId ?? null;
+  const isCursorHovering = useMemo(
+    () => (previewMode ? isPreviewTargetHovering : hoveredObjectId !== null),
+    [previewMode, hoveredObjectId, isPreviewTargetHovering]
+  );
 
   const handleDragEnd = useCallback(
     (wasDrag: boolean) => {
