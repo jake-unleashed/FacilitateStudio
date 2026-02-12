@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { ChildMesh, SceneObject, SimStep } from '../types';
+import type { ChildMesh } from '../types';
 import type { Project } from '../types/project';
 import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
@@ -181,7 +181,14 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
   if (!Array.isArray(steps)) throw new Error('Invalid published snapshot: missing steps.');
   if (!isRecord(assetManifest)) throw new Error('Invalid published snapshot: missing asset manifest.');
 
-  return value as PublishedSnapshot;
+  // Best-effort structural validation: we validate top-level shape here, and rely on downstream
+  // code to be tolerant of scene/object details while the published flow is still MVP.
+  return {
+    name,
+    objects: objects as SceneObject[],
+    steps: steps as SimStep[],
+    assetManifest: assetManifest as Record<string, AssetManifestEntry>,
+  };
 }
 
 /**

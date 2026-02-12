@@ -4,10 +4,12 @@ import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { usePopup } from '../contexts/PopupContext';
 import { useProjects } from '../hooks/useProjects';
-import { resolvePublishedTokenToProjectId } from '../services/publishService';
+import { fetchPublishedSnapshotByToken } from '../services/publishService';
 import { SceneObject, SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
+import { clearAssetResolver, setAssetResolver } from '../utils/modelCache';
+import { seedStarterAssets, shouldReseedLibrary } from '../utils/starterAssets/seedStarterAssets';
 
 /**
  * PublishedSimulationPage - Creator-only published view (MVP).
@@ -22,17 +24,11 @@ export function PublishedSimulationPage(): JSX.Element {
 
   const projectIdParam = useMemo(() => searchParams.get('projectId'), [searchParams]);
   const tokenParam = useMemo(() => searchParams.get('token'), [searchParams]);
-  const resolvedProjectId = useMemo(() => {
-    if (projectIdParam) return projectIdParam;
-    if (!tokenParam) return null;
-    return resolvePublishedTokenToProjectId(tokenParam);
-  }, [projectIdParam, tokenParam]);
   const invalidReason = useMemo(() => {
     if (projectIdParam) return null;
-    if (!tokenParam) return 'missingProjectId';
-    if (!resolvedProjectId) return 'invalidToken';
+    if (!tokenParam) return 'missingToken';
     return null;
-  }, [projectIdParam, tokenParam, resolvedProjectId]);
+  }, [projectIdParam, tokenParam]);
 
   // Project state
   const [project, setProject] = useState<{
@@ -58,30 +54,79 @@ export function PublishedSimulationPage(): JSX.Element {
     let isCancelled = false;
 
     const loadProject = async () => {
-      if (!resolvedProjectId) {
+      if (projectIdParam) {
+        try {
+          const loadedProject = await getProject(projectIdParam);
+          if (isCancelled) {
+            return;
+          }
+
+          if (loadedProject) {
+            setProject({
+              objects: loadedProject.objects,
+              steps: loadedProject.steps,
+              name: loadedProject.name,
+            });
+            setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
+            setIsInitialized(true);
+            return;
+          }
+        } catch (error) {
+          console.error('[PublishedSimulationPage] Failed to load project:', error);
+          showPopup({
+            type: 'error',
+            title: 'Simulation Load Failed',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Unable to load this simulation right now. Please try again.',
+          });
+        }
+
+        // Not found in this browser's storage (expected for non-creator)
+        setProject(null);
+        setIsInitialized(true);
+        return;
+      }
+
+      if (!tokenParam) {
         setIsInitialized(true);
         setProject(null);
         return;
       }
 
       try {
-        const loadedProject = await getProject(resolvedProjectId);
-        if (isCancelled) {
-          return;
-        }
-
-        if (loadedProject) {
-          setProject({
-            objects: loadedProject.objects,
-            steps: loadedProject.steps,
-            name: loadedProject.name,
-          });
-          setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
+        const snapshot = await fetchPublishedSnapshotByToken(tokenParam);
+        if (isCancelled) return;
+        if (!snapshot) {
+          setProject(null);
           setIsInitialized(true);
           return;
         }
+
+        // Ensure starter assets are available if the snapshot references them.
+        const usesStarter = snapshot.objects.some(
+          (obj) => typeof obj.properties?.modelAssetId === 'string' && obj.properties.modelAssetId.startsWith('starter:')
+        );
+        if (usesStarter && shouldReseedLibrary()) {
+          await seedStarterAssets();
+        }
+
+        setAssetResolver((assetId) => {
+          const entry = snapshot.assetManifest?.[assetId];
+          if (!entry) return null;
+          return { url: entry.url, fileType: entry.fileType };
+        });
+
+        setProject({
+          objects: snapshot.objects,
+          steps: snapshot.steps,
+          name: snapshot.name,
+        });
+        setPreviewObjects(snapshot.objects.map((obj) => ({ ...obj })));
+        setIsInitialized(true);
       } catch (error) {
-        console.error('[PublishedSimulationPage] Failed to load project:', error);
+        console.error('[PublishedSimulationPage] Failed to load published snapshot:', error);
         showPopup({
           type: 'error',
           title: 'Simulation Load Failed',
@@ -90,19 +135,18 @@ export function PublishedSimulationPage(): JSX.Element {
               ? error.message
               : 'Unable to load this simulation right now. Please try again.',
         });
+        setProject(null);
+        setIsInitialized(true);
       }
-
-      // Not found in this browser's storage (expected for non-creator)
-      setProject(null);
-      setIsInitialized(true);
     };
 
     void loadProject();
 
     return () => {
       isCancelled = true;
+      clearAssetResolver();
     };
-  }, [resolvedProjectId, getProject, isLoadingProjects, isInitialized, showPopup]);
+  }, [getProject, isLoadingProjects, isInitialized, projectIdParam, showPopup, tokenParam]);
 
   // Handle camera controls ready
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
@@ -194,25 +238,12 @@ export function PublishedSimulationPage(): JSX.Element {
   }
 
   // Missing / invalid link
-  if (invalidReason === 'missingProjectId') {
+  if (invalidReason === 'missingToken') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
           <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
-          <p className="mb-6 text-sm text-slate-600">This link is missing a project ID.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (invalidReason === 'invalidToken') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
-          <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
-          <p className="mb-6 text-sm text-slate-600">
-            This link is invalid or no longer available in this browser.
-          </p>
+          <p className="mb-6 text-sm text-slate-600">This link is missing a token.</p>
         </div>
       </div>
     );
@@ -220,6 +251,18 @@ export function PublishedSimulationPage(): JSX.Element {
 
   // Not found in storage (expected for non-creator)
   if (!project) {
+    // Token-based publish (backend) flow.
+    if (tokenParam && !projectIdParam) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
+            <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
+            <p className="mb-6 text-sm text-slate-600">This link is invalid or no longer available.</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">

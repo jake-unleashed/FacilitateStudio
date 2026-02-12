@@ -12,10 +12,34 @@
 
 import * as THREE from 'three';
 import { ModelMetrics, STORAGE_CONFIG } from '../types/model';
+import type { ModelFileType } from '../types/model';
 import { getAsset, updateAssetMetadata, blobToArrayBuffer } from './modelAssetStore';
 import { loadAndPreprocessModelFromArrayBuffer, PreprocessedModel } from './modelLoaders';
 import { deepCloneGroup } from './deepCloneModel';
 import { supabase } from '../lib/supabase';
+
+type AssetResolverResult = { url: string; fileType: ModelFileType } | null;
+
+let assetResolver:
+  | ((assetId: string) => Promise<AssetResolverResult> | AssetResolverResult)
+  | null = null;
+
+/**
+ * Provide an alternate asset resolution mechanism for cases where an `assetId` cannot be loaded
+ * from IndexedDB / private cloud storage (e.g. public published viewer via `assetManifest` URLs).
+ */
+export function setAssetResolver(
+  resolver: (assetId: string) => Promise<AssetResolverResult> | AssetResolverResult
+): void {
+  assetResolver = resolver;
+}
+
+/**
+ * Clear any previously registered asset resolver.
+ */
+export function clearAssetResolver(): void {
+  assetResolver = null;
+}
 
 // =============================================================================
 // Types
@@ -186,7 +210,36 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
 
   const assetData = await getAsset(assetId, userId ? { userId } : undefined);
   if (!assetData) {
-    throw new Error(`Asset not found: ${assetId}`);
+    if (!assetResolver) {
+      throw new Error(`Asset not found: ${assetId}`);
+    }
+
+    const resolved = await assetResolver(assetId);
+    if (!resolved) {
+      throw new Error(`Asset not found: ${assetId}`);
+    }
+
+    const response = await fetch(resolved.url);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch model from URL (${response.status} ${response.statusText})`
+      );
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const preprocessed = await loadAndPreprocessModelFromArrayBuffer(arrayBuffer, resolved.fileType);
+    const metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
+
+    maybeCleanupCache();
+
+    const cachedModel: CachedModel = {
+      model: deepCloneGroup(preprocessed.model),
+      metrics,
+      lastAccessed: Date.now(),
+    };
+
+    cache.set(assetId, cachedModel);
+    return cachedModel;
   }
 
   // Convert blob to ArrayBuffer (more efficient than base64, better texture handling)

@@ -4,6 +4,23 @@ import { BrowserRouter } from 'react-router-dom';
 import { PublishedSimulationPage } from './PublishedSimulationPage';
 import { PopupProvider } from '../contexts/PopupContext';
 import type { Project } from '../types/project';
+import { fetchPublishedSnapshotByToken } from '../services/publishService';
+
+vi.mock('../services/publishService', () => ({
+  fetchPublishedSnapshotByToken: vi.fn(),
+}));
+
+vi.mock('../utils/modelCache', () => ({
+  setAssetResolver: vi.fn(),
+  clearAssetResolver: vi.fn(),
+}));
+
+vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
+  shouldReseedLibrary: () => false,
+  seedStarterAssets: vi.fn(),
+}));
+
+const mockFetchPublishedSnapshotByToken = vi.mocked(fetchPublishedSnapshotByToken);
 
 // Mock useSearchParams
 const mockSearchParams = new URLSearchParams();
@@ -49,7 +66,9 @@ describe('PublishedSimulationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSearchParams.delete('projectId');
+    mockSearchParams.delete('token');
     mockUseProjects.isLoading = false;
+    mockFetchPublishedSnapshotByToken.mockResolvedValue(null);
   });
 
   it('shows loading state initially', () => {
@@ -62,7 +81,7 @@ describe('PublishedSimulationPage', () => {
     // Don't set projectId in search params
     renderWithContext(<PublishedSimulationPage />);
     expect(await screen.findByText(/invalid published link/i)).toBeInTheDocument();
-    expect(screen.getByText(/this link is missing a project id/i)).toBeInTheDocument();
+    expect(screen.getByText(/this link is missing a token/i)).toBeInTheDocument();
   });
 
   it('shows error when project is not found', async () => {
@@ -107,5 +126,32 @@ describe('PublishedSimulationPage', () => {
       expect(screen.queryByText(/loading published simulation/i)).not.toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument();
+  });
+
+  it('shows invalid link when token does not resolve', async () => {
+    mockSearchParams.set('token', 'token-123');
+    mockFetchPublishedSnapshotByToken.mockResolvedValue(null);
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    expect(await screen.findByText(/invalid published link/i)).toBeInTheDocument();
+    expect(screen.getByText(/no longer available/i)).toBeInTheDocument();
+  });
+
+  it('renders simulation when token resolves to a snapshot', async () => {
+    mockSearchParams.set('token', 'token-123');
+    mockFetchPublishedSnapshotByToken.mockResolvedValue({
+      name: 'Published Snapshot',
+      objects: [],
+      steps: [],
+      assetManifest: {},
+    });
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/loading published simulation/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/invalid published link/i)).not.toBeInTheDocument();
   });
 });
