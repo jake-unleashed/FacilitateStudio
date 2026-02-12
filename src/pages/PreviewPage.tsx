@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
+import { usePopup } from '../contexts/PopupContext';
 import { useProjects } from '../hooks/useProjects';
 import { SceneObject, SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
@@ -16,6 +17,7 @@ import CameraControlsImpl from 'camera-controls';
 export function PreviewPage() {
   const { id: projectId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const { showPopup } = usePopup();
   const { getProject, isLoading: isLoadingProjects } = useProjects();
 
   // Project state
@@ -39,27 +41,53 @@ export function PreviewPage() {
   useEffect(() => {
     if (isLoadingProjects || isInitialized) return;
 
-    if (projectId) {
-      const loadedProject = getProject(projectId);
-      if (loadedProject) {
-        setProject({
-          objects: loadedProject.objects,
-          steps: loadedProject.steps,
-          name: loadedProject.name,
-        });
-        // Initialize preview objects with start positions
-        setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
-        setIsInitialized(true);
+    let isCancelled = false;
+
+    const loadProject = async () => {
+      if (projectId) {
+        try {
+          const loadedProject = await getProject(projectId);
+          if (!loadedProject) {
+            navigate('/');
+            return;
+          }
+
+          if (isCancelled) {
+            return;
+          }
+
+          setProject({
+            objects: loadedProject.objects,
+            steps: loadedProject.steps,
+            name: loadedProject.name,
+          });
+          // Initialize preview objects with start positions
+          setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
+          setIsInitialized(true);
+        } catch (error) {
+          console.error('[PreviewPage] Failed to load project:', error);
+          showPopup({
+            type: 'error',
+            title: 'Preview Load Failed',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Unable to load this preview right now. Please try again.',
+          });
+          navigate('/');
+        }
       } else {
-        // Project not found, redirect to home
+        // No project ID, redirect to home
         navigate('/');
-        return;
       }
-    } else {
-      // No project ID, redirect to home
-      navigate('/');
-    }
-  }, [projectId, getProject, navigate, isLoadingProjects, isInitialized]);
+    };
+
+    void loadProject();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [projectId, getProject, navigate, isLoadingProjects, isInitialized, showPopup]);
 
   // Handle camera controls ready
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {

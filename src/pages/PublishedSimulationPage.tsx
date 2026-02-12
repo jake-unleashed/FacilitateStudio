@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
+import { usePopup } from '../contexts/PopupContext';
 import { useProjects } from '../hooks/useProjects';
 import { SceneObject, SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
@@ -15,6 +16,7 @@ import CameraControlsImpl from 'camera-controls';
  */
 export function PublishedSimulationPage(): JSX.Element {
   const [searchParams] = useSearchParams();
+  const { showPopup } = usePopup();
   const { getProject, isLoading: isLoadingProjects } = useProjects();
 
   const projectId = useMemo(() => searchParams.get('projectId'), [searchParams]);
@@ -40,28 +42,54 @@ export function PublishedSimulationPage(): JSX.Element {
   useEffect(() => {
     if (isLoadingProjects || isInitialized) return;
 
-    if (!projectId) {
-      setIsInitialized(true);
+    let isCancelled = false;
+
+    const loadProject = async () => {
+      if (!projectId) {
+        setIsInitialized(true);
+        setProject(null);
+        return;
+      }
+
+      try {
+        const loadedProject = await getProject(projectId);
+        if (isCancelled) {
+          return;
+        }
+
+        if (loadedProject) {
+          setProject({
+            objects: loadedProject.objects,
+            steps: loadedProject.steps,
+            name: loadedProject.name,
+          });
+          setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
+          setIsInitialized(true);
+          return;
+        }
+      } catch (error) {
+        console.error('[PublishedSimulationPage] Failed to load project:', error);
+        showPopup({
+          type: 'error',
+          title: 'Simulation Load Failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Unable to load this simulation right now. Please try again.',
+        });
+      }
+
+      // Not found in this browser's storage (expected for non-creator)
       setProject(null);
-      return;
-    }
-
-    const loadedProject = getProject(projectId);
-    if (loadedProject) {
-      setProject({
-        objects: loadedProject.objects,
-        steps: loadedProject.steps,
-        name: loadedProject.name,
-      });
-      setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
       setIsInitialized(true);
-      return;
-    }
+    };
 
-    // Not found in this browser's storage (expected for non-creator)
-    setProject(null);
-    setIsInitialized(true);
-  }, [projectId, getProject, isLoadingProjects, isInitialized]);
+    void loadProject();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [projectId, getProject, isLoadingProjects, isInitialized, showPopup]);
 
   // Handle camera controls ready
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {

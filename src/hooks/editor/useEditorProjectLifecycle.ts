@@ -6,10 +6,12 @@ import type { EditorState } from '../undoRedo/types';
 export interface UseEditorProjectLifecycleArgs {
   projectId: string | undefined;
   isLoadingProjects: boolean;
-  getProject: (id: string) => Project | undefined;
+  getProject: (id: string) => Promise<Project | undefined>;
   createProject: (name?: string) => Project;
   navigate: NavigateFunction;
   setUndoRedoState: (state: EditorState) => void;
+  /** Optional error handler for surfacing load failures to the UI */
+  onLoadError?: (error: unknown) => void;
 }
 
 export interface UseEditorProjectLifecycleResult {
@@ -30,6 +32,7 @@ export function useEditorProjectLifecycle({
   createProject,
   navigate,
   setUndoRedoState,
+  onLoadError,
 }: UseEditorProjectLifecycleArgs): UseEditorProjectLifecycleResult {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -38,32 +41,57 @@ export function useEditorProjectLifecycle({
     // Wait for projects to load from storage before initializing.
     if (isLoadingProjects || isInitialized) return;
 
-    if (projectId) {
-      const project = getProject(projectId);
-      if (!project) {
-        navigate('/');
-        return;
+    let isCancelled = false;
+
+    const initialize = async () => {
+      if (projectId) {
+        try {
+          const project = await getProject(projectId);
+          if (!project) {
+            onLoadError?.(new Error('Project not found.'));
+            navigate('/');
+            return;
+          }
+
+          if (isCancelled) {
+            return;
+          }
+
+          setCurrentProject(project);
+          setUndoRedoState({
+            objects: project.objects,
+            steps: project.steps,
+            simulationTitle: project.name,
+          });
+          setIsInitialized(true);
+          return;
+        } catch (error) {
+          console.error('[useEditorProjectLifecycle] Failed to load project:', error);
+          onLoadError?.(error);
+          navigate('/');
+          return;
+        }
       }
 
-      setCurrentProject(project);
+      const newProject = createProject('New Simulation');
+      if (isCancelled) {
+        return;
+      }
+      setCurrentProject(newProject);
       setUndoRedoState({
-        objects: project.objects,
-        steps: project.steps,
-        simulationTitle: project.name,
+        objects: [],
+        steps: [],
+        simulationTitle: newProject.name,
       });
+      navigate(`/editor/${newProject.id}`, { replace: true });
       setIsInitialized(true);
-      return;
-    }
+    };
 
-    const newProject = createProject('New Simulation');
-    setCurrentProject(newProject);
-    setUndoRedoState({
-      objects: [],
-      steps: [],
-      simulationTitle: newProject.name,
-    });
-    navigate(`/editor/${newProject.id}`, { replace: true });
-    setIsInitialized(true);
+    void initialize();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [
     projectId,
     getProject,
@@ -72,6 +100,7 @@ export function useEditorProjectLifecycle({
     isInitialized,
     isLoadingProjects,
     setUndoRedoState,
+    onLoadError,
   ]);
 
   return { currentProject, isInitialized };

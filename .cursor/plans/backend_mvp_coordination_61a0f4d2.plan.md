@@ -20,10 +20,10 @@ todos:
     status: completed
   - id: b6-supabase-persistence
     content: "B6: Supabase persistence adapter for projects"
-    status: in_progress
+    status: completed
   - id: b7-homepage-cloud
     content: "B7: Wire HomePage + useProjects to cloud"
-    status: pending
+    status: completed
   - id: b8-autosave-cloud
     content: "B8: Wire auto-save + thumbnail upload to cloud"
     status: pending

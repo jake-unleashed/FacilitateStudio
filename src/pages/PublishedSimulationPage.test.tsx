@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { PublishedSimulationPage } from './PublishedSimulationPage';
 import { PopupProvider } from '../contexts/PopupContext';
@@ -58,50 +58,54 @@ describe('PublishedSimulationPage', () => {
     expect(screen.getByText(/loading published simulation/i)).toBeInTheDocument();
   });
 
-  it('shows error when projectId is missing', () => {
+  it('shows error when projectId is missing', async () => {
     // Don't set projectId in search params
     renderWithContext(<PublishedSimulationPage />);
-    expect(screen.getByText(/invalid published link/i)).toBeInTheDocument();
+    expect(await screen.findByText(/invalid published link/i)).toBeInTheDocument();
     expect(screen.getByText(/this link is missing a project id/i)).toBeInTheDocument();
   });
 
-  it('shows error when project is not found', () => {
+  it('shows error when project is not found', async () => {
     mockSearchParams.set('projectId', 'nonexistent-project');
-    mockGetProject.mockReturnValue(null);
+    mockGetProject.mockResolvedValue(undefined);
 
     renderWithContext(<PublishedSimulationPage />);
 
-    expect(screen.getByText(/simulation.*available/i)).toBeInTheDocument();
+    expect(await screen.findByText(/simulation.*available/i)).toBeInTheDocument();
   });
 
-  it('renders simulation when project is found', () => {
+  it('renders simulation when project is found', async () => {
     mockSearchParams.set('projectId', 'test-project');
-    mockGetProject.mockReturnValue(mockProject);
+    mockGetProject.mockResolvedValue(mockProject);
 
     renderWithContext(<PublishedSimulationPage />);
 
-    // Should render the canvas (MainCanvas component)
-    // Note: MainCanvas itself is complex and mocked, so we just verify no error screens
+    await waitFor(() => {
+      expect(screen.queryByText(/loading published simulation/i)).not.toBeInTheDocument();
+    });
     expect(screen.queryByText(/invalid published link/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/available/i)).not.toBeInTheDocument();
   });
 
-  it('displays branding badge', () => {
+  it('displays branding badge', async () => {
     mockSearchParams.set('projectId', 'test-project');
-    mockGetProject.mockReturnValue(mockProject);
+    mockGetProject.mockResolvedValue(mockProject);
 
     renderWithContext(<PublishedSimulationPage />);
 
-    expect(screen.getByText(/powered by facilitate/i)).toBeInTheDocument();
+    expect(await screen.findByText(/powered by facilitate/i)).toBeInTheDocument();
   });
 
-  it('does not show exit button in published view', () => {
+  it('does not show exit button in published view', async () => {
     mockSearchParams.set('projectId', 'test-project');
-    mockGetProject.mockReturnValue(mockProject);
+    mockGetProject.mockResolvedValue(mockProject);
 
     renderWithContext(<PublishedSimulationPage />);
 
     // Exit button should not be present (unlike PreviewPage)
+    await waitFor(() => {
+      expect(screen.queryByText(/loading published simulation/i)).not.toBeInTheDocument();
+    });
     expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument();
   });
 });

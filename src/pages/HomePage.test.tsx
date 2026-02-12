@@ -27,17 +27,21 @@ vi.mock('../contexts/PopupContext', () => ({
 }));
 
 // Mock useProjects hook
-const mockDeleteProject = vi.fn();
+const mockDeleteProject = vi.fn().mockResolvedValue(undefined);
 const mockGetProjectMetadata = vi.fn<() => ProjectMetadata[]>();
 const mockSaveProject = vi.fn();
 let mockIsLoading = false;
+const mockClearError = vi.fn();
+let mockError: string | null = null;
 
 vi.mock('../hooks/useProjects', () => ({
   useProjects: () => ({
     getProjectMetadata: mockGetProjectMetadata,
-    getProject: () => undefined,
+    getProject: async () => undefined,
     deleteProject: mockDeleteProject,
     saveProject: mockSaveProject,
+    error: mockError,
+    clearError: mockClearError,
     createProject: (name: string) => ({
       id: 'test-project-id',
       name,
@@ -118,6 +122,7 @@ describe('HomePage', () => {
     vi.clearAllMocks();
     mockGetProjectMetadata.mockReturnValue([]);
     mockIsLoading = false;
+    mockError = null;
   });
 
   describe('branding', () => {

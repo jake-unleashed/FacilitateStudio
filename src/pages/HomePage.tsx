@@ -234,7 +234,7 @@ export function HomePage(): JSX.Element {
   const { transitionTo } = useRouteTransition();
   const { user, signOut } = useAuth();
   const { showPopup } = usePopup();
-  const { getProjectMetadata, deleteProject, isLoading } = useProjects();
+  const { getProjectMetadata, deleteProject, isLoading, error, clearError } = useProjects();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const recentProjects = getProjectMetadata();
 
@@ -251,9 +251,18 @@ export function HomePage(): JSX.Element {
 
   const handleDeleteProject = useCallback(
     (id: string) => {
-      deleteProject(id);
+      void deleteProject(id).catch((deleteError) => {
+        showPopup({
+          type: 'error',
+          title: 'Delete Failed',
+          message:
+            deleteError instanceof Error
+              ? deleteError.message
+              : 'Unable to delete this project right now. Please try again.',
+        });
+      });
     },
-    [deleteProject]
+    [deleteProject, showPopup]
   );
 
   const handleSignOut = useCallback(async () => {
@@ -352,6 +361,21 @@ export function HomePage(): JSX.Element {
             icon={<Clock size={14} className="text-slate-400" aria-hidden="true" />}
             title="Recent"
           />
+
+          {error ? (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-[16px] border border-amber-200/70 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
+              <span>{error}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearError}
+                className="rounded-[10px] px-2 py-1 text-xs"
+              >
+                Dismiss
+              </Button>
+            </div>
+          ) : null}
 
           {isLoading ? (
             <div

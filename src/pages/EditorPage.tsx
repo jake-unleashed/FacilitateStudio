@@ -156,6 +156,9 @@ function EditorPageContent() {
     redoStackSize,
   } = useUndoRedo(initialEditorState, { maxHistory: 50, enableKeyboardShortcuts: true });
 
+  // Global popup hook for displaying errors and notifications
+  const { showPopup } = usePopup();
+
   const { currentProject, isInitialized } = useEditorProjectLifecycle({
     projectId,
     isLoadingProjects,
@@ -163,6 +166,17 @@ function EditorPageContent() {
     createProject,
     navigate,
     setUndoRedoState,
+    onLoadError: (error: unknown) => {
+      console.error('[EditorPage] Failed to initialize project:', error);
+      showPopup({
+        type: 'error',
+        title: 'Project Load Failed',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Unable to load this project right now. Please try again.',
+      });
+    },
   });
 
   const {
@@ -291,9 +305,6 @@ function EditorPageContent() {
     lastError: uploadLastError,
     clearError: clearUploadError,
   } = useModelUpload();
-
-  // Global popup hook for displaying errors and notifications
-  const { showPopup } = usePopup();
 
   // Show popup when upload error occurs
   useEffect(() => {
