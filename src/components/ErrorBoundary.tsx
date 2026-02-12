@@ -1,4 +1,5 @@
 import React from 'react';
+import * as Sentry from '@sentry/react';
 import { Button } from './Button';
 
 interface ErrorBoundaryProps {
@@ -23,6 +24,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    Sentry.captureException(error, {
+      extra: { componentStack: info.componentStack },
+    });
     // Keep logging for debugging; avoid throwing from here.
     console.error('[ErrorBoundary] Uncaught error:', error);
     console.error('[ErrorBoundary] Component stack:', info.componentStack);

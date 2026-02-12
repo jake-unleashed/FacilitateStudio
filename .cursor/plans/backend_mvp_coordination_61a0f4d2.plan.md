@@ -50,10 +50,10 @@ todos:
     status: completed
   - id: b16-ai-hardening
     content: "B16: AI endpoint auth + rate limiting + logging"
-    status: pending
+    status: completed
   - id: b17-ci-observability
     content: "B17: CI pipeline + integration tests + error tracking"
-    status: pending
+    status: completed
 isProject: false
 ---
 

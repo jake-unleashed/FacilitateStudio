@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import * as Sentry from '@sentry/node';
 import { createClient } from '@supabase/supabase-js';
 import {
   getExtractSopStepsSystemPrompt,
@@ -10,6 +11,14 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+const sentryDsn = process.env.SENTRY_DSN;
+
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.NODE_ENV ?? 'production',
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -82,6 +91,11 @@ function logRequest(event: {
       ...event,
     })
   );
+}
+
+function captureServerException(error: unknown, extra: Record<string, unknown>): void {
+  if (!sentryDsn) return;
+  Sentry.captureException(error, { extra });
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +276,13 @@ export default async function handler(req: Request): Promise<Response> {
       json({ error: 'No steps could be extracted from this document.' }, { status: 422 }),
       false
     );
-  } catch {
+  } catch (error) {
+    captureServerException(error, {
+      requestId,
+      userId,
+      model,
+      stage: 'openai_chat_completion',
+    });
     return finalize(
       json({ error: 'Failed to analyze the document. Please try again.' }, { status: 502 }),
       false

@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import OpenAI from 'openai';
 import { randomUUID } from 'node:crypto';
+import * as Sentry from '@sentry/node';
 import { createClient } from '@supabase/supabase-js';
 import {
   getExtractSopStepsSystemPrompt,
@@ -20,6 +21,19 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
 const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
 const rateLimitStore = new Map();
+const sentryDsn = process.env.SENTRY_DSN;
+
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.NODE_ENV || 'development',
+  });
+}
+
+function captureServerException(error, extra = {}) {
+  if (!sentryDsn) return;
+  Sentry.captureException(error, { extra });
+}
 
 function parseBearerToken(headerValue) {
   if (!headerValue) return null;
@@ -204,7 +218,13 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     }
 
     return finalize(422, { error: 'No steps could be extracted from this document.' });
-  } catch {
+  } catch (error) {
+    captureServerException(error, {
+      requestId,
+      userId,
+      model,
+      stage: 'openai_chat_completion',
+    });
     return finalize(502, { error: 'Failed to analyze the document. Please try again.' });
   } finally {
     clearTimeout(timeout);
