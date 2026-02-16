@@ -3,85 +3,51 @@ import { createClient } from '@supabase/supabase-js';
 import {
   getExtractSopStepsSystemPrompt,
 } from '../../shared/ai/extractSopStepsPrompt.js';
+import {
+  DEFAULT_IP_LIMIT_PER_MINUTE,
+  DEFAULT_USER_LIMIT_PER_MINUTE,
+  MAX_INPUT_TEXT_LENGTH,
+  MAX_REQUEST_BODY_BYTES,
+  OPENAI_TIMEOUT_MS_DEFAULT,
+} from '../../shared/api/extractStepsConstants.js';
+import {
+  buildCorsHeaders,
+  parseJsonBodyWithByteLimit,
+  parseBearerToken,
+  parseLimit,
+  resolveClientIp,
+  sanitizeFilename,
+} from '../../shared/api/extractStepsHelpers.js';
+import { extractSopStepsWithOpenAI } from '../../shared/api/extractStepsCore.js';
+import { createExtractStepsRateLimiter } from '../../shared/api/extractStepsRateLimiter.js';
+import { validateExtractStepsServerEnv } from '../../shared/api/extractStepsEnv.js';
 
 export const config = { runtime: 'edge' };
-const MAX_EXTRACTED_STEPS = 50;
-const MAX_INPUT_TEXT_LENGTH = 100_000;
-const MAX_FILENAME_LENGTH = 256;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
-const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-
-// Lazily purge expired entries to prevent unbounded memory growth in long-lived
-// edge isolates. Runs at most once per minute.
-let lastPurge = 0;
-function purgeExpiredEntries(now: number): void {
-  if (now - lastPurge < 60_000) return;
-  lastPurge = now;
-  for (const [key, entry] of rateLimitStore) {
-    if (entry.resetAt <= now) rateLimitStore.delete(key);
-  }
-}
+const rateLimiter = createExtractStepsRateLimiter({
+  env: process.env,
+  onPersistentStoreError: (error: unknown) => {
+    console.error(
+      JSON.stringify({
+        event: 'ai_extract_steps_rate_limit_store_error',
+        error: error instanceof Error ? error.message : 'Unknown rate-limit store error',
+      })
+    );
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function json(body: unknown, init?: ResponseInit): Response {
+  const initHeaders = new Headers(init?.headers);
+  if (!initHeaders.has('Content-Type')) {
+    initHeaders.set('Content-Type', 'application/json');
+  }
   return new Response(JSON.stringify(body), {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: initHeaders,
   });
-}
-
-function parseBearerToken(headerValue: string | null): string | null {
-  if (!headerValue) return null;
-  const [scheme, token] = headerValue.split(' ');
-  if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
-  return token;
-}
-
-function parseLimit(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.floor(parsed);
-}
-
-function sanitizeFilename(filename: string): string {
-  return filename.replace(/["\r\n]/g, '_').slice(0, MAX_FILENAME_LENGTH);
-}
-
-function checkRateLimit(
-  key: string,
-  limit: number,
-  now: number
-): { allowed: true } | { allowed: false; retryAfterSeconds: number } {
-  const current = rateLimitStore.get(key);
-  if (!current || current.resetAt <= now) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return { allowed: true };
-  }
-
-  if (current.count >= limit) {
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((current.resetAt - now) / 1000)
-    );
-    return { allowed: false, retryAfterSeconds };
-  }
-
-  current.count += 1;
-  return { allowed: true };
-}
-
-function getClientIp(req: Request): string {
-  const xForwardedFor = req.headers.get('x-forwarded-for');
-  if (xForwardedFor) {
-    const [first] = xForwardedFor.split(',');
-    if (first?.trim()) return first.trim();
-  }
-  return req.headers.get('x-real-ip') ?? 'unknown';
 }
 
 function logRequest(event: {
@@ -91,6 +57,7 @@ function logRequest(event: {
   model: string;
   success: boolean;
   status: number;
+  rateLimitMode: string;
 }): void {
   // Structured logs for Vercel ingestion without leaking request content.
   console.log(
@@ -104,10 +71,24 @@ function logRequest(event: {
 function captureServerException(error: unknown, extra: Record<string, unknown>): void {
   // Keep edge runtime compatible by avoiding Node-only SDK usage here.
   // Structured error logs are still emitted for production observability.
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status?: unknown }).status)
+      : undefined;
+  const safeError =
+    error instanceof Error
+      ? {
+          name: error.name,
+          ...(Number.isFinite(status) ? { status } : {}),
+        }
+      : {
+          type: typeof error,
+          ...(Number.isFinite(status) ? { status } : {}),
+        };
   console.error(
     JSON.stringify({
       event: 'ai_extract_steps_error',
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError,
       ...extra,
     })
   );
@@ -121,18 +102,44 @@ export default async function handler(req: Request): Promise<Response> {
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const openAiTimeoutMs = parseLimit(
+    process.env.OPENAI_TIMEOUT_MS,
+    OPENAI_TIMEOUT_MS_DEFAULT
+  );
   let userId: string | null = null;
   let responseStatus = 500;
   let requestSucceeded = false;
+  const corsHeaders = buildCorsHeaders(
+    req.headers.get('origin'),
+    process.env.AI_EXTRACT_ALLOWED_ORIGINS
+  );
 
   const finalize = (response: Response, success: boolean): Response => {
     responseStatus = response.status;
     requestSucceeded = success;
-    return response;
+    if (!corsHeaders) return response;
+
+    const headers = new Headers(response.headers);
+    Object.entries(corsHeaders).forEach(([name, value]) => headers.set(name, String(value)));
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   };
+
+  if (req.method === 'OPTIONS') {
+    return finalize(new Response(null, { status: 204 }), true);
+  }
 
   if (req.method !== 'POST') {
     return finalize(json({ error: 'Method Not Allowed' }, { status: 405 }), false);
+  }
+
+  const envValidation = validateExtractStepsServerEnv(process.env);
+  if (!envValidation.ok) {
+    captureServerException(new Error(envValidation.message), { requestId, stage: 'env_validation' });
+    return finalize(json({ error: 'Server misconfiguration' }, { status: 500 }), false);
   }
 
   // --- Verify caller auth ---
@@ -141,16 +148,10 @@ export default async function handler(req: Request): Promise<Response> {
     return finalize(json({ error: 'Authentication required' }, { status: 401 }), false);
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    return finalize(
-      json({ error: 'Server misconfiguration' }, { status: 500 }),
-      false
-    );
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const supabase = createClient(
+    envValidation.values.supabaseUrl,
+    envValidation.values.supabaseServiceRoleKey,
+    {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
@@ -164,7 +165,6 @@ export default async function handler(req: Request): Promise<Response> {
 
   // --- Rate limiting ---
   const now = Date.now();
-  purgeExpiredEntries(now);
   const userLimit = parseLimit(
     process.env.AI_RATE_LIMIT_PER_USER,
     DEFAULT_USER_LIMIT_PER_MINUTE
@@ -174,7 +174,7 @@ export default async function handler(req: Request): Promise<Response> {
     DEFAULT_IP_LIMIT_PER_MINUTE
   );
 
-  const userLimitResult = checkRateLimit(`user:${userId}`, userLimit, now);
+  const userLimitResult = await rateLimiter.check(`user:${userId}`, userLimit, now);
   if (!userLimitResult.allowed) {
     return finalize(
       json(
@@ -188,8 +188,11 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  const clientIp = getClientIp(req);
-  const ipLimitResult = checkRateLimit(`ip:${clientIp}`, ipLimit, now);
+  const clientIp = resolveClientIp({
+    xForwardedFor: req.headers.get('x-forwarded-for'),
+    xRealIp: req.headers.get('x-real-ip'),
+  });
+  const ipLimitResult = await rateLimiter.check(`ip:${clientIp}`, ipLimit, now);
   if (!ipLimitResult.allowed) {
     return finalize(
       json(
@@ -206,13 +209,24 @@ export default async function handler(req: Request): Promise<Response> {
   // --- Parse body ---
   let text: string | undefined;
   let filename: string | undefined;
-  try {
-    const data = await req.json().catch(() => ({}));
-    text = typeof data?.text === 'string' ? data.text.trim() : undefined;
-    filename = typeof data?.filename === 'string' ? sanitizeFilename(data.filename) : undefined;
-  } catch {
-    return finalize(json({ error: 'Invalid JSON body' }, { status: 400 }), false);
+  const contentLengthHeader = req.headers.get('content-length');
+  const contentLength = Number(contentLengthHeader);
+  if (contentLengthHeader && Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    return finalize(json({ error: 'Request body too large' }, { status: 413 }), false);
   }
+
+  const parsedBody = await parseJsonBodyWithByteLimit(req, MAX_REQUEST_BODY_BYTES);
+  if (!parsedBody.ok) {
+    return finalize(json({ error: parsedBody.error }, { status: parsedBody.status }), false);
+  }
+  const data = parsedBody.data;
+  text = typeof (data as { text?: unknown })?.text === 'string'
+    ? (data as { text: string }).text.trim()
+    : undefined;
+  filename =
+    typeof (data as { filename?: unknown })?.filename === 'string'
+      ? sanitizeFilename((data as { filename: string }).filename)
+      : undefined;
 
   if (!text) {
     return finalize(
@@ -231,74 +245,34 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // --- Resolve API key ---
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    return finalize(
-      json(
-        { error: 'Server misconfiguration: OPENAI_API_KEY is missing' },
-        { status: 500 }
-      ),
-      false
-    );
-  }
+  const apiKey = envValidation.values.openAiApiKey;
 
   // --- Call OpenAI ---
   const client = new OpenAI({ apiKey });
 
   const systemInstruction = getExtractSopStepsSystemPrompt();
 
-  const userPrompt = filename ? `Document "${filename}":\n\n${text}` : text;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-
   try {
-    const completion = await client.chat.completions.create(
-      {
+    const extraction = await extractSopStepsWithOpenAI({
+      client,
+      model,
+      systemInstruction,
+      text,
+      filename,
+      timeoutMs: openAiTimeoutMs,
+    });
+    if (extraction.ok) {
+      return finalize(json({ steps: extraction.steps }), true);
+    }
+    if (extraction.rawError) {
+      captureServerException(extraction.rawError, {
+        requestId,
+        userId,
         model,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemInstruction },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 600,
-      },
-      { signal: controller.signal as unknown as AbortSignal }
-    );
-
-    const content = completion?.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return finalize(json({ error: 'Empty AI response' }, { status: 502 }), false);
+        stage: extraction.stage ?? 'openai_chat_completion',
+      });
     }
-
-    let parsed: { steps?: string[]; error?: string } | null = null;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return finalize(
-        json({ error: 'Invalid AI response format' }, { status: 502 }),
-        false
-      );
-    }
-
-    if (parsed?.steps && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
-      const steps = parsed.steps
-        .map((s: unknown) => (typeof s === 'string' ? s.trim() : ''))
-        .filter(Boolean)
-        .slice(0, MAX_EXTRACTED_STEPS);
-      if (steps.length > 0) return finalize(json({ steps }), true);
-    }
-
-    if (parsed?.error) {
-      return finalize(json({ error: String(parsed.error) }, { status: 422 }), false);
-    }
-
-    return finalize(
-      json({ error: 'No steps could be extracted from this document.' }, { status: 422 }),
-      false
-    );
+    return finalize(json({ error: extraction.error }, { status: extraction.status }), false);
   } catch (error) {
     captureServerException(error, {
       requestId,
@@ -311,7 +285,6 @@ export default async function handler(req: Request): Promise<Response> {
       false
     );
   } finally {
-    clearTimeout(timeout);
     logRequest({
       requestId,
       userId,
@@ -319,6 +292,7 @@ export default async function handler(req: Request): Promise<Response> {
       model,
       success: requestSucceeded,
       status: responseStatus,
+      rateLimitMode: rateLimiter.mode,
     });
   }
 }

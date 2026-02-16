@@ -7,6 +7,23 @@ import { createClient } from '@supabase/supabase-js';
 import {
   getExtractSopStepsSystemPrompt,
 } from '../shared/ai/extractSopStepsPrompt.js';
+import {
+  DEFAULT_IP_LIMIT_PER_MINUTE,
+  DEFAULT_USER_LIMIT_PER_MINUTE,
+  MAX_INPUT_TEXT_LENGTH,
+  MAX_REQUEST_BODY_BYTES,
+  OPENAI_TIMEOUT_MS_DEFAULT,
+} from '../shared/api/extractStepsConstants.js';
+import {
+  buildCorsHeaders,
+  parseBearerToken,
+  parseLimit,
+  resolveClientIp,
+  sanitizeFilename,
+} from '../shared/api/extractStepsHelpers.js';
+import { extractSopStepsWithOpenAI } from '../shared/api/extractStepsCore.js';
+import { createExtractStepsRateLimiter } from '../shared/api/extractStepsRateLimiter.js';
+import { validateExtractStepsServerEnv } from '../shared/api/extractStepsEnv.js';
 
 // Load local environment variables for development.
 // - `.env.local` is gitignored and is where secrets should live.
@@ -16,21 +33,13 @@ dotenv.config();
 
 // Keep this fixed to match the Vite dev proxy target.
 const PORT = 8787;
-const MAX_EXTRACTED_STEPS = 50;
-const MAX_INPUT_TEXT_LENGTH = 100_000;
-const MAX_FILENAME_LENGTH = 256;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const DEFAULT_USER_LIMIT_PER_MINUTE = 10;
-const DEFAULT_IP_LIMIT_PER_MINUTE = 20;
-const rateLimitStore = new Map();
-
-// Periodically purge expired rate-limit entries to prevent unbounded memory growth.
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore) {
-    if (entry.resetAt <= now) rateLimitStore.delete(key);
-  }
-}, 5 * 60_000); // every 5 minutes
+const rateLimiter = createExtractStepsRateLimiter({
+  env: process.env,
+  onPersistentStoreError: (error) => {
+    // eslint-disable-next-line no-console
+    console.error('[dev-api] persistent rate-limit store unavailable:', error);
+  },
+});
 
 const sentryDsn = process.env.SENTRY_DSN;
 
@@ -46,74 +55,38 @@ function captureServerException(error, extra = {}) {
   Sentry.captureException(error, { extra });
 }
 
-function parseBearerToken(headerValue) {
-  if (!headerValue) return null;
-  const [scheme, token] = headerValue.split(' ');
-  if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
-  return token;
-}
-
-function parseLimit(value, fallback) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.floor(parsed);
-}
-
-function sanitizeFilename(filename) {
-  return filename.replace(/["\r\n]/g, '_').slice(0, MAX_FILENAME_LENGTH);
-}
-
-function checkRateLimit(key, limit, now) {
-  const current = rateLimitStore.get(key);
-  if (!current || current.resetAt <= now) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return { allowed: true };
-  }
-
-  if (current.count >= limit) {
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
-    };
-  }
-
-  current.count += 1;
-  return { allowed: true };
-}
-
 function getClientIp(req) {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string' && forwardedFor.length > 0) {
-    return forwardedFor.split(',')[0].trim();
-  }
-  if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
-    return forwardedFor[0].split(',')[0].trim();
-  }
-  return req.ip || 'unknown';
+  return resolveClientIp({
+    xForwardedFor: req.headers['x-forwarded-for'],
+    xRealIp: req.headers['x-real-ip'],
+    fallbackIp: req.ip,
+  });
 }
-
-// SUPABASE_URL is the canonical server-side env var (set on Vercel).
-// Fall back to the VITE-prefixed client var for local dev where .env.local
-// typically only defines VITE_SUPABASE_URL.
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseAdmin =
-  supabaseUrl && supabaseServiceRoleKey
-    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      })
-    : null;
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: MAX_REQUEST_BODY_BYTES }));
+app.use('/api/ai/extract-steps', (req, res, next) => {
+  const corsHeaders = buildCorsHeaders(req.get('origin') ?? null, process.env.AI_EXTRACT_ALLOWED_ORIGINS);
+  if (corsHeaders) {
+    Object.entries(corsHeaders).forEach(([name, value]) => {
+      res.setHeader(name, value);
+    });
+  }
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 
 app.post('/api/ai/extract-steps', async (req, res) => {
   const requestId = randomUUID();
   const startedAt = Date.now();
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const openAiTimeoutMs = parseLimit(
+    process.env.OPENAI_TIMEOUT_MS,
+    OPENAI_TIMEOUT_MS_DEFAULT
+  );
   let userId = null;
   let responseStatus = 500;
   let requestSucceeded = false;
@@ -127,14 +100,37 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     return res.status(status).json(payload);
   };
 
+  const contentLength = Number(req.get('content-length') ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    return finalize(413, { error: 'Request body too large' });
+  }
+
   const token = parseBearerToken(req.get('authorization'));
   if (!token) {
     return finalize(401, { error: 'Authentication required' });
   }
 
-  if (!supabaseAdmin) {
+  const envValidation = validateExtractStepsServerEnv(process.env, {
+    allowViteSupabaseUrlFallback: true,
+  });
+  if (!envValidation.ok) {
+    captureServerException(new Error(envValidation.message), {
+      requestId,
+      stage: 'env_validation',
+    });
     return finalize(500, { error: 'Server misconfiguration' });
   }
+
+  const supabaseAdmin = createClient(
+    envValidation.values.supabaseUrl,
+    envValidation.values.supabaseServiceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
 
   const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
   if (authError || !authData.user) {
@@ -149,7 +145,7 @@ app.post('/api/ai/extract-steps', async (req, res) => {
   );
   const ipLimit = parseLimit(process.env.AI_RATE_LIMIT_PER_IP, DEFAULT_IP_LIMIT_PER_MINUTE);
 
-  const userLimitResult = checkRateLimit(`user:${userId}`, userLimit, now);
+  const userLimitResult = await rateLimiter.check(`user:${userId}`, userLimit, now);
   if (!userLimitResult.allowed) {
     return finalize(
       429,
@@ -160,7 +156,7 @@ app.post('/api/ai/extract-steps', async (req, res) => {
   }
 
   const clientIp = getClientIp(req);
-  const ipLimitResult = checkRateLimit(`ip:${clientIp}`, ipLimit, now);
+  const ipLimitResult = await rateLimiter.check(`ip:${clientIp}`, ipLimit, now);
   if (!ipLimitResult.allowed) {
     return finalize(
       429,
@@ -183,65 +179,33 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return finalize(500, {
-      error: 'Server misconfiguration: OPENAI_API_KEY is missing',
-    });
-  }
+  const apiKey = envValidation.values.openAiApiKey;
 
   const client = new OpenAI({ apiKey });
 
   const systemInstruction = getExtractSopStepsSystemPrompt();
 
-  const userPrompt = filename ? `Document "${filename}":\n\n${text}` : text;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-
   try {
-    const completion = await client.chat.completions.create(
-      {
+    const extraction = await extractSopStepsWithOpenAI({
+      client,
+      model,
+      systemInstruction,
+      text,
+      filename,
+      timeoutMs: openAiTimeoutMs,
+    });
+    if (extraction.ok) {
+      return finalize(200, { steps: extraction.steps }, true);
+    }
+    if (extraction.rawError) {
+      captureServerException(extraction.rawError, {
+        requestId,
+        userId,
         model,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemInstruction },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 600,
-      },
-      { signal: controller.signal }
-    );
-
-    const content = completion?.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return finalize(502, { error: 'Empty AI response' });
+        stage: extraction.stage ?? 'openai_chat_completion',
+      });
     }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return finalize(502, { error: 'Invalid AI response format' });
-    }
-
-    const steps = Array.isArray(parsed?.steps)
-      ? parsed.steps
-          .map((s) => (typeof s === 'string' ? s.trim() : ''))
-          .filter(Boolean)
-          .slice(0, MAX_EXTRACTED_STEPS)
-      : [];
-
-    if (steps.length > 0) {
-      return finalize(200, { steps }, true);
-    }
-
-    if (parsed?.error) {
-      return finalize(422, { error: String(parsed.error) });
-    }
-
-    return finalize(422, { error: 'No steps could be extracted from this document.' });
+    return finalize(extraction.status, { error: extraction.error });
   } catch (error) {
     captureServerException(error, {
       requestId,
@@ -251,7 +215,6 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     });
     return finalize(502, { error: 'Failed to analyze the document. Please try again.' });
   } finally {
-    clearTimeout(timeout);
     // Structured dev logs to mirror production request metadata.
     // eslint-disable-next-line no-console
     console.log(
@@ -263,9 +226,20 @@ app.post('/api/ai/extract-steps', async (req, res) => {
         model,
         success: requestSucceeded,
         status: responseStatus,
+        rateLimitMode: rateLimiter.mode,
       })
     );
   }
+});
+
+app.use((error, _req, res, next) => {
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body too large' });
+  }
+  if (error instanceof SyntaxError && 'body' in error) {
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
+  return next(error);
 });
 
 app.listen(PORT, () => {
