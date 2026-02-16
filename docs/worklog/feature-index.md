@@ -1,12 +1,14 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 4:12:58 pm
+**Updated**: 16/02/2026, 5:22:21 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Post-Feature (`post-feature`) | Make Home navigation transitions + guided home button production-ready | 2026-02-11 03:15 | 2026-02-16 05:12 | 121h 57m | 1 | 1 | 1 |  |
-| Codebase Health (`codebase-health`) | Completed audit, applied quick fixes, and prioritized debt | 2026-02-16 05:04 | 2026-02-16 05:12 | 8m | 1 | 0 | 0 |  |
+| Camera Zoom (`camera-zoom`) | Simplify zoom behavior to focus on selected objects | 2026-02-16 05:55 | 2026-02-16 06:22 | 27m | 5 | 0 | 0 |  |
+| Scene Object Selection (`scene-object-selection`) | Investigate potential edge case where model children become unselectable after project reload | 2026-02-16 05:59 | 2026-02-16 06:01 | 1m | 1 | 0 | 0 |  |
+| Codebase Health (`codebase-health`) | Completed audit, applied quick fixes, and prioritized debt | 2026-02-16 05:04 | 2026-02-16 05:52 | 48m | 2 | 0 | 0 |  |
+| Post-Feature (`post-feature`) | Make Home navigation transitions + guided home button production-ready | 2026-02-11 03:15 | 2026-02-16 05:50 | 122h 34m | 2 | 2 | 4 |  |
 | Trainee Experience (`trainee-experience`) | Plan landing page and polished trainee flow for published sims | 2026-02-16 04:07 | 2026-02-16 04:55 | 47m | 7 | 2 | 2 |  |
 | Scene Navigation (`scene-navigation`) | Ensure edit-mode scene controls are responsive immediately | 2026-02-16 03:58 | 2026-02-16 04:12 | 13m | 3 | 0 | 0 |  |
 | Project Storage (`project-storage`) | Research how projects are currently stored and plan account-scoped storage | 2026-02-16 02:40 | 2026-02-16 03:56 | 1h 16m | 6 | 1 | 1 |  |

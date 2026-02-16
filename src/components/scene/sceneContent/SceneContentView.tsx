@@ -173,6 +173,9 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const guidedPhase = guidedBodyState.guidedPhase;
   const guidedPositionMode = guidedBodyState.guidedPositionMode;
   const isGuidedModelUpload = guidedPhase === 'model-upload';
+  const hasSelection = props.selectedObjectId !== null;
+  const shouldDollyToCursor = !isGuidedModelUpload && !hasSelection;
+
   return (
     <>
       {IS_DEV && <ContactShadowDebugger />}
@@ -388,7 +391,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         minDistance={0.5}
         maxDistance={60}
         dollySpeed={0.3}
-        dollyToCursor={!isGuidedModelUpload}
+        dollyToCursor={shouldDollyToCursor}
         minPolarAngle={0}
         maxPolarAngle={Math.PI}
         minAzimuthAngle={-Infinity}
