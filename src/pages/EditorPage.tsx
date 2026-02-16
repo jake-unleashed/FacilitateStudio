@@ -15,6 +15,7 @@ import { PhaseIndicator } from '../components/guidedWorkflow/PhaseIndicator';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
 import { calculateIdealCameraPosition, calculateSoftFocus } from '../utils/focusUtils';
 import { calculateFocusTargetForObject } from '../utils/focusTargetCalculator';
+import { hasUsableSteps } from '../utils/stepValidation';
 import {
   calculateOcclusionAwareFocusCamera,
   calculateQuickFocusCamera,
@@ -402,6 +403,17 @@ function EditorPageContent() {
   });
 
   const currentProjectId = currentProject?.id ?? null;
+  const publishProjectView = useMemo(() => {
+    if (!currentProject) return null;
+    return {
+      ...currentProject,
+      name: simulationTitle,
+      objects,
+      steps,
+    };
+  }, [currentProject, objects, simulationTitle, steps]);
+
+  const hasReadySteps = useMemo(() => hasUsableSteps(steps), [steps]);
 
   // Establish baseline AFTER initial state load so autosave knows what "saved" means
   useEffect(() => {
@@ -1612,6 +1624,7 @@ function EditorPageContent() {
                 }
                 onPublishClick={handlePublishClick}
                 projectId={projectId}
+                hasUsableSteps={hasReadySteps}
               />
             ),
             leftSidebar: (
@@ -1665,7 +1678,7 @@ function EditorPageContent() {
             ),
             publishModal: currentProject ? (
               <PublishModal
-                project={currentProject}
+                project={publishProjectView ?? currentProject}
                 isOpen={isPublishModalOpen}
                 onClose={() => setIsPublishModalOpen(false)}
               />

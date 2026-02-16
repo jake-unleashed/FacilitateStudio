@@ -1,11 +1,16 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 12/02/2026, 6:12:05 pm
+**Updated**: 16/02/2026, 11:56:33 am
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Project Health Audit (`project-health-audit`) | Completed deep assessment and shipped stability fixes | 2026-02-12 07:12 | 2026-02-12 07:12 | 0m | 0 | 0 | 0 |  |
+| Post-Feature QA (`post-feature-qa`) | Run full test suite and generate digest | 2026-02-16 00:50 | 2026-02-16 00:56 | 5m | 1 | 0 | 0 |  |
+| Publish/Preview Gating (`publish-preview-gating`) | Wire top-bar buttons to show friendly message when no steps | 2026-02-16 00:27 | 2026-02-16 00:47 | 19m | 2 | 0 | 0 |  |
+| Publish Panel (`publish-panel`) | Research current implementation and plan UX redesign | 2026-02-16 00:08 | 2026-02-16 00:25 | 16m | 4 | 0 | 0 |  |
+| Vercel deployment (`vercel-deployment`) | Concise step-by-step env and settings checklist | 2026-02-15 23:35 | 2026-02-16 00:06 | 31m | 1 | 0 | 0 |  |
+| Health Check (`health-check`) | Completed audit, applied quick fixes, and prioritized debt with concrete actions | 2026-02-12 07:25 | 2026-02-15 23:35 | 88h 10m | 4 | 1 | 1 |  |
+| Project Health Audit (`project-health-audit`) | Completed deep assessment and shipped stability fixes | 2026-02-12 07:12 | 2026-02-12 07:18 | 5m | 2 | 1 | 1 |  |
 | Backend Review (`backend-review`) | Deep-dive audit of backend implementation for issues, improvements, and correctness | 2026-02-12 06:55 | 2026-02-12 07:03 | 7m | 2 | 0 | 0 |  |
 | Published Assets (`published-assets`) | Explain incognito ?Asset not found <uuid>? in published links | 2026-02-12 03:00 | 2026-02-12 07:02 | 4h 2m | 8 | 1 | 1 |  |
 | Cloud Models (`cloud-models`) | Explain why cloud projects load but models don?t render | 2026-02-12 02:36 | 2026-02-12 02:59 | 23m | 2 | 0 | 0 |  |

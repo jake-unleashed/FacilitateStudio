@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, ExternalLink, X } from 'lucide-react';
+import { ChevronRight, Copy, ExternalLink, X } from 'lucide-react';
 import type { Project } from '../types/project';
 import { Button } from './Button';
 import { usePopup, createErrorPopup, createSuccessPopup } from '../contexts/PopupContext';
 import { copyToClipboard, generatePublishURL } from '../utils/publishUtils';
+import { hasUsableSteps } from '../utils/stepValidation';
 import { useAuth } from '../contexts/AuthContext';
 import { getExistingPublish, unpublishProject } from '../services/publishService';
 
@@ -41,17 +42,22 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const hasSetInitialFocusRef = useRef(false);
   const [publishUrl, setPublishUrl] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
   const [isLoadingPublishState, setIsLoadingPublishState] = useState(false);
   const [isUnpublishing, setIsUnpublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [justPublished, setJustPublished] = useState(false);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
 
     setPublishError(null);
+    setJustPublished(false);
+    setMoreOptionsOpen(false);
 
     if (!user?.id || !project.id.trim()) {
       setPublishUrl('');
@@ -69,6 +75,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
         if (existing?.isActive) {
           setPublishUrl(existing.url);
           setIsPublished(true);
+          setJustPublished(false);
         } else {
           setPublishUrl('');
           setIsPublished(false);
@@ -92,14 +99,28 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   }, [isOpen, project.id, user?.id]);
 
   const statusText = useMemo(() => {
+    const hasAnySteps = project.steps.length > 0;
+    const hasReadySteps = hasUsableSteps(project.steps);
     if (!user?.id) return 'Sign in to publish and share this simulation.';
     if (!project.id.trim()) return 'Save this project first, then publish a share link.';
+    if (!hasAnySteps) return 'Add at least one step before publishing.';
+    if (!hasReadySteps) return 'Choose a step type before publishing.';
     if (isLoadingPublishState) return 'Checking publish status...';
     if (isPublishing) return 'Publishing... Syncing and copying assets...';
     if (isUnpublishing) return 'Unpublishing link...';
-    if (isPublished) return 'This simulation is published. You can copy the link or republish updates.';
+    if (isPublished && justPublished) return 'Published. Link copied to your clipboard.';
+    if (isPublished) return 'This simulation is live. Share the link or publish your latest changes.';
     return 'Create a shareable link that anyone can open.';
-  }, [isLoadingPublishState, isPublished, isPublishing, isUnpublishing, project.id, user?.id]);
+  }, [
+    isLoadingPublishState,
+    isPublished,
+    isPublishing,
+    isUnpublishing,
+    justPublished,
+    project.id,
+    project.steps,
+    user?.id,
+  ]);
 
   const handlePublish = useCallback(async () => {
     if (!user?.id) {
@@ -110,6 +131,14 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
       setPublishError('Save this project before publishing.');
       return;
     }
+    if (project.steps.length === 0) {
+      setPublishError('You need to add at least one step before publishing.');
+      return;
+    }
+    if (!hasUsableSteps(project.steps)) {
+      setPublishError('Choose a step type before publishing.');
+      return;
+    }
 
     setPublishError(null);
     setIsPublishing(true);
@@ -117,7 +146,18 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
       const result = await generatePublishURL(project, user.id);
       setPublishUrl(result.url);
       setIsPublished(true);
-      showPopup(createSuccessPopup('Published', 'Your share link is ready.'));
+      setJustPublished(true);
+      setMoreOptionsOpen(false);
+
+      const copied = await copyToClipboard(result.url);
+      showPopup(
+        createSuccessPopup(
+          'Published',
+          copied
+            ? 'Your share link is ready and copied to clipboard.'
+            : 'Your share link is ready. Use Copy to copy it manually.'
+        )
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to publish simulation.';
       setPublishError(message);
@@ -143,6 +183,8 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
       await unpublishProject(project.id, user.id);
       setPublishUrl('');
       setIsPublished(false);
+      setJustPublished(false);
+      setMoreOptionsOpen(false);
       showPopup(createSuccessPopup('Unpublished', 'Your published link has been disabled.'));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to unpublish simulation.';
@@ -154,6 +196,14 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   }, [project.id, showPopup, user?.id]);
 
   const isBusy = isPublishing || isLoadingPublishState || isUnpublishing;
+  const hasAnySteps = project.steps.length > 0;
+  const hasReadySteps = hasUsableSteps(project.steps);
+  const canPublish = Boolean(user?.id) && Boolean(project.id.trim()) && hasReadySteps;
+  const showLinkSection = isPublished && Boolean(publishUrl);
+  const showPublishButton = !isPublished;
+  const showUpdatePublishButton = isPublished && !justPublished;
+  const showOpenInNewTabButton = isPublished && Boolean(publishUrl);
+  const showMoreOptions = isPublished;
 
   // Focus trap + restore focus on close/unmount.
   useEffect(() => {
@@ -161,11 +211,6 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
 
     previouslyFocusedRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const focusTimer = setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 0);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -206,7 +251,6 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
     window.addEventListener('keydown', onKeyDown);
 
     return () => {
-      clearTimeout(focusTimer);
       window.removeEventListener('keydown', onKeyDown);
       // Restore focus to what opened the modal.
       const toRestore = previouslyFocusedRef.current;
@@ -216,6 +260,39 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
       }, 0);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    hasSetInitialFocusRef.current = false;
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || isLoadingPublishState || hasSetInitialFocusRef.current) return;
+
+    const focusTimer = setTimeout(() => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const primaryAction = dialog.querySelector<HTMLElement>('[data-primary-action="true"]');
+      if (primaryAction) {
+        primaryAction.focus();
+        hasSetInitialFocusRef.current = true;
+        return;
+      }
+
+      if (showLinkSection && inputRef.current) {
+        inputRef.current.focus();
+        hasSetInitialFocusRef.current = true;
+        return;
+      }
+
+      const focusables = getFocusableElements(dialog);
+      focusables[0]?.focus();
+      hasSetInitialFocusRef.current = true;
+    }, 0);
+
+    return () => clearTimeout(focusTimer);
+  }, [isLoadingPublishState, isOpen, showLinkSection]);
 
   const handleCopy = useCallback(async () => {
     if (!publishUrl) {
@@ -295,70 +372,137 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
           </Button>
         </div>
 
-        <div className="mt-5">
-          <label className="mb-2 block text-xs font-semibold text-slate-600">Published link</label>
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              value={publishUrl}
-              readOnly
-              className="h-11 w-full rounded-[20px] border border-white/50 bg-white/60 px-4 text-sm text-slate-800 shadow-sm outline-none ring-blue-500/30 focus:ring-2"
-              aria-label="Published link"
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={handleCopy}
-              disabled={isBusy || !publishUrl}
-              className="h-11 whitespace-nowrap rounded-[20px] px-4"
-            >
-              <Copy size={16} className="mr-2" />
-              Copy
-            </Button>
-          </div>
+        <div className="mt-5 space-y-4">
+          {showLinkSection && (
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-slate-600">Published link</label>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  value={publishUrl}
+                  readOnly
+                  className="h-11 w-full rounded-[20px] border border-white/50 bg-white/60 px-4 text-sm text-slate-800 shadow-sm outline-none ring-blue-500/30 focus:ring-2"
+                  aria-label="Published link"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={handleCopy}
+                  disabled={isBusy || !publishUrl}
+                  className="h-11 whitespace-nowrap rounded-[20px] px-4"
+                >
+                  <Copy size={16} className="mr-2" />
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
 
           {publishError && (
-            <p className="mt-3 rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p className="rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               {publishError}
             </p>
           )}
 
-          <div className="mt-4 flex items-center justify-end gap-2">
-            {isPublished && (
+          {showPublishButton && (
+            <div className="flex justify-center">
               <Button
-                variant="secondary"
-                size="md"
-                onClick={handleUnpublish}
-                disabled={isBusy}
-                className="rounded-[20px] border-red-200 text-red-700 hover:bg-red-50"
+                variant="primary"
+                size="lg"
+                onClick={handlePublish}
+                disabled={isBusy || !canPublish}
+                className="min-w-[180px] rounded-[20px]"
+                data-primary-action="true"
               >
-                Unpublish
+                {isPublishing ? 'Publishing...' : 'Publish'}
               </Button>
-            )}
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handlePublish}
-              disabled={isBusy || !user?.id || !project.id.trim()}
-              className="rounded-[20px]"
-            >
-              {isPublishing ? 'Publishing...' : isPublished ? 'Update publish' : 'Publish'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={handleOpen}
-              disabled={isBusy || !publishUrl}
-              className="rounded-[20px]"
-            >
-              <ExternalLink size={16} className="mr-2" />
-              Open in new tab
-            </Button>
-            <Button variant="primary" size="md" onClick={onClose} className="rounded-[20px]">
-              Done
-            </Button>
-          </div>
+            </div>
+          )}
+
+          {showPublishButton && !hasAnySteps && (
+            <p className="text-center text-xs text-slate-500">You need to add steps before publishing.</p>
+          )}
+
+          {showPublishButton && hasAnySteps && !hasReadySteps && (
+            <p className="text-center text-xs text-slate-500">Choose a step type before publishing.</p>
+          )}
+
+          {isPublished && (
+            <>
+              <div
+                className={`flex items-center gap-2 ${
+                  showUpdatePublishButton ? 'justify-end' : 'justify-center'
+                }`}
+              >
+                {showUpdatePublishButton && (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={handlePublish}
+                    disabled={isBusy || !canPublish}
+                    className="rounded-[20px]"
+                    data-primary-action="true"
+                  >
+                    {isPublishing ? 'Publishing...' : 'Update publish'}
+                  </Button>
+                )}
+                {showOpenInNewTabButton && (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={handleOpen}
+                    disabled={isBusy || !publishUrl}
+                    className="rounded-[20px]"
+                  >
+                    <ExternalLink size={16} className="mr-2" />
+                    Open in new tab
+                  </Button>
+                )}
+              </div>
+
+              {showMoreOptions && (
+                <div className="border-t border-white/40 pt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMoreOptionsOpen((current) => !current)}
+                    aria-expanded={moreOptionsOpen}
+                    aria-controls="publish-modal-more-options"
+                    className="h-8 rounded-[12px] px-2 text-xs text-slate-500"
+                  >
+                    <ChevronRight
+                      size={14}
+                      className={`mr-1 transition-transform duration-200 ease-out ${
+                        moreOptionsOpen ? 'rotate-90' : ''
+                      }`}
+                    />
+                    More options
+                  </Button>
+
+                  <div
+                    id="publish-modal-more-options"
+                    className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
+                      moreOptionsOpen ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'
+                    }`}
+                  >
+                    <div className="pt-2">
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        onClick={handleUnpublish}
+                        disabled={isBusy}
+                        className="rounded-[20px] border-red-200 text-red-700 hover:bg-red-50"
+                      >
+                        Unpublish
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -48,6 +48,36 @@ const mockProject: Project = {
   updatedAt: new Date().toISOString(),
 };
 
+const mockProjectWithReadyStep: Project = {
+  ...mockProject,
+  steps: [
+    {
+      id: 'step-1',
+      title: 'Step 1',
+      description: 'Do something',
+      completed: false,
+      type: 'info-card',
+      heading: 'Hello',
+      bodyText: 'World',
+      buttonText: 'Next',
+      cardColor: 'blue',
+    },
+  ],
+};
+
+const mockProjectWithUnconfiguredStep: Project = {
+  ...mockProject,
+  steps: [
+    {
+      id: 'step-1',
+      title: '',
+      description: '',
+      completed: false,
+      type: null,
+    },
+  ],
+};
+
 function renderWithContext(ui: React.ReactElement) {
   return render(<PopupProvider>{ui}</PopupProvider>);
 }
@@ -85,8 +115,8 @@ describe('PublishModal', () => {
   it('shows empty URL when not yet published', async () => {
     renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
     await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
-    const input = screen.getByLabelText(/published link/i) as HTMLInputElement;
-    expect(input.value).toBe('');
+    expect(screen.queryByLabelText(/published link/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^publish$/i })).toBeInTheDocument();
   });
 
   it('closes modal when close button is clicked', async () => {
@@ -97,17 +127,6 @@ describe('PublishModal', () => {
     // Use the specific aria-label for the close button (not the backdrop)
     const closeButton = screen.getByLabelText('Close');
     await user.click(closeButton);
-
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('closes modal when Done button is clicked', async () => {
-    const onClose = vi.fn();
-    const user = userEvent.setup();
-    renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={onClose} />);
-
-    const doneButton = screen.getByRole('button', { name: /done/i });
-    await user.click(doneButton);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -135,12 +154,12 @@ describe('PublishModal', () => {
 
   it('publishes asynchronously when Publish button is clicked', async () => {
     const user = userEvent.setup();
-    renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    renderWithContext(<PublishModal project={mockProjectWithReadyStep} isOpen={true} onClose={vi.fn()} />);
 
     const publishButton = screen.getByRole('button', { name: /^publish$/i });
     await user.click(publishButton);
 
-    expect(mockGeneratePublishURL).toHaveBeenCalledWith(mockProject, 'user-1');
+    expect(mockGeneratePublishURL).toHaveBeenCalledWith(mockProjectWithReadyStep, 'user-1');
     await waitFor(() => {
       const input = screen.getByLabelText(/published link/i) as HTMLInputElement;
       expect(input.value).toContain('/published?token=token-123');
@@ -149,7 +168,7 @@ describe('PublishModal', () => {
 
   it('opens URL in new tab when Open in new tab button is clicked', async () => {
     const user = userEvent.setup();
-    renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    renderWithContext(<PublishModal project={mockProjectWithReadyStep} isOpen={true} onClose={vi.fn()} />);
 
     const publishButton = screen.getByRole('button', { name: /^publish$/i });
     await user.click(publishButton);
@@ -166,7 +185,10 @@ describe('PublishModal', () => {
 
   it('selects URL text when input is focused', async () => {
     const user = userEvent.setup();
-    renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    renderWithContext(<PublishModal project={mockProjectWithReadyStep} isOpen={true} onClose={vi.fn()} />);
+
+    const publishButton = screen.getByRole('button', { name: /^publish$/i });
+    await user.click(publishButton);
 
     const input = screen.getByLabelText(/published link/i) as HTMLInputElement;
     await user.click(input);
@@ -187,45 +209,28 @@ describe('PublishModal', () => {
 
     // Should render without crashing
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    const input = screen.getByLabelText(/published link/i) as HTMLInputElement;
-    // Should have empty URL due to error handling
-    expect(input.value).toBe('');
 
     const publishButton = screen.getByRole('button', { name: /^publish$/i });
     expect(publishButton).toBeDisabled();
   });
 
-  it('shows error when trying to copy empty URL', async () => {
-    const projectWithEmptyId: Project = {
-      ...mockProject,
-      id: '',
-    };
-    const user = userEvent.setup();
-    renderWithContext(
-      <PublishModal project={projectWithEmptyId} isOpen={true} onClose={vi.fn()} />
-    );
+  it('does not show copy/open controls before a link exists', async () => {
+    renderWithContext(<PublishModal project={mockProjectWithReadyStep} isOpen={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
 
-    const copyButton = screen.getByRole('button', { name: /copy/i });
-    await user.click(copyButton);
-
-    expect(mockCopyToClipboard).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /open in new tab/i })).not.toBeInTheDocument();
   });
 
-  it('shows error when trying to open empty URL', async () => {
-    const projectWithEmptyId: Project = {
-      ...mockProject,
-      id: '',
-    };
-    const user = userEvent.setup();
+  it('disables publish when there are no usable steps', async () => {
     renderWithContext(
-      <PublishModal project={projectWithEmptyId} isOpen={true} onClose={vi.fn()} />
+      <PublishModal project={mockProjectWithUnconfiguredStep} isOpen={true} onClose={vi.fn()} />
     );
+    await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
 
-    const openButton = screen.getByRole('button', { name: /open in new tab/i });
-    await user.click(openButton);
-
-    // window.open should not be called when URL is empty
-    expect(mockOpen).not.toHaveBeenCalled();
+    const publishButton = screen.getByRole('button', { name: /^publish$/i });
+    expect(publishButton).toBeDisabled();
+    expect(screen.getAllByText(/choose a step type before publishing/i).length).toBeGreaterThan(0);
   });
 
   it('shows existing published URL when already published', async () => {
@@ -235,13 +240,13 @@ describe('PublishModal', () => {
       isActive: true,
     });
 
-    renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    renderWithContext(<PublishModal project={mockProjectWithReadyStep} isOpen={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
       const input = screen.getByLabelText(/published link/i) as HTMLInputElement;
       expect(input.value).toContain('/published?token=existing-token');
     });
-    expect(screen.getByRole('button', { name: /unpublish/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /update publish/i })).toBeInTheDocument();
   });
 
   it('can unpublish an existing link', async () => {
@@ -252,12 +257,14 @@ describe('PublishModal', () => {
     });
 
     const user = userEvent.setup();
-    renderWithContext(<PublishModal project={mockProject} isOpen={true} onClose={vi.fn()} />);
+    renderWithContext(<PublishModal project={mockProjectWithReadyStep} isOpen={true} onClose={vi.fn()} />);
 
+    const moreOptions = await screen.findByRole('button', { name: /more options/i });
+    await user.click(moreOptions);
     const unpublishButton = await screen.findByRole('button', { name: /unpublish/i });
     await user.click(unpublishButton);
 
-    expect(mockUnpublishProject).toHaveBeenCalledWith(mockProject.id, 'user-1');
+    expect(mockUnpublishProject).toHaveBeenCalledWith(mockProjectWithReadyStep.id, 'user-1');
   });
 
   it('has proper accessibility attributes', async () => {

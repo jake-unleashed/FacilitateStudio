@@ -257,6 +257,7 @@ export function SceneContent({
       ghostObject,
       selectedParentId,
       selectedChildPath,
+      hasMovedRef,
     ]
   );
 
@@ -340,7 +341,7 @@ export function SceneContent({
       }
       return prev;
     });
-  }, [onDragStart, dragState, selectedObjectId, onSelectObject]);
+  }, [hasMovedRef, onDragStart, dragState, selectedObjectId, onSelectObject]);
 
   const handleDoubleClick = useCallback((_obj: SceneObject) => {
     // No-op: double-click to focus is disabled

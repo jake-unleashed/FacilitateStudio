@@ -4,6 +4,7 @@ import type { Project } from '../types/project';
 import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
 import { syncAssetToCloud } from '../utils/modelAssetStore';
+import { hasUsableSteps } from '../utils/stepValidation';
 
 const USER_ASSETS_BUCKET = 'user-assets';
 const PUBLISHED_ASSETS_BUCKET = 'published-assets';
@@ -216,6 +217,12 @@ export async function publishProject(project: Project, userId: string): Promise<
   }
   if (!userId?.trim()) {
     throw new Error('Authenticated user ID is required to publish.');
+  }
+  if (!Array.isArray(project.steps) || project.steps.length === 0) {
+    throw new Error('Add at least one step before publishing.');
+  }
+  if (!hasUsableSteps(project.steps)) {
+    throw new Error('Choose a step type before publishing.');
   }
 
   const projectId = project.id.trim();

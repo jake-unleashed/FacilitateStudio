@@ -35,6 +35,7 @@ const TopBarInner: React.FC<TopBarProps> = ({
   onPreviewClick,
   onPublishClick,
   projectId,
+  hasUsableSteps = true,
 }) => {
   const navigate = useNavigate();
 
@@ -140,7 +141,11 @@ const TopBarInner: React.FC<TopBarProps> = ({
         />
 
         {/* Right Section: Action Buttons */}
-        <ActionButtons onPreviewClick={handlePreviewClick} onPublishClick={onPublishClick} />
+        <ActionButtons
+          onPreviewClick={handlePreviewClick}
+          onPublishClick={onPublishClick}
+          hasUsableSteps={hasUsableSteps}
+        />
       </header>
     </div>
   );

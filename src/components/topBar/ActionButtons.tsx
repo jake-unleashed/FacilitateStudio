@@ -8,11 +8,13 @@ import { usePopup } from '../../contexts/PopupContext';
 export const ActionButtons = memo<{
   onPreviewClick?: () => void;
   onPublishClick?: () => void;
-}>(({ onPreviewClick, onPublishClick }) => {
+  hasUsableSteps?: boolean;
+}>(({ onPreviewClick, onPublishClick, hasUsableSteps = true }) => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
   const { showPopup } = usePopup();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const actionsDisabled = !hasUsableSteps;
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
@@ -34,20 +36,52 @@ export const ActionButtons = memo<{
     }
   }, [navigate, showPopup, signOut]);
 
+  const handlePreview = useCallback(() => {
+    if (actionsDisabled) {
+      showPopup({
+        type: 'error',
+        title: 'Not ready to preview',
+        message: 'Add and configure at least one step before previewing.',
+      });
+      return;
+    }
+    onPreviewClick?.();
+  }, [actionsDisabled, onPreviewClick, showPopup]);
+
+  const handlePublish = useCallback(() => {
+    if (actionsDisabled) {
+      showPopup({
+        type: 'error',
+        title: 'Not ready to publish',
+        message: 'Add and configure at least one step before publishing.',
+      });
+      return;
+    }
+    onPublishClick?.();
+  }, [actionsDisabled, onPublishClick, showPopup]);
+
   return (
     <div className="z-10 flex items-center gap-3">
       <Button
         variant="secondary"
-        className="hidden gap-2 rounded-[20px] border-white/40 bg-white/50 font-medium shadow-none hover:shadow-md sm:flex"
-        onClick={onPreviewClick}
+        aria-disabled={actionsDisabled}
+        title={actionsDisabled ? 'Add and configure a step to preview' : 'Preview'}
+        className={`hidden gap-2 rounded-[20px] border-white/40 bg-white/50 font-medium shadow-none sm:flex ${
+          actionsDisabled ? 'cursor-not-allowed opacity-50' : 'hover:shadow-md'
+        }`}
+        onClick={handlePreview}
       >
         <MonitorPlay size={16} className="text-slate-500" />
         Preview
       </Button>
       <Button
         variant="primary"
-        className="gap-2 rounded-[20px] pl-4 pr-5 shadow-lg shadow-blue-500/30"
-        onClick={onPublishClick}
+        aria-disabled={actionsDisabled}
+        title={actionsDisabled ? 'Add and configure a step to publish' : 'Publish'}
+        className={`gap-2 rounded-[20px] pl-4 pr-5 shadow-lg shadow-blue-500/30 ${
+          actionsDisabled ? 'cursor-not-allowed opacity-50' : ''
+        }`}
+        onClick={handlePublish}
       >
         <Share2 size={16} />
         Publish

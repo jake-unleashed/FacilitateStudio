@@ -27,5 +27,7 @@ export interface TopBarProps {
   onPublishClick?: () => void;
   /** Project id used for preview navigation fallback */
   projectId?: string;
+  /** Whether there are steps configured enough for Preview/Publish actions. */
+  hasUsableSteps?: boolean;
 }
 

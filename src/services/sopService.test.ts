@@ -48,10 +48,10 @@ describe('sopService', () => {
     );
     const onProgress = vi.fn();
 
-    await expect(extractStepsFromFile(createFile(), onProgress)).rejects.toMatchObject<SOPServiceError>({
+    await expect(extractStepsFromFile(createFile(), onProgress)).rejects.toMatchObject({
       message: 'Unsupported file format.',
       retryable: false,
-    });
+    } satisfies Partial<SOPServiceError>);
     expect(onProgress).toHaveBeenCalledWith({
       stage: 'error',
       message: 'Unsupported file format.',
@@ -65,10 +65,10 @@ describe('sopService', () => {
       vi.fn().mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
     );
 
-    await expect(extractStepsFromFile(createFile())).rejects.toMatchObject<SOPServiceError>({
+    await expect(extractStepsFromFile(createFile())).rejects.toMatchObject({
       message: 'The request timed out. Please try again.',
       retryable: true,
-    });
+    } satisfies Partial<SOPServiceError>);
   });
 
   it('returns extracted steps on success', async () => {
