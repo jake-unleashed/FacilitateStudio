@@ -103,13 +103,16 @@ describe('useProjects', () => {
     const edited: Project = { ...existing, name: 'Edited name' };
 
     vi.useFakeTimers();
-    const savePromise = result.current.saveProject(edited);
+    let savePromise: ReturnType<typeof result.current.saveProject>;
+    await act(async () => {
+      savePromise = result.current.saveProject(edited);
+    });
     // Attach a handler immediately to avoid vitest unhandled rejection noise.
-    void savePromise.catch(() => {});
+    void savePromise!.catch(() => {});
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500);
     });
-    await expect(savePromise).rejects.toBeTruthy();
+    await expect(savePromise!).rejects.toBeTruthy();
     vi.useRealTimers();
 
     await waitFor(() => {
@@ -148,9 +151,12 @@ describe('useProjects', () => {
 
     vi.useFakeTimers();
     const firstEdit: Project = { ...existing, name: 'First edit' };
-    const firstSavePromise = result.current.saveProject(firstEdit);
+    let firstSavePromise: ReturnType<typeof result.current.saveProject>;
+    await act(async () => {
+      firstSavePromise = result.current.saveProject(firstEdit);
+    });
     // Attach a handler immediately to avoid vitest unhandled rejection noise.
-    void firstSavePromise.catch(() => {});
+    void firstSavePromise!.catch(() => {});
 
     const secondEdit: Project = { ...existing, name: 'Second edit' };
     await act(async () => {
@@ -161,7 +167,7 @@ describe('useProjects', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500);
     });
-    await expect(firstSavePromise).rejects.toBeTruthy();
+    await expect(firstSavePromise!).rejects.toBeTruthy();
     vi.useRealTimers();
 
     // The second edit should remain in-memory (no rollback to existing)

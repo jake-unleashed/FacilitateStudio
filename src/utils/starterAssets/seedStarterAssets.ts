@@ -7,6 +7,7 @@
 
 import { upsertAssetFromBlob } from '../modelAssetStore';
 import { discoverStarterAssets, type StarterAssetDescriptor } from './discoverStarterAssets';
+import { logger } from '../logger';
 
 /**
  * Library version identifier.
@@ -70,7 +71,7 @@ async function fetchAssetBlob(asset: StarterAssetDescriptor): Promise<Blob> {
  * @returns The created asset metadata
  */
 async function seedStarterAsset(asset: StarterAssetDescriptor): Promise<void> {
-  console.log(`[seedStarterAssets] Seeding ${asset.id} (${asset.name})`);
+  logger.log(`[seedStarterAssets] Seeding ${asset.id} (${asset.name})`);
 
   // Fetch the asset blob
   const blob = await fetchAssetBlob(asset);
@@ -101,11 +102,11 @@ export async function seedStarterAssets(): Promise<number> {
   const assets = discoverStarterAssets();
 
   if (assets.length === 0) {
-    console.log('[seedStarterAssets] No starter assets found');
+    logger.log('[seedStarterAssets] No starter assets found');
     return 0;
   }
 
-  console.log(`[seedStarterAssets] Found ${assets.length} starter asset(s)`);
+  logger.log(`[seedStarterAssets] Found ${assets.length} starter asset(s)`);
 
   let seededCount = 0;
 
@@ -116,7 +117,7 @@ export async function seedStarterAssets(): Promise<number> {
       await seedStarterAsset(asset);
       seededCount++;
     } catch (error) {
-      console.error(`[seedStarterAssets] Failed to seed ${asset.id}:`, error);
+      logger.error(`[seedStarterAssets] Failed to seed ${asset.id}:`, error);
       // Continue with other assets even if one fails
     }
   }
@@ -124,7 +125,7 @@ export async function seedStarterAssets(): Promise<number> {
   // Mark library as seeded with current version
   markLibrarySeeded();
 
-  console.log(`[seedStarterAssets] Seeded ${seededCount} asset(s)`);
+  logger.log(`[seedStarterAssets] Seeded ${seededCount} asset(s)`);
   return seededCount;
 }
 

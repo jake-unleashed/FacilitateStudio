@@ -18,6 +18,7 @@
 
 import * as THREE from 'three';
 import { enhanceMaterial, guessMaterialCategory, MaterialCategory } from './smartMaterialFallback';
+import { logger } from './logger';
 
 // =============================================================================
 // Development Mode Detection
@@ -171,11 +172,11 @@ export function normalizeMaterialProperties(material: THREE.Material, meshName?:
     if (IS_DEV) {
       const textureTypes = getTextureTypes(material);
       if (textureTypes.length > 0) {
-        console.log(
+        logger.log(
           `[materialOptimization] "${materialName}" has textures: ${textureTypes.join(', ')}`
         );
       } else if (hasTextureObjects && !hasLoadedTextures) {
-        console.log(`[materialOptimization] "${materialName}" has texture objects (image pending)`);
+        logger.log(`[materialOptimization] "${materialName}" has texture objects (image pending)`);
       }
     }
 
@@ -208,7 +209,7 @@ function fixCriticalIssues(material: THREE.MeshStandardMaterial): void {
     material.opacity = 1;
     material.transparent = false;
     if (IS_DEV) {
-      console.log(`[materialOptimization] Fixed invisible transparency on "${material.name}"`);
+      logger.log(`[materialOptimization] Fixed invisible transparency on "${material.name}"`);
     }
   }
 
@@ -233,7 +234,7 @@ function applySmartFallback(
   enhanceMaterial(material, materialName);
 
   if (IS_DEV && category !== 'default') {
-    console.log(`[materialOptimization] Applied "${category}" fallback to "${materialName}"`);
+    logger.log(`[materialOptimization] Applied "${category}" fallback to "${materialName}"`);
   }
 }
 
@@ -321,7 +322,7 @@ function ensureMeshHasMaterial(mesh: THREE.Mesh): void {
     mesh.material = createDefaultMaterial(mesh.name);
 
     if (IS_DEV) {
-      console.log(`[materialOptimization] Added default material to mesh "${mesh.name}"`);
+      logger.log(`[materialOptimization] Added default material to mesh "${mesh.name}"`);
     }
   }
 }
@@ -386,7 +387,7 @@ export function optimizeMaterialsForScene(model: THREE.Group): OptimizationResul
 
   // Log summary in dev mode
   if (IS_DEV) {
-    console.log('[materialOptimization] Summary:', {
+    logger.log('[materialOptimization] Summary:', {
       meshes: result.totalMeshes,
       textured: result.texturedMaterials,
       fallback: result.fallbackMaterials,

@@ -10,6 +10,7 @@ import {
   DocumentProcessingError,
 } from '../utils/documentProcessor';
 import { supabase } from '../lib/supabase';
+import { AppError } from '../utils/errors';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,9 +140,10 @@ export async function extractStepsFromFile(
           false
         );
       }
+      const isRetryableServerStatus = response.status >= 500 || response.status === 429;
       throw new SOPServiceError(
         String(body?.error || `Server error (${response.status})`),
-        response.status >= 500
+        isRetryableServerStatus
       );
     }
 
@@ -179,13 +181,13 @@ export async function extractStepsFromFile(
 // Error class
 // ---------------------------------------------------------------------------
 
-export class SOPServiceError extends Error {
+export class SOPServiceError extends AppError {
+  readonly code = 'SOP_SERVICE_ERROR';
   /** Whether the same file could succeed on retry (e.g. network issue). */
-  retryable: boolean;
+  readonly retryable: boolean;
 
   constructor(message: string, retryable: boolean) {
     super(message);
-    this.name = 'SOPServiceError';
     this.retryable = retryable;
   }
 }

@@ -6,6 +6,7 @@ import { AuthCheckEmailPanel } from './auth/AuthCheckEmailPanel';
 import { AuthFormPanel } from './auth/AuthFormPanel';
 import { isEmailNotConfirmedError, toFriendlyAuthErrorMessage } from './auth/authErrors';
 import type { AuthMode, AuthSuccessState, PendingEmailState } from './auth/authTypes';
+import { logger } from '../utils/logger';
 
 export function AuthPage(): JSX.Element {
   const location = useLocation();
@@ -247,7 +248,7 @@ export function AuthPage(): JSX.Element {
 
       navigate('/', { replace: true });
     } catch (error) {
-      console.error('[AuthPage] Authentication failed:', error);
+      logger.error('[AuthPage] Authentication failed:', error);
       setErrorMessage(
         error instanceof Error ? toFriendlyAuthErrorMessage(error.message) : 'Authentication failed.'
       );

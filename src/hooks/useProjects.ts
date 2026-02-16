@@ -13,6 +13,8 @@ import {
   toThumbnailStorageRef,
   uploadThumbnailToStorage,
 } from '../utils/thumbnailUpload';
+import { logger } from '../utils/logger';
+import { StorageError } from '../utils/errors';
 
 const CLOUD_SAVE_RETRY_DELAY_MS = 1500;
 const LOCAL_PROJECTS_CLEANUP_KEY_PREFIX = 'local-projects-cleaned';
@@ -104,7 +106,7 @@ export function useProjects(): UseProjectsResult {
           hasCachedProjects = true;
         }
       } catch (cacheError) {
-        console.warn('[useProjects] Failed to read cached project snapshot:', cacheError);
+        logger.warn('[useProjects] Failed to read cached project snapshot:', cacheError);
       }
 
       if (!hasCachedProjects && isMountedRef.current) {
@@ -120,7 +122,7 @@ export function useProjects(): UseProjectsResult {
             setIsSyncing(false);
           }
           void saveCachedProjectsSnapshot(loaded, userId).catch((cacheError) => {
-            console.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
+            logger.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
           });
           return;
         }
@@ -136,7 +138,7 @@ export function useProjects(): UseProjectsResult {
           setIsSyncing(false);
         }
         void saveCachedProjectsSnapshot(sortedProjects, userId).catch((cacheError) => {
-          console.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
+          logger.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
         });
         if (userId) {
           const cleanupKey = `${LOCAL_PROJECTS_CLEANUP_KEY_PREFIX}:${userId}`;
@@ -147,22 +149,22 @@ export function useProjects(): UseProjectsResult {
                   try {
                     localStorage.setItem(cleanupKey, 'true');
                   } catch (storageError) {
-                    console.warn(
+                    logger.warn(
                       '[useProjects] Failed to persist legacy cleanup flag to localStorage:',
                       storageError
                     );
                   }
                 })
                 .catch((cleanupError) => {
-                  console.warn('[useProjects] Failed to clear legacy local project store:', cleanupError);
+                  logger.warn('[useProjects] Failed to clear legacy local project store:', cleanupError);
                 });
             }
           } catch (storageError) {
-            console.warn('[useProjects] Legacy cleanup flag unavailable in localStorage:', storageError);
+            logger.warn('[useProjects] Legacy cleanup flag unavailable in localStorage:', storageError);
           }
         }
       } catch (err) {
-        console.error(`[useProjects] Failed to load ${persistenceMode} projects:`, err);
+        logger.error(`[useProjects] Failed to load ${persistenceMode} projects:`, err);
         if (isMountedRef.current) {
           setError(
             persistenceMode === 'cloud'
@@ -205,7 +207,7 @@ export function useProjects(): UseProjectsResult {
           }
           return await localPersistence.getProject(id);
         } catch (err) {
-          console.error('[useProjects] Failed to get local project:', err);
+          logger.error('[useProjects] Failed to get local project:', err);
           if (isMountedRef.current) {
             setError('Failed to load project. Please try again.');
           }
@@ -222,7 +224,7 @@ export function useProjects(): UseProjectsResult {
         }
       } catch (err) {
         cloudError = err;
-        console.error('[useProjects] Failed to get cloud project:', err);
+        logger.error('[useProjects] Failed to get cloud project:', err);
       }
 
       try {
@@ -233,7 +235,7 @@ export function useProjects(): UseProjectsResult {
         }
         return cachedProject;
       } catch (err) {
-        console.error('[useProjects] Failed to load cached project fallback:', err);
+        logger.error('[useProjects] Failed to load cached project fallback:', err);
         if (cloudError) {
           if (isMountedRef.current) {
             setError('Failed to load project. Check your connection and try again.');
@@ -286,14 +288,14 @@ export function useProjects(): UseProjectsResult {
       if (!cloudPersistence) {
         try {
           if (!localPersistence) {
-            throw new Error('Local persistence unavailable while signed out.');
+            throw new StorageError('Local persistence unavailable while signed out.');
           }
           await localPersistence.saveProject(updated);
           if (isMountedRef.current) {
             setError(null);
           }
         } catch (err) {
-          console.error('[useProjects] Failed to save project locally:', err);
+          logger.error('[useProjects] Failed to save project locally:', err);
           if (isMountedRef.current) {
             setError('Failed to save project. Please try again.');
           }
@@ -360,7 +362,7 @@ export function useProjects(): UseProjectsResult {
                 );
               }
             } catch (thumbnailPersistError) {
-              console.warn(
+              logger.warn(
                 '[useProjects] Thumbnail uploaded but failed to persist cloud thumbnail reference:',
                 thumbnailPersistError
               );
@@ -368,7 +370,7 @@ export function useProjects(): UseProjectsResult {
           })();
         }
       } catch (err) {
-        console.error('[useProjects] Failed to save project to cloud:', err);
+        logger.error('[useProjects] Failed to save project to cloud:', err);
         // Roll back the optimistic update when no further edits occurred.
         // If the project was saved/edited again since this save began, keep the latest in-memory state.
         setProjects((currentProjects) => {
@@ -411,14 +413,14 @@ export function useProjects(): UseProjectsResult {
       if (!cloudPersistence) {
         try {
           if (!localPersistence) {
-            throw new Error('Local persistence unavailable while signed out.');
+            throw new StorageError('Local persistence unavailable while signed out.');
           }
           await localPersistence.deleteProject(id);
           if (isMountedRef.current) {
             setError(null);
           }
         } catch (err) {
-          console.error('[useProjects] Failed to delete project locally:', err);
+          logger.error('[useProjects] Failed to delete project locally:', err);
           // Restore optimistic removal.
           if (projectToRestore) {
             setProjects((current) => [projectToRestore, ...current]);
@@ -438,7 +440,7 @@ export function useProjects(): UseProjectsResult {
           setError(null);
         }
       } catch (err) {
-        console.error('[useProjects] Failed to delete project from cloud:', err);
+        logger.error('[useProjects] Failed to delete project from cloud:', err);
         // Restore optimistic removal if we can.
         if (projectToRestore) {
           setProjects((current) => [projectToRestore, ...current].sort(
@@ -490,7 +492,7 @@ export function useProjects(): UseProjectsResult {
     }
 
     void saveCachedProjectsSnapshot(projects, userId).catch((cacheError) => {
-      console.warn('[useProjects] Failed to persist project snapshot cache:', cacheError);
+      logger.warn('[useProjects] Failed to persist project snapshot cache:', cacheError);
     });
   }, [isLoading, projects, userId]);
 

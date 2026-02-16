@@ -7,6 +7,7 @@ import {
   type SOPProcessingProgress,
 } from '../../../services/sopService';
 import { ACCEPTED_FILE_TYPES } from '../../../utils/documentProcessor';
+import { logger } from '../../../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,7 +52,7 @@ export function SOPUploadView({ onStepsExtracted, onBack }: SOPUploadViewProps):
         // Success - hand off the steps
         onStepsExtracted(result.steps);
       } catch (error) {
-        console.error('[SOPUploadView] Failed to extract SOP steps:', error);
+        logger.error('[SOPUploadView] Failed to extract SOP steps:', error);
         const message =
           error instanceof SOPServiceError
             ? error.message

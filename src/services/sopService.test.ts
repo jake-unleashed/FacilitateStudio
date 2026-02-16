@@ -71,6 +71,24 @@ describe('sopService', () => {
     } satisfies Partial<SOPServiceError>);
   });
 
+  it('marks rate-limit responses as retryable', async () => {
+    mockProcessDocument.mockResolvedValueOnce({ text: 'hello', wordCount: 1 });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again shortly.' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
+        })
+      )
+    );
+
+    await expect(extractStepsFromFile(createFile())).rejects.toMatchObject({
+      message: 'Rate limit exceeded. Please try again shortly.',
+      retryable: true,
+    } satisfies Partial<SOPServiceError>);
+  });
+
   it('returns extracted steps on success', async () => {
     mockProcessDocument.mockResolvedValueOnce({ text: 'hello', wordCount: 1 });
     vi.stubGlobal(

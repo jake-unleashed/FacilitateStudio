@@ -60,19 +60,23 @@ export interface SceneObject {
   type: 'mesh' | 'light' | 'camera' | 'zone' | 'text-popup' | 'wire';
   icon?: string;
   transform: Transform;
-  properties: {
-    visible: boolean;
-    grabbable?: boolean;
-    hasGravity?: boolean;
-    locked?: boolean;
-    color?: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-  };
+  properties: SceneObjectProperties;
   /** Child meshes within this object (for imported 3D models with hierarchy) */
   children?: ChildMesh[];
   /** Original transform when object was first added (for restore functionality) */
   originalTransform?: Transform;
+}
+
+export interface SceneObjectProperties {
+  visible: boolean;
+  grabbable?: boolean;
+  hasGravity?: boolean;
+  locked?: boolean;
+  color?: string;
+  modelAssetId?: string;
+  modelHeight?: number;
+  baseScale?: number;
+  [key: string]: unknown;
 }
 
 export interface SimStep {

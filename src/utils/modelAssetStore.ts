@@ -26,6 +26,7 @@ import {
   listUserAssets,
   uploadAssetToCloud,
 } from './cloudAssetStore';
+import { logger } from './logger';
 
 // Re-export types for convenience
 export type { AssetMetadata, ModelMetrics };
@@ -285,7 +286,7 @@ export async function getAsset(
       metadata: cloudAsset.metadata,
     };
   } catch (error) {
-    console.warn(`[modelAssetStore] Cloud fallback failed for asset ${assetId}:`, error);
+    logger.warn(`[modelAssetStore] Cloud fallback failed for asset ${assetId}:`, error);
     return null;
   }
 }
@@ -313,7 +314,7 @@ export async function updateAssetMetadata(
   const stored = await db.get('assets', assetId);
 
   if (!stored) {
-    console.warn(`[modelAssetStore] Asset not found: ${assetId}`);
+    logger.warn(`[modelAssetStore] Asset not found: ${assetId}`);
     return;
   }
 
@@ -341,7 +342,7 @@ export async function deleteAsset(assetId: string, options?: CloudAssetOptions):
         await deleteCloudAsset(cloudAsset.storageKey, assetId, userId);
       }
     } catch (error) {
-      console.warn(`[modelAssetStore] Failed to delete cloud copy for asset ${assetId}:`, error);
+      logger.warn(`[modelAssetStore] Failed to delete cloud copy for asset ${assetId}:`, error);
     }
   }
 
@@ -381,7 +382,7 @@ export async function getRecentAssets(limit = 20, options?: CloudAssetOptions): 
       .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
       .slice(0, limit);
   } catch (error) {
-    console.warn('[modelAssetStore] Failed to load cloud recent assets, using local cache only:', error);
+    logger.warn('[modelAssetStore] Failed to load cloud recent assets, using local cache only:', error);
     return localAssets
       .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
       .slice(0, limit);
@@ -412,7 +413,7 @@ export async function getAllAssets(options?: CloudAssetOptions): Promise<AssetMe
     }
     return Array.from(merged.values());
   } catch (error) {
-    console.warn('[modelAssetStore] Failed to load cloud asset list, using local cache only:', error);
+    logger.warn('[modelAssetStore] Failed to load cloud asset list, using local cache only:', error);
     return localAssets;
   }
 }
@@ -576,7 +577,7 @@ export async function migrateLegacyAssets(): Promise<number> {
         // Remove from localStorage after successful migration
         localStorage.removeItem(`${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`);
       } catch (error) {
-        console.error(`[migration] Failed to migrate asset ${meta.id}:`, error);
+        logger.error(`[migration] Failed to migrate asset ${meta.id}:`, error);
       }
     }
 
@@ -586,11 +587,11 @@ export async function migrateLegacyAssets(): Promise<number> {
     }
 
     localStorage.setItem(LEGACY_KEYS.MIGRATION_COMPLETE, 'true');
-    console.log(`[migration] Migrated ${migratedCount}/${oldMetadata.length} assets`);
+    logger.log(`[migration] Migrated ${migratedCount}/${oldMetadata.length} assets`);
 
     return migratedCount;
   } catch (error) {
-    console.error('[migration] Migration failed:', error);
+    logger.error('[migration] Migration failed:', error);
     return migratedCount;
   }
 }

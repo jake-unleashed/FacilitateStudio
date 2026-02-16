@@ -3,6 +3,8 @@ import type { AssetMetadata, ModelFileType } from '../types/model';
 import type { ModelMetrics } from '../types/model';
 import type { ChildMesh } from '../types';
 import { STORAGE_CONFIG } from '../types/model';
+import { StorageError, ValidationError } from './errors';
+import { logger } from './logger';
 
 const USER_ASSETS_BUCKET = 'user-assets';
 const FALLBACK_PROJECT_SEGMENT = 'library';
@@ -128,7 +130,7 @@ async function getExistingCloudRowByAssetId(assetId: string, userId: string): Pr
       .eq('owner_id', userId)
       .maybeSingle();
     if (error) {
-      throw new Error(`Failed to query cloud asset: ${error.message}`);
+      throw new StorageError(`Failed to query cloud asset: ${error.message}`);
     }
     return (data as AssetRow | null) ?? null;
   }
@@ -143,7 +145,7 @@ async function getExistingCloudRowByAssetId(assetId: string, userId: string): Pr
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to query existing cloud asset: ${error.message}`);
+    throw new StorageError(`Failed to query existing cloud asset: ${error.message}`);
   }
 
   return (data as AssetRow | null) ?? null;
@@ -162,10 +164,10 @@ export async function uploadAssetToCloud(
   metadata: CloudUploadMetadata
 ): Promise<{ storageKey: string }> {
   if (metadata.fileSize > STORAGE_CONFIG.MAX_FILE_SIZE) {
-    throw new Error('File exceeds maximum upload size of 100MB.');
+    throw new ValidationError('File exceeds maximum upload size of 100MB.');
   }
   if (metadata.fileType !== 'glb' && metadata.fileType !== 'fbx' && metadata.fileType !== 'obj') {
-    throw new Error('Unsupported model file type.');
+    throw new ValidationError('Unsupported model file type.');
   }
 
   const storageKey = buildStorageKey({
@@ -183,7 +185,7 @@ export async function uploadAssetToCloud(
     });
 
   if (uploadError) {
-    throw new Error(`Failed to upload model to cloud storage: ${uploadError.message}`);
+    throw new StorageError(`Failed to upload model to cloud storage: ${uploadError.message}`);
   }
 
   const uploadDate = new Date().toISOString();
@@ -206,7 +208,7 @@ export async function uploadAssetToCloud(
   if (isUuid(assetId)) {
     const { error: upsertError } = await supabase.from('assets').upsert(rowPayload, { onConflict: 'id' });
     if (upsertError) {
-      throw new Error(`Failed to save cloud asset metadata: ${upsertError.message}`);
+      throw new StorageError(`Failed to save cloud asset metadata: ${upsertError.message}`);
     }
   } else {
     const existing = await getExistingCloudRowByAssetId(assetId, userId);
@@ -217,12 +219,12 @@ export async function uploadAssetToCloud(
         .eq('id', existing.id)
         .eq('owner_id', userId);
       if (updateError) {
-        throw new Error(`Failed to update cloud asset metadata: ${updateError.message}`);
+        throw new StorageError(`Failed to update cloud asset metadata: ${updateError.message}`);
       }
     } else {
       const { error: insertError } = await supabase.from('assets').insert(rowPayload);
       if (insertError) {
-        throw new Error(`Failed to save cloud asset metadata: ${insertError.message}`);
+        throw new StorageError(`Failed to save cloud asset metadata: ${insertError.message}`);
       }
     }
   }
@@ -233,7 +235,7 @@ export async function uploadAssetToCloud(
 export async function downloadAssetFromCloud(storageKey: string): Promise<Blob> {
   const { data, error } = await supabase.storage.from(USER_ASSETS_BUCKET).download(storageKey);
   if (error || !data) {
-    throw new Error(`Failed to download cloud asset: ${error?.message ?? 'Unknown error'}`);
+    throw new StorageError(`Failed to download cloud asset: ${error?.message ?? 'Unknown error'}`);
   }
   return data;
 }
@@ -243,7 +245,7 @@ export async function getAssetSignedUrl(storageKey: string): Promise<string> {
     .from(USER_ASSETS_BUCKET)
     .createSignedUrl(storageKey, 60 * 60);
   if (error || !data?.signedUrl) {
-    throw new Error(`Failed to create asset signed URL: ${error?.message ?? 'Unknown error'}`);
+    throw new StorageError(`Failed to create asset signed URL: ${error?.message ?? 'Unknown error'}`);
   }
   return data.signedUrl;
 }
@@ -277,14 +279,14 @@ export async function deleteCloudAsset(
 
   const { error: rowDeleteError } = await query;
   if (rowDeleteError) {
-    throw new Error(`Failed to delete cloud asset metadata: ${rowDeleteError.message}`);
+    throw new StorageError(`Failed to delete cloud asset metadata: ${rowDeleteError.message}`);
   }
 
   const { error: storageError } = await supabase.storage.from(USER_ASSETS_BUCKET).remove([storageKey]);
   if (storageError) {
     // Log but don't throw — the metadata is already gone, so the asset is logically deleted.
     // The orphaned storage object will not be referenced by any row.
-    console.warn(`[cloudAssetStore] Orphaned storage object after metadata deletion: ${storageError.message}`);
+    logger.warn(`[cloudAssetStore] Orphaned storage object after metadata deletion: ${storageError.message}`);
   }
 }
 
@@ -297,7 +299,7 @@ export async function listUserAssets(userId: string, limit = 100): Promise<Cloud
     .limit(limit);
 
   if (error) {
-    throw new Error(`Failed to load cloud assets: ${error.message}`);
+    throw new StorageError(`Failed to load cloud assets: ${error.message}`);
   }
 
   const rows = (data as AssetRow[] | null) ?? [];

@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { getAsset, getAssetMetadata, updateAssetMetadata, blobToArrayBuffer } from '../modelAssetStore';
 import { loadAndPreprocessModelFromArrayBuffer } from '../modelLoaders';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { logger } from '../logger';
 
 /**
  * Throttle to limit concurrent thumbnail generation.
@@ -227,7 +228,7 @@ export async function ensureAssetThumbnail(assetId: string): Promise<string | nu
   // Check if thumbnail already exists
   const metadata = await getAssetMetadata(assetId);
   if (!metadata) {
-    console.warn(`[ensureAssetThumbnail] Asset not found: ${assetId}`);
+    logger.warn(`[ensureAssetThumbnail] Asset not found: ${assetId}`);
     return null;
   }
 
@@ -237,13 +238,13 @@ export async function ensureAssetThumbnail(assetId: string): Promise<string | nu
 
   // Generate thumbnail (throttled to avoid UI freezing)
   return thumbnailThrottle.add(async () => {
-    console.log(`[ensureAssetThumbnail] Generating thumbnail for ${assetId}`);
+    logger.log(`[ensureAssetThumbnail] Generating thumbnail for ${assetId}`);
 
     try {
       // Load the asset
       const asset = await getAsset(assetId);
       if (!asset) {
-        console.warn(`[ensureAssetThumbnail] Asset data not found: ${assetId}`);
+        logger.warn(`[ensureAssetThumbnail] Asset data not found: ${assetId}`);
         return null;
       }
 
@@ -263,12 +264,12 @@ export async function ensureAssetThumbnail(assetId: string): Promise<string | nu
           thumbnail,
           thumbnailUpdatedAt: new Date().toISOString(),
         });
-        console.log(`[ensureAssetThumbnail] Thumbnail generated and cached for ${assetId}`);
+        logger.log(`[ensureAssetThumbnail] Thumbnail generated and cached for ${assetId}`);
       }
 
       return thumbnail;
     } catch (error) {
-      console.error(`[ensureAssetThumbnail] Failed to generate thumbnail for ${assetId}:`, error);
+      logger.error(`[ensureAssetThumbnail] Failed to generate thumbnail for ${assetId}:`, error);
       return null;
     }
   });

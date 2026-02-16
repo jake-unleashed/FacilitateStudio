@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import type { Project } from '../types/project';
 import type { AsyncProjectPersistence } from './projectPersistence';
 import { resolveThumbnailUrl } from '../utils/thumbnailUpload';
+import { StorageError, ValidationError } from '../utils/errors';
 
 interface ProjectDataRow {
   objects?: Project['objects'];
@@ -57,11 +58,11 @@ async function mapProjectRowsConcurrently(rows: ProjectRow[]): Promise<Project[]
 async function requireAuthenticatedUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser();
   if (error) {
-    throw new Error(`Failed to resolve authenticated user: ${error.message}`);
+    throw new StorageError(`Failed to resolve authenticated user: ${error.message}`);
   }
 
   if (!data.user) {
-    throw new Error('You must be signed in to access cloud projects.');
+    throw new ValidationError('You must be signed in to access cloud projects.');
   }
 
   return data.user.id;
@@ -76,7 +77,7 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
       .order('updated_at', { ascending: false });
 
     if (error) {
-      throw new Error(`Failed to load cloud projects: ${error.message}`);
+      throw new StorageError(`Failed to load cloud projects: ${error.message}`);
     }
 
     const rows = (data ?? []) as ProjectRow[];
@@ -100,7 +101,7 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
       .maybeSingle();
 
     if (error) {
-      throw new Error(`Failed to load cloud project: ${error.message}`);
+      throw new StorageError(`Failed to load cloud project: ${error.message}`);
     }
 
     if (!data) {
@@ -132,7 +133,7 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
     );
 
     if (error) {
-      throw new Error(`Failed to save cloud project: ${error.message}`);
+      throw new StorageError(`Failed to save cloud project: ${error.message}`);
     }
   }
 
@@ -144,7 +145,7 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
       .is('deleted_at', null);
 
     if (error) {
-      throw new Error(`Failed to delete cloud project: ${error.message}`);
+      throw new StorageError(`Failed to delete cloud project: ${error.message}`);
     }
   }
 }

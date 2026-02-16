@@ -3,6 +3,7 @@
  * Extracts plain text from PDF, Word, and text files for SOP analysis.
  */
 
+import { ValidationError } from './errors';
 // NOTE: We intentionally lazy-load PDF.js inside `processPDF()`.
 // `pdfjs-dist` depends on browser globals (e.g. DOMMatrix). Importing it at
 // module load time breaks Node/JSDOM unit tests that import this file.
@@ -58,11 +59,10 @@ export type DocumentErrorType =
   | 'empty_document'
   | 'extraction_failed';
 
-export class DocumentProcessingError extends Error {
+export class DocumentProcessingError extends ValidationError {
   type: DocumentErrorType;
   constructor(type: DocumentErrorType, message: string) {
     super(message);
-    this.name = 'DocumentProcessingError';
     this.type = type;
   }
 }

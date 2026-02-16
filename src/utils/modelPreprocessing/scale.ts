@@ -6,6 +6,7 @@ import { logModelHierarchy } from './debug';
 import { removeHelperObjects } from './cleanup';
 import { bakeTransformsIntoGeometry } from './bake';
 import { getModelBoundingBox } from './metrics';
+import { logger } from '../logger';
 
 /**
  * Auto-scale model to target size.
@@ -24,10 +25,10 @@ export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TA
 
   const removedCount = removeHelperObjects(model);
   if (IS_DEV && removedCount > 0) {
-    console.log(`[modelPreprocessing] Removed ${removedCount} helper objects`);
+    logger.log(`[modelPreprocessing] Removed ${removedCount} helper objects`);
   }
 
-  if (IS_DEV) console.log('[modelPreprocessing] Baking transforms into geometry...');
+  if (IS_DEV) logger.log('[modelPreprocessing] Baking transforms into geometry...');
   bakeTransformsIntoGeometry(model);
 
   const box = getModelBoundingBox(model);
@@ -46,7 +47,7 @@ export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TA
   if (largest > secondLargest * 2.5 && secondLargest > 0) {
     effectiveMaxDimension = secondLargest * 1.5;
     if (IS_DEV) {
-      console.log('[modelPreprocessing] Aspect ratio cap applied for scaling:', {
+      logger.log('[modelPreprocessing] Aspect ratio cap applied for scaling:', {
         largest: largest.toFixed(2),
         secondLargest: secondLargest.toFixed(2),
         capped: effectiveMaxDimension.toFixed(2),
@@ -57,7 +58,7 @@ export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TA
   }
 
   if (IS_DEV) {
-    console.log('[modelPreprocessing] World-space bounds (after baking):', {
+    logger.log('[modelPreprocessing] World-space bounds (after baking):', {
       min: `(${box.min.x.toFixed(2)}, ${box.min.y.toFixed(2)}, ${box.min.z.toFixed(2)})`,
       max: `(${box.max.x.toFixed(2)}, ${box.max.y.toFixed(2)}, ${box.max.z.toFixed(2)})`,
       size: `(${size.x.toFixed(2)}, ${size.y.toFixed(2)}, ${size.z.toFixed(2)})`,
@@ -69,7 +70,7 @@ export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TA
 
   if (effectiveMaxDimension <= 0 || !isFinite(effectiveMaxDimension)) {
     if (IS_DEV) {
-      console.warn('[modelPreprocessing] Invalid effective dimension for scaling:', effectiveMaxDimension);
+      logger.warn('[modelPreprocessing] Invalid effective dimension for scaling:', effectiveMaxDimension);
     }
     return 1;
   }
@@ -77,7 +78,7 @@ export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TA
   const scaleFactor = targetSize / effectiveMaxDimension;
 
   if (IS_DEV) {
-    console.log('[modelPreprocessing] Scale computation:', {
+    logger.log('[modelPreprocessing] Scale computation:', {
       targetSize,
       effectiveMaxDimension: effectiveMaxDimension.toFixed(4),
       scaleFactor: scaleFactor.toFixed(8),
@@ -108,7 +109,7 @@ export function autoScaleModel(model: THREE.Group, targetSize: number = MODEL_TA
 
   const actualMaxDimension = Math.max(verifySize.x, verifySize.y, verifySize.z);
   if (IS_DEV) {
-    console.log('[modelPreprocessing] AFTER scaling - verification:', {
+    logger.log('[modelPreprocessing] AFTER scaling - verification:', {
       newSize: `(${verifySize.x.toFixed(2)}, ${verifySize.y.toFixed(2)}, ${verifySize.z.toFixed(2)})`,
       newMaxDimension: actualMaxDimension.toFixed(2),
       expectedMaxDimension: targetSize.toFixed(2),

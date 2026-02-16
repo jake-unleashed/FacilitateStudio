@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 import { IS_DEV } from './env';
 import { ChildMesh, DEFAULT_TRANSFORM } from '../../types';
+import { logger } from '../logger';
 
 /**
  * Information about an extracted child mesh for scene hierarchy display.
@@ -51,7 +52,7 @@ function calculateGeometryCenterOffset(obj: THREE.Object3D): { x: number; y: num
       box.getCenter(center);
 
       if (IS_DEV) {
-        console.log(
+        logger.log(
           `[calculateGeometryCenterOffset] Mesh "${obj.name}": center = (${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`
         );
       }
@@ -104,7 +105,7 @@ function calculateGeometryCenterOffset(obj: THREE.Object3D): { x: number; y: num
   box.getCenter(center);
 
   if (IS_DEV) {
-    console.log(
+    logger.log(
       `[calculateGeometryCenterOffset] Group "${obj.name}": center = (${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`
     );
   }
@@ -180,7 +181,7 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
 
   if (meshCount <= 1 && namedGroupCount === 0) {
     if (IS_DEV) {
-      console.log('[extractChildMeshes] Single mesh model, no children to extract');
+      logger.log('[extractChildMeshes] Single mesh model, no children to extract');
     }
     return children;
   }
@@ -241,7 +242,7 @@ export function extractChildMeshes(model: THREE.Group): ChildMesh[] {
   }
 
   if (IS_DEV) {
-    console.log(
+    logger.log(
       `[extractChildMeshes] Extracted ${children.length} children:`,
       children.map((c) => ({ name: c.name, depth: c.path.length }))
     );
@@ -260,7 +261,7 @@ export function findChildByPath(model: THREE.Object3D, path: string[]): THREE.Ob
     const child = current.children.find((c) => c.name === segment || `child_${c.id}` === segment);
     if (!child) {
       if (IS_DEV) {
-        console.warn(`[findChildByPath] Could not find segment "${segment}" in path`, path);
+        logger.warn(`[findChildByPath] Could not find segment "${segment}" in path`, path);
       }
       return null;
     }

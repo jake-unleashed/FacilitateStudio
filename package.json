@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c \"magenta,cyan\" \"npm run dev:api\" \"npm run dev:web\"",
     "dev:web": "vite",
@@ -10,6 +13,7 @@
     "eval:sop": "node scripts/evalSopExtraction.mjs samples",
     "eval:sop:synthetic": "node scripts/evalSopExtraction.mjs --synthetic 8",
     "build": "tsc && vite build",
+    "build:analyze": "tsc && vite build --mode analyze",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0 && npm run check:typography-min-text",
@@ -44,7 +48,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.10.1",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.2.0",
@@ -71,6 +76,7 @@
     "postcss": "^8.5.6",
     "prettier": "^3.2.4",
     "prettier-plugin-tailwindcss": "^0.5.11",
+    "rollup-plugin-visualizer": "^6.0.5",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",

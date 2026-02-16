@@ -9,6 +9,7 @@ import { ProjectMetadata } from '../types/project';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
 import { useRouteTransition } from '../contexts/RouteTransitionContext';
 import { extractThumbnailStoragePath, resolveThumbnailUrl } from '../utils/thumbnailUpload';
+import { logger } from '../utils/logger';
 
 // =============================================================================
 // Sub-components
@@ -304,7 +305,7 @@ export function HomePage(): JSX.Element {
       await signOut();
       await transitionTo('/auth');
     } catch (error) {
-      console.error('[HomePage] Failed to sign out:', error);
+      logger.error('[HomePage] Failed to sign out:', error);
       showPopup({
         type: 'error',
         title: 'Sign Out Failed',

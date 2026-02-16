@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePopup } from '../../contexts/PopupContext';
+import { logger } from '../../utils/logger';
 
 export const ActionButtons = memo<{
   onPreviewClick?: () => void;
@@ -22,7 +23,7 @@ export const ActionButtons = memo<{
       await signOut();
       navigate('/auth', { replace: true });
     } catch (error) {
-      console.error('[ActionButtons] Failed to sign out:', error);
+      logger.error('[ActionButtons] Failed to sign out:', error);
       showPopup({
         type: 'error',
         title: 'Sign Out Failed',

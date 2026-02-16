@@ -22,6 +22,7 @@ import {
 } from './modelLoaders';
 import { deepCloneGroup } from './deepCloneModel';
 import { supabase } from '../lib/supabase';
+import { logger } from './logger';
 
 type AssetResolverResult = { url: string; fileType: ModelFileType } | null;
 
@@ -150,7 +151,7 @@ export async function preloadModel(assetId: string): Promise<void> {
   try {
     await getOrLoadModel(assetId);
   } catch (error) {
-    console.warn(`[modelCache] Failed to preload ${assetId}:`, error);
+    logger.warn(`[modelCache] Failed to preload ${assetId}:`, error);
   }
 }
 
@@ -209,7 +210,7 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
     error: sessionError,
   } = await supabase.auth.getSession();
   if (sessionError) {
-    console.warn('[modelCache] Failed to resolve current session for cloud fallback:', sessionError);
+    logger.warn('[modelCache] Failed to resolve current session for cloud fallback:', sessionError);
   }
   const userId = session?.user?.id;
 
@@ -346,7 +347,7 @@ function maybeCleanupCache(): void {
     cache.delete(id);
   }
 
-  console.log(`[modelCache] Evicted ${toRemove} models (LRU)`);
+  logger.log(`[modelCache] Evicted ${toRemove} models (LRU)`);
 }
 
 /**
