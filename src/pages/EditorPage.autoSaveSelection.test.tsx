@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { EditorPage } from './EditorPage';
 
@@ -80,7 +80,20 @@ vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
 
 // Mock heavy UI components we don't need for this behavior test
 vi.mock('../components/TopBar', () => ({ TopBar: () => null }));
-vi.mock('../components/LeftSidebar', () => ({ LeftSidebar: () => null }));
+vi.mock('../components/LeftSidebar', () => {
+  const MockLeftSidebar = React.forwardRef((_props: unknown, ref: React.Ref<unknown>) => {
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        flushPendingEdits: () => {},
+      }),
+      []
+    );
+    return null;
+  });
+  MockLeftSidebar.displayName = 'MockLeftSidebar';
+  return { LeftSidebar: MockLeftSidebar };
+});
 vi.mock('../components/NavigationHelp', () => ({ NavigationHelp: () => null }));
 vi.mock('../components/CameraResetButton', () => ({ CameraResetButton: () => null }));
 vi.mock('../components/DebugMenu', () => ({ DebugMenu: () => null }));
@@ -109,6 +122,7 @@ vi.mock('../components/MainCanvas', () => {
     return (
       <div data-testid="mock-main-canvas">
         <div data-testid="mock-selected">{selectedObjectId ?? 'none'}</div>
+        <div data-testid="mock-first-id">{first?.id ?? 'none'}</div>
         <button onClick={() => onSelectObject(first?.id ?? null)}>Select First</button>
         <button
           onClick={() => {
@@ -152,12 +166,22 @@ describe('EditorPage auto-save + selection stability', () => {
     // Wait for initialization to complete (mock canvas renders only after loading state)
     await screen.findByTestId('mock-main-canvas');
 
+    // Ensure the editor has hydrated objects before attempting selection.
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-first-id')).toHaveTextContent('obj-1');
+    });
+
     // Select the object so RightSidebar is mounted
-    fireEvent.click(screen.getByRole('button', { name: 'Select First' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Select First' }));
+    });
+    expect(await screen.findByTestId('mock-selected')).toHaveTextContent('obj-1');
     expect(await screen.findByTestId('right-sidebar')).toBeInTheDocument();
 
     // Expand rotation options (this state used to be lost due to unmount/remount every autosave)
-    fireEvent.click(screen.getByTestId('rotation-expand-button'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('rotation-expand-button'));
+    });
     expect(screen.getByTestId('rotation-expand-button')).toHaveAttribute('aria-expanded', 'true');
 
     // Switch to fake timers only after all Testing Library async queries are done.
@@ -165,10 +189,14 @@ describe('EditorPage auto-save + selection stability', () => {
     vi.useFakeTimers();
 
     // Trigger a change that causes auto-save (objects update)
-    fireEvent.click(screen.getByRole('button', { name: 'Update First' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Update First' }));
+    });
 
     // Auto-save is debounced (cloud-friendly debounce)
-    await vi.advanceTimersByTimeAsync(2500);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500);
+    });
 
     // Thumbnail capture happened, but selection should remain (sidebar stays mounted)
     expect(captureThumbnailMock).toHaveBeenCalledTimes(1);

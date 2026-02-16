@@ -7,21 +7,14 @@ import { MainCanvas } from '../components/MainCanvas';
 import { NavigationHelp } from '../components/NavigationHelp';
 import { DebugMenu } from '../components/DebugMenu';
 import { CameraResetButton } from '../components/CameraResetButton';
-import { SaveOverlay } from '../components/SaveOverlay';
+import { SaveOverlay, type SaveOverlayProps } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
 import { PublishModal } from '../components/PublishModal';
 import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { GuidedWorkflowOverlay, WelcomeModal } from '../components/guidedWorkflow';
 import { PhaseIndicator } from '../components/guidedWorkflow/PhaseIndicator';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
-import { calculateIdealCameraPosition, calculateSoftFocus } from '../utils/focusUtils';
-import { calculateFocusTargetForObject } from '../utils/focusTargetCalculator';
 import { hasUsableSteps } from '../utils/stepValidation';
-import {
-  calculateOcclusionAwareFocusCamera,
-  calculateQuickFocusCamera,
-  MIN_FOCUS_CAMERA_Y,
-} from '../utils/focusCameraOcclusion';
 import {
   SceneObject,
   SidebarSection,
@@ -35,6 +28,7 @@ import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
+import { logger } from '../utils/logger';
 import { PopupProvider, usePopup } from '../contexts/PopupContext';
 import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
 import { GlobalPopup } from '../components/GlobalPopup';
@@ -42,6 +36,12 @@ import { useUndoRedo } from '../hooks/useUndoRedo';
 import { useEditorProjectLifecycle } from '../hooks/editor/useEditorProjectLifecycle';
 import { useEditorNavigationGuards } from '../hooks/editor/useEditorNavigationGuards';
 import { useRecordingEndTransform } from '../hooks/editor/useRecordingEndTransform';
+import { useEntryFade } from '../hooks/editor/useEntryFade';
+import { useCameraFocus } from '../hooks/editor/useCameraFocus';
+import { useErrorPopups } from '../hooks/editor/useErrorPopups';
+import { useAutosaveHydration } from '../hooks/editor/useAutosaveHydration';
+import { useTestHooks } from '../hooks/editor/useTestHooks';
+import { useGuidedWelcome } from '../hooks/editor/useGuidedWelcome';
 import type { LatestRecordingEndTransformRefValue } from '../hooks/editor/useRecordingEndTransform';
 import { useGuidedWorkflow } from '../hooks/useGuidedWorkflow';
 import type { PerformanceStats } from '../components/PerformanceMonitor';
@@ -51,7 +51,6 @@ import {
   applyChildWorldPosition,
   findChildByPathString,
 } from '../utils/childTransformUtils';
-import * as THREE from 'three';
 import { AssetMetadata, UploadProgress } from '../types/model';
 import {
   createUpdateObjectCommandHelper,
@@ -65,9 +64,7 @@ import {
   findObjectIndex,
   findStepIndex,
 } from '../hooks/undoRedo/integration';
-import { UpdateObjectCommand, UndoRedoCommand } from '../hooks/undoRedo/types';
 import '../types/testHooks'; // Import for global type augmentation
-import CameraControlsImpl from 'camera-controls';
 
 /**
  * EditorPage - The main 3D simulation editor interface.
@@ -105,27 +102,16 @@ function EditorPageContent() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
-  const [hasFirstFrame, setHasFirstFrame] = useState(false);
-  const [isEntryFadeVisible, setIsEntryFadeVisible] = useState(false);
-  const [isEntryFadeFading, setIsEntryFadeFading] = useState(false);
-  const [isEntryTransitionDone, setIsEntryTransitionDone] = useState(true);
-  const entryFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const entryFadeStartedAtRef = useRef<number | null>(null);
-  const entryFadeCompletedRef = useRef(false);
   // Recording state for move-item step end position
   // recordingPositionForStepId is owned by useRecordingEndTransform (below)
 
   const handleSelectObject = useCallback((id: string | null) => {
-    // During guided model upload, avoid selection so users don’t accidentally
-    // enter object manipulation modes before we introduce them.
     const guidedPhase =
       typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
-    // Always allow clearing selection (used when entering phases like model-upload).
     if (id === null) {
       setSelectedObjectId(null);
       return;
     }
-
     if (guidedPhase === 'model-upload') return;
     if (guidedPhase === 'model-positioning' && id) {
       const parsed = parseSelectionId(id);
@@ -135,9 +121,6 @@ function EditorPageContent() {
       }
     }
     setSelectedObjectId(id);
-    // Note: We no longer auto-switch panels when selecting an object.
-    // Users can manually switch to the Objects tab if they want to see the hierarchy.
-    // This allows users to stay on the Add panel when adding multiple objects.
   }, []);
 
   // Undo/Redo system - initialize with empty state, will be set when project loads
@@ -184,7 +167,7 @@ function EditorPageContent() {
     navigate,
     setUndoRedoState,
     onLoadError: (error: unknown) => {
-      console.error('[EditorPage] Failed to initialize project:', error);
+      logger.error('[EditorPage] Failed to initialize project:', error);
       showPopup({
         type: 'error',
         title: 'Project Load Failed',
@@ -238,75 +221,30 @@ function EditorPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [undoRedoState]);
 
-  // Expose test hooks for automated testing (development only)
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return;
+  useTestHooks({
+    objects,
+    canUndo,
+    canRedo,
+    executeCommand,
+    undo,
+    redo,
+    undoStackSizeRef,
+    redoStackSizeRef,
+  });
 
-    const createMoveCommand = (
-      objectId: string,
-      x: number,
-      z: number,
-      description?: string
-    ): UpdateObjectCommand => {
-      const obj = objects.find((o) => o.id === objectId);
-      if (!obj) throw new Error(`Object ${objectId} not found`);
+  const { cameraControlsRef, handleCameraControlsReady, handleSceneReady, handleFocusObject } =
+    useCameraFocus();
 
-      return {
-        type: 'updateObject',
-        timestamp: Date.now(),
-        description: description || `Move to (${x.toFixed(1)}, ${z.toFixed(1)})`,
-        objectId,
-        previousState: obj,
-        newState: { ...obj, transform: { ...obj.transform, x, z } },
-      };
-    };
-
-    (window as Window).__testHooks = {
-      // Stack queries (using refs for real-time values)
-      getUndoStackSize: () => undoStackSizeRef.current,
-      getRedoStackSize: () => redoStackSizeRef.current,
-      getCurrentObjects: () => objects,
-      canUndo,
-      canRedo,
-
-      // Command execution
-      executeCommand: (command: UndoRedoCommand) => executeCommand(command),
-      undo,
-      redo,
-
-      // Programmatic object movement
-      moveObject: (objectId: string, x: number, z: number, description?: string) => {
-        const command = createMoveCommand(objectId, x, z, description);
-        executeCommand(command);
-        return command;
-      },
-
-      testMove: (objectId: string, deltaX: number, deltaZ: number) => {
-        const obj = objects.find((o) => o.id === objectId);
-        if (!obj) throw new Error(`Object ${objectId} not found`);
-
-        const command = createMoveCommand(
-          objectId,
-          obj.transform.x + deltaX,
-          obj.transform.z + deltaZ,
-          `Move by (${deltaX.toFixed(1)}, ${deltaZ.toFixed(1)})`
-        );
-        executeCommand(command);
-        return command;
-      },
-    };
-
-    return () => {
-      delete window.__testHooks;
-    };
-  }, [objects, canUndo, canRedo, executeCommand, undo, redo]);
-
-  // Use ref for camera controls to avoid stale closures
-  const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
-  // Keep a ref to the Three.js scene for occlusion-aware focus raycasts.
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  // Force re-render when controls become available
-  const [, setControlsReady] = useState(false);
+  const {
+    setHasFirstFrame,
+    isEntryFadeVisible,
+    isEntryFadeFading,
+    isEntryTransitionDone,
+  } = useEntryFade({
+    currentProject,
+    isInitialized,
+    currentProjectId: currentProject?.id ?? null,
+  });
 
   // Track debug cube count for naming
   const debugCubeCountRef = useRef(0);
@@ -323,29 +261,13 @@ function EditorPageContent() {
     clearError: clearUploadError,
   } = useModelUpload();
 
-  // Show popup when upload error occurs
-  useEffect(() => {
-    if (uploadLastError) {
-      showPopup({
-        type: 'error',
-        title: 'Upload Failed',
-        message: uploadLastError,
-      });
-      // Clear the error from the hook so it doesn't show again if component re-renders
-      clearUploadError();
-    }
-  }, [uploadLastError, showPopup, clearUploadError]);
-
-  // Surface persistence errors that happen outside explicit load/save flows.
-  useEffect(() => {
-    if (!projectsError) return;
-    showPopup({
-      type: 'error',
-      title: 'Cloud Sync Failed',
-      message: projectsError,
-    });
-    clearProjectsError();
-  }, [projectsError, showPopup, clearProjectsError]);
+  useErrorPopups({
+    uploadLastError,
+    clearUploadError,
+    projectsError,
+    clearProjectsError,
+    popupApi: { showPopup },
+  });
 
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -419,60 +341,22 @@ function EditorPageContent() {
 
   const hasReadySteps = useMemo(() => hasUsableSteps(steps), [steps]);
 
-  // Establish baseline AFTER initial state load so autosave knows what "saved" means
-  useEffect(() => {
-    if (!isInitialized || !currentProjectId) return;
-    if (hasHydratedRef.current) return;
-    // Wait until local state has synced to undo/redo state, otherwise baseline may capture stale defaults
-    // and trigger an unnecessary autosave during initial hydration.
-    if (
-      undoRedoState.objects !== objects ||
-      undoRedoState.steps !== steps ||
-      undoRedoState.simulationTitle !== simulationTitle
-    ) {
-      return;
-    }
-    hasHydratedRef.current = true;
-    setBaseline();
-  }, [
+  useAutosaveHydration({
     currentProjectId,
     isInitialized,
     setBaseline,
-    undoRedoState.objects,
-    undoRedoState.steps,
-    undoRedoState.simulationTitle,
+    undoRedoObjects: undoRedoState.objects,
+    undoRedoSteps: undoRedoState.steps,
+    undoRedoTitle: undoRedoState.simulationTitle,
     objects,
     steps,
     simulationTitle,
-  ]);
-
-  // Reset hydration when project changes
-  useEffect(() => {
-    hasHydratedRef.current = false;
-    setHasFirstFrame(false);
-    entryFadeCompletedRef.current = false;
-    entryFadeStartedAtRef.current = null;
-    setIsEntryFadeVisible(false);
-    setIsEntryFadeFading(false);
-    setIsEntryTransitionDone(true);
-    if (entryFadeTimerRef.current) {
-      clearTimeout(entryFadeTimerRef.current);
-      entryFadeTimerRef.current = null;
-    }
-  }, [currentProjectId]);
+    hasHydratedRef,
+  });
 
   // ============================================================================
   // Memoized Callbacks - Stable references for child components
   // ============================================================================
-
-  const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
-    cameraControlsRef.current = controls;
-    setControlsReady(true);
-  }, []);
-
-  const handleSceneReady = useCallback((scene: THREE.Scene) => {
-    sceneRef.current = scene;
-  }, []);
 
   const handleCanvasReady = useCallback((canvas: HTMLCanvasElement) => {
     canvasRef.current = canvas;
@@ -480,327 +364,14 @@ function EditorPageContent() {
 
   const handleFirstFrame = useCallback(() => {
     setHasFirstFrame(true);
-  }, []);
+  }, [setHasFirstFrame]);
 
-  // Entry fade overlay: masks WebGL/scene initialization flashes, then dissolves away.
-  useEffect(() => {
-    const isNewProject =
-      !!currentProject && currentProject.objects.length === 0 && currentProject.steps.length === 0;
-    if (!isInitialized || !isNewProject) {
-      setIsEntryFadeVisible(false);
-      setIsEntryFadeFading(false);
-      setIsEntryTransitionDone(true);
-      entryFadeCompletedRef.current = false;
-      return;
-    }
-
-    if (entryFadeCompletedRef.current) return;
-
-    // Show immediately on new projects once initialized.
-    if (!isEntryFadeVisible) {
-      setIsEntryFadeVisible(true);
-      setIsEntryFadeFading(false);
-      setIsEntryTransitionDone(false);
-      entryFadeStartedAtRef.current =
-        typeof performance !== 'undefined' ? performance.now() : Date.now();
-    }
-
-    if (!hasFirstFrame) return;
-
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    // Reduced motion: don't linger or animate; just ensure the overlay is gone.
-    if (prefersReducedMotion) {
-      setIsEntryFadeVisible(false);
-      setIsEntryFadeFading(false);
-      setIsEntryTransitionDone(true);
-      entryFadeCompletedRef.current = true;
-      if (entryFadeTimerRef.current) {
-        clearTimeout(entryFadeTimerRef.current);
-        entryFadeTimerRef.current = null;
-      }
-      return;
-    }
-
-    const minVisibleMs = prefersReducedMotion ? 0 : 200;
-    const fadeMs = prefersReducedMotion ? 0 : 380;
-    const startedAt =
-      entryFadeStartedAtRef.current ??
-      (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const elapsed = Math.max(0, now - startedAt);
-    const remaining = Math.max(0, minVisibleMs - elapsed);
-
-    if (entryFadeTimerRef.current) {
-      clearTimeout(entryFadeTimerRef.current);
-      entryFadeTimerRef.current = null;
-    }
-
-    entryFadeTimerRef.current = setTimeout(() => {
-      setIsEntryFadeFading(true);
-      entryFadeTimerRef.current = setTimeout(() => {
-        setIsEntryFadeVisible(false);
-        setIsEntryFadeFading(false);
-        setIsEntryTransitionDone(true);
-        entryFadeCompletedRef.current = true;
-        entryFadeTimerRef.current = null;
-      }, fadeMs);
-    }, remaining);
-  }, [currentProject, hasFirstFrame, isEntryFadeVisible, isInitialized]);
-
-  useEffect(() => {
-    return () => {
-      if (entryFadeTimerRef.current) clearTimeout(entryFadeTimerRef.current);
-    };
-  }, []);
-
-  /**
-   * Focus camera on a scene object or its child.
-   *
-   * Two focus modes are supported:
-   * - 'full': Move camera directly to ideal framing position (F key, sidebar clicks)
-   * - 'soft': Adaptive focus - zooms proportionally based on distance from ideal.
-   *           Always updates orbit center. Zooms out if too close, in if too far.
-   *
-   * @param object - The scene object to focus on
-   * @param childPath - Optional path to a child mesh within the object
-   * @param focusMode - 'full' for immediate framing, 'soft' for adaptive zoom
-   */
-  const handleFocusObject = useCallback(
-    async (object: SceneObject, childPath?: string, focusMode: FocusMode = 'full') => {
-      const controls = cameraControlsRef.current;
-      if (!controls) return;
-      const guidedPhase =
-        typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
-      const resolvedChildPath =
-        guidedPhase === 'model-positioning' && childPath ? undefined : childPath;
-
-      const clampY = (pos: THREE.Vector3): THREE.Vector3 => {
-        if (pos.y < MIN_FOCUS_CAMERA_Y) pos.y = MIN_FOCUS_CAMERA_Y;
-        return pos;
-      };
-
-      const bumpCameraAboveGroundIfNeeded = (target: {
-        x: number;
-        y: number;
-        z: number;
-      }): boolean => {
-        const cur = new THREE.Vector3();
-        controls.getPosition(cur);
-        if (cur.y < MIN_FOCUS_CAMERA_Y) {
-          controls.setLookAt(cur.x, MIN_FOCUS_CAMERA_Y, cur.z, target.x, target.y, target.z, true);
-          return true;
-        }
-        return false;
-      };
-
-      // Capture current camera position so occlusion selection can prefer the current view direction.
-      const currentPos = new THREE.Vector3();
-      controls.getPosition(currentPos);
-
-      // Calculate focus target (orbit center and bounds size)
-      const focusTarget = await calculateFocusTargetForObject({
-        object,
-        childPath: resolvedChildPath,
-      });
-      const focusTargetVec = { x: focusTarget.targetX, y: focusTarget.targetY, z: focusTarget.targetZ };
-
-      // Prefer occlusion-aware camera positioning if we have a scene reference.
-      const scene = sceneRef.current;
-      if (!scene) {
-        // Fallback: legacy focus behavior
-        const ideal = calculateIdealCameraPosition(focusTarget);
-        const idealPos = clampY(new THREE.Vector3(ideal.x, ideal.y, ideal.z));
-        if (focusMode === 'full') {
-          controls.setLookAt(
-            idealPos.x,
-            idealPos.y,
-            idealPos.z,
-            focusTargetVec.x,
-            focusTargetVec.y,
-            focusTargetVec.z,
-            true
-          );
-        } else {
-          const cur = new THREE.Vector3();
-          controls.getPosition(cur);
-          const soft = calculateSoftFocus(cur, focusTarget, { ...ideal, y: idealPos.y });
-          if (soft.shouldMoveCamera && soft.newCameraPosition) {
-            clampY(soft.newCameraPosition);
-            controls.setLookAt(
-              soft.newCameraPosition.x,
-              soft.newCameraPosition.y,
-              soft.newCameraPosition.z,
-              focusTargetVec.x,
-              focusTargetVec.y,
-              focusTargetVec.z,
-              true
-            );
-          } else {
-            // Even if we don't “need” to move for soft focus, never leave the camera underground.
-            if (!bumpCameraAboveGroundIfNeeded(focusTargetVec)) {
-              controls.setTarget(focusTargetVec.x, focusTargetVec.y, focusTargetVec.z, true);
-            }
-          }
-        }
-        return;
-      }
-
-      // Fast path: test the “obvious” view (current direction at ideal distance).
-      // If it’s clear enough, skip the expensive multi-candidate occlusion scoring.
-      const quick = calculateQuickFocusCamera({
-        target: focusTarget,
-        scene,
-        targetObjectId: object.id,
-        targetChildPath: childPath,
-        currentCameraPosition: currentPos,
-      });
-
-      if (quick.shouldUseFastPath && quick.position) {
-        clampY(quick.position);
-        const idealCamera = {
-          x: quick.position.x,
-          y: quick.position.y,
-          z: quick.position.z,
-          distance: quick.position.distanceTo(
-            new THREE.Vector3(focusTarget.targetX, focusTarget.targetY, focusTarget.targetZ)
-          ),
-        };
-
-        if (focusMode === 'full') {
-          controls.setLookAt(
-            idealCamera.x,
-            idealCamera.y,
-            idealCamera.z,
-            focusTargetVec.x,
-            focusTargetVec.y,
-            focusTargetVec.z,
-            true
-          );
-          return;
-        }
-
-        const latestPos = new THREE.Vector3();
-        controls.getPosition(latestPos);
-        const soft = calculateSoftFocus(latestPos, focusTarget, idealCamera);
-
-        if (soft.shouldMoveCamera && soft.newCameraPosition) {
-          clampY(soft.newCameraPosition);
-          controls.setLookAt(
-            soft.newCameraPosition.x,
-            soft.newCameraPosition.y,
-            soft.newCameraPosition.z,
-            focusTargetVec.x,
-            focusTargetVec.y,
-            focusTargetVec.z,
-            true
-          );
-        } else {
-          // Even if we don't “need” to move for soft focus, never leave the camera underground.
-          if (!bumpCameraAboveGroundIfNeeded(focusTargetVec)) {
-            controls.setTarget(focusTargetVec.x, focusTargetVec.y, focusTargetVec.z, true);
-          }
-        }
-
-        return;
-      }
-
-      // Single-decision feel: compute the best camera view synchronously (fast path),
-      // then do ONE camera move.
-      const refined = calculateOcclusionAwareFocusCamera({
-        target: focusTarget,
-        scene,
-        targetObjectId: object.id,
-        targetChildPath: childPath,
-        currentCameraPosition: currentPos,
-        // Editor mode: balanced preference toward minimal camera movement.
-        sampleCount: 8,
-        azimuthBiasStrength: 0.6,
-        verticalTiers: { enabled: true, sampleCountPerTier: 6 },
-        breathingRoom: {
-          enabled: true,
-          mode: 'strict',
-          // Relaxed threshold to avoid big camera swings in editor mode.
-          minClearFraction: 0.8,
-          // Avoid backing off distance in editor mode (reduces candidates & motion).
-          distanceMultipliers: [1],
-          sampleRadiusScale: 0.34,
-          sampleMinRadius: 0.12,
-          includeDiagonalSamples: false,
-          minVisibilityWeight: 1.5,
-        },
-      });
-
-      const idealCamera = {
-        x: refined.position.x,
-        y: Math.max(refined.position.y, MIN_FOCUS_CAMERA_Y),
-        z: refined.position.z,
-        distance: refined.position.distanceTo(
-          new THREE.Vector3(focusTarget.targetX, focusTarget.targetY, focusTarget.targetZ)
-        ),
-      };
-
-      if (focusMode === 'full') {
-        controls.setLookAt(
-          idealCamera.x,
-          idealCamera.y,
-          idealCamera.z,
-          focusTargetVec.x,
-          focusTargetVec.y,
-          focusTargetVec.z,
-          true
-        );
-        return;
-      }
-
-      // Soft focus: decide once, after we know the best viewpoint.
-      const latestPos = new THREE.Vector3();
-      controls.getPosition(latestPos);
-      const soft = calculateSoftFocus(latestPos, focusTarget, idealCamera);
-
-      if (refined.wasOccluded) {
-        // If the current view is occluded, rotate to the chosen clear view even if inside comfort zone.
-        controls.setLookAt(
-          idealCamera.x,
-          idealCamera.y,
-          idealCamera.z,
-          focusTargetVec.x,
-          focusTargetVec.y,
-          focusTargetVec.z,
-          true
-        );
-        return;
-      }
-
-      if (soft.shouldMoveCamera && soft.newCameraPosition) {
-        clampY(soft.newCameraPosition);
-        controls.setLookAt(
-          soft.newCameraPosition.x,
-          soft.newCameraPosition.y,
-          soft.newCameraPosition.z,
-          focusTargetVec.x,
-          focusTargetVec.y,
-          focusTargetVec.z,
-          true
-        );
-      } else {
-        // Even if we don't “need” to move for soft focus, never leave the camera underground.
-        if (!bumpCameraAboveGroundIfNeeded(focusTargetVec)) {
-          controls.setTarget(focusTargetVec.x, focusTargetVec.y, focusTargetVec.z, true);
-        }
-      }
-    },
-    []
-  );
 
   const handleUpdateObject = useCallback(
     (updated: SceneObject) => {
       const previousObject = objects.find((obj) => obj.id === updated.id);
       if (!previousObject) {
-        console.warn('[EditorPage] Cannot update object: not found', updated.id);
+        logger.warn('[EditorPage] Cannot update object: not found', updated.id);
         return;
       }
 
@@ -833,7 +404,7 @@ function EditorPageContent() {
               endPosition = childWorldPos;
             } else {
               // Child not found, fall back to parent position
-              console.warn(
+              logger.warn(
                 '[handleUpdateObject] Child not found for path:',
                 recordingStep.targetChildPath
               );
@@ -926,7 +497,7 @@ function EditorPageContent() {
     (id: string) => {
       const objectToDelete = objects.find((obj) => obj.id === id);
       if (!objectToDelete) {
-        console.warn('[EditorPage] Cannot delete object: not found', id);
+        logger.warn('[EditorPage] Cannot delete object: not found', id);
         return;
       }
 
@@ -1012,7 +583,7 @@ function EditorPageContent() {
     async (asset: AssetMetadata) => {
       const result = await addRecentAssetToScene(asset, objects);
       if (!result) {
-        console.error('[EditorPage] Failed to add recent asset:', asset.id);
+        logger.error('[EditorPage] Failed to add recent asset:', asset.id);
         return;
       }
 
@@ -1353,7 +924,7 @@ function EditorPageContent() {
       // Use undoRedoState.steps to get the most up-to-date step (not the local steps state which might be stale)
       const previousStep = undoRedoState.steps.find((step) => step.id === updated.id);
       if (!previousStep) {
-        console.warn('[EditorPage] Cannot update step: not found', updated.id);
+        logger.warn('[EditorPage] Cannot update step: not found', updated.id);
         return;
       }
 
@@ -1372,7 +943,7 @@ function EditorPageContent() {
     (stepId: string) => {
       const stepToDelete = undoRedoState.steps.find((step) => step.id === stepId);
       if (!stepToDelete) {
-        console.warn('[EditorPage] Cannot delete step: not found', stepId);
+        logger.warn('[EditorPage] Cannot delete step: not found', stepId);
         return;
       }
 
@@ -1554,16 +1125,10 @@ function EditorPageContent() {
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
         />
 
-        {isEntryFadeVisible && (
-          <div
-            className={`absolute inset-0 z-40 bg-slate-100 transition-opacity duration-500 ease-out ${
-              isEntryFadeFading ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
-            }`}
-            aria-hidden="true"
-          >
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_#f8fafc_0%,_#cbd5e1_100%)]" />
-          </div>
-        )}
+        <EntryFadeOverlay
+          isEntryFadeVisible={isEntryFadeVisible}
+          isEntryFadeFading={isEntryFadeFading}
+        />
 
         <GuidedWorkflowEntry
           isReady={isInitialized}
@@ -1591,7 +1156,7 @@ function EditorPageContent() {
           onUpdateObject={handleUpdateObject}
           onStartRecordingPosition={handleStartRecordingPosition}
           onStopRecordingPosition={handleStopRecordingPosition}
-          recordingPositionForStepId={recordingPositionForStepId}
+          recordingPositionForStepId={recordingPositionForStepId ?? undefined}
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
           onRequestHome={handleRequestHome}
           onPreviewClick={
@@ -1686,27 +1251,18 @@ function EditorPageContent() {
           }}
         />
 
-        {/* Recording Mode Overlay */}
-        {recordingPositionForStepId && (
-          <RecordingModeOverlay
-            recordingStep={steps.find((s) => s.id === recordingPositionForStepId) || null}
-            targetObject={(() => {
-              const step = steps.find((s) => s.id === recordingPositionForStepId);
-              if (!step?.targetObjectId) return null;
-              return objects.find((obj) => obj.id === step.targetObjectId) || null;
-            })()}
-            onStopRecording={handleStopRecordingPosition}
-          />
-        )}
+        <RecordingModeOverlayWrapper
+          recordingPositionForStepId={recordingPositionForStepId}
+          steps={steps}
+          objects={objects}
+          onStopRecording={handleStopRecordingPosition}
+        />
 
-        {exitOverlay && (
-          <SaveOverlay
-            mode={exitOverlay.mode}
-            errorMessage={exitOverlay.errorMessage}
-            onStay={handleExitStay}
-            onLeaveAnyway={handleExitLeaveAnyway}
-          />
-        )}
+        <SaveOverlayWrapper
+          exitOverlay={exitOverlay}
+          onStay={handleExitStay}
+          onLeaveAnyway={handleExitLeaveAnyway}
+        />
 
         {/* Global Popup - renders centered on screen for errors and notifications */}
         <GlobalPopup />
@@ -1756,6 +1312,74 @@ interface GuidedWorkflowEntryProps {
   };
 }
 
+function EntryFadeOverlay({
+  isEntryFadeVisible,
+  isEntryFadeFading,
+}: {
+  isEntryFadeVisible: boolean;
+  isEntryFadeFading: boolean;
+}) {
+  if (!isEntryFadeVisible) return null;
+  return (
+    <div
+      className={`absolute inset-0 z-40 bg-slate-100 transition-opacity duration-500 ease-out ${
+        isEntryFadeFading ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
+      }`}
+      aria-hidden="true"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_#f8fafc_0%,_#cbd5e1_100%)]" />
+    </div>
+  );
+}
+
+function RecordingModeOverlayWrapper({
+  recordingPositionForStepId,
+  steps,
+  objects,
+  onStopRecording,
+}: {
+  recordingPositionForStepId: string | null;
+  steps: SimStep[];
+  objects: SceneObject[];
+  onStopRecording: () => void;
+}) {
+  if (!recordingPositionForStepId) return null;
+  const recordingStep = steps.find((s) => s.id === recordingPositionForStepId) || null;
+  const targetObject = (() => {
+    const step = steps.find((s) => s.id === recordingPositionForStepId);
+    if (!step?.targetObjectId) return null;
+    return objects.find((obj) => obj.id === step.targetObjectId) || null;
+  })();
+
+  return (
+    <RecordingModeOverlay
+      recordingStep={recordingStep}
+      targetObject={targetObject}
+      onStopRecording={onStopRecording}
+    />
+  );
+}
+
+function SaveOverlayWrapper({
+  exitOverlay,
+  onStay,
+  onLeaveAnyway,
+}: {
+  exitOverlay: { mode: SaveOverlayProps['mode']; errorMessage?: string } | null;
+  onStay: () => void;
+  onLeaveAnyway: () => void;
+}) {
+  if (!exitOverlay) return null;
+  return (
+    <SaveOverlay
+      mode={exitOverlay.mode}
+      errorMessage={exitOverlay.errorMessage}
+      onStay={onStay}
+      onLeaveAnyway={onLeaveAnyway}
+    />
+  );
+}
+
 function GuidedWorkflowEntry({
   isReady,
   isEntryTransitionDone,
@@ -1788,109 +1412,15 @@ function GuidedWorkflowEntry({
   onPublishClick,
 }: GuidedWorkflowEntryProps) {
   const { state, actions } = useGuidedWorkflow();
-  const [showWelcome, setShowWelcome] = useState(false);
-  const hasAutoSelectedPositioningRef = useRef(false);
-  const welcomeOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!isReady) return;
-    const shouldOfferWelcome =
-      isNewProject && !state.isActive && !state.hasDismissedWelcome;
-    if (!shouldOfferWelcome) {
-      setShowWelcome(false);
-      if (welcomeOpenTimeoutRef.current) {
-        clearTimeout(welcomeOpenTimeoutRef.current);
-        welcomeOpenTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    // Wait until the entry fade has dissolved away, then add breathing room.
-    if (!isEntryTransitionDone) return;
-    if (showWelcome) return;
-
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const delayMs = prefersReducedMotion ? 0 : 250;
-
-    if (welcomeOpenTimeoutRef.current) {
-      clearTimeout(welcomeOpenTimeoutRef.current);
-      welcomeOpenTimeoutRef.current = null;
-    }
-
-    welcomeOpenTimeoutRef.current = setTimeout(() => {
-      setShowWelcome(true);
-      welcomeOpenTimeoutRef.current = null;
-    }, delayMs);
-  }, [
+  const { showWelcome, setShowWelcome, isGuidedUIMode } = useGuidedWelcome({
+    isReady,
     isEntryTransitionDone,
     isNewProject,
-    isReady,
-    showWelcome,
-    state.hasDismissedWelcome,
-    state.isActive,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (welcomeOpenTimeoutRef.current) clearTimeout(welcomeOpenTimeoutRef.current);
-    };
-  }, []);
-
-  const shouldOfferWelcome =
-    isNewProject && !state.isActive && !state.hasDismissedWelcome;
-  const isGuidedUIMode = state.isActive || showWelcome || shouldOfferWelcome;
-  const shouldLockNavigation =
-    shouldOfferWelcome || (state.isActive && state.currentPhase === 'step-creation');
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    if (shouldLockNavigation) {
-      document.body.dataset.guidedNavLock = 'true';
-    } else {
-      delete document.body.dataset.guidedNavLock;
-    }
-  }, [shouldLockNavigation]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    if (state.isActive) {
-      document.body.dataset.guidedPhase = state.currentPhase;
-    } else {
-      delete document.body.dataset.guidedPhase;
-    }
-    return () => {
-      delete document.body.dataset.guidedPhase;
-    };
-  }, [state.currentPhase, state.isActive]);
-
-  useEffect(() => {
-    if (!state.isActive) return;
-    if (state.currentPhase !== 'model-upload') return;
-    // Ensure nothing is selected during model upload.
-    onSelectObject(null);
-  }, [onSelectObject, state.currentPhase, state.isActive]);
-
-  useEffect(() => {
-    if (!state.isActive || state.currentPhase !== 'model-positioning') {
-      hasAutoSelectedPositioningRef.current = false;
-      return;
-    }
-
-    if (hasAutoSelectedPositioningRef.current) return;
-
-    const meshObjects = objects.filter((object) => object.type === 'mesh');
-    if (meshObjects.length !== 1) return;
-
-    // Gentle first-time experience: if there’s only one model, select + focus it automatically
-    // so users immediately see the gizmo.
-    hasAutoSelectedPositioningRef.current = true;
-    onSelectObject(meshObjects[0].id);
-    onFocusObject?.(meshObjects[0], undefined, 'full');
-  }, [objects, onFocusObject, onSelectObject, state.currentPhase, state.isActive]);
+    state,
+    objects,
+    onSelectObject,
+    onFocusObject,
+  });
 
   return (
     <>

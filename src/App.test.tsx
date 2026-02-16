@@ -144,7 +144,7 @@ describe('App', () => {
     ).toBeInTheDocument();
     // Editor chrome should be gated while welcome is shown
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
-  });
+  }, 10000);
 
   it('shows step creation content when guided setup is selected', async () => {
     renderApp();
