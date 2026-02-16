@@ -1,11 +1,15 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 5:40:08 pm
+**Updated**: 17/02/2026, 10:13:51 am
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Homepage Polish (`homepage-polish`) | Lowered the logo slightly with minimal layout impact | 2026-02-16 06:38 | 2026-02-16 06:40 | 1m | 1 | 0 | 0 |  |
+| Code Quality (`code-quality`) | Full backend and project quality assessment | 2026-02-16 06:54 | 2026-02-16 23:13 | 16h 19m | 18 | 0 | 0 |  |
+| Final Reviewer Sweep (`final-reviewer-sweep`) | Delivering final gate/security/cleanup report and stop recommendation | 2026-02-16 23:01 | 2026-02-16 23:04 | 2m | 1 | 0 | 0 |  |
+| Production Hardening (`production-hardening`) | Deliver production-readiness report with results, risks, and rate-limit recommendation | 2026-02-16 08:29 | 2026-02-16 08:33 | 3m | 1 | 0 | 0 |  |
+| Code Quality Cleanup (`code-quality-cleanup`) | Completed full quality gate, runtime verification, and targeted correctness fixes | 2026-02-16 07:41 | 2026-02-16 07:44 | 3m | 1 | 0 | 0 |  |
+| Homepage Polish (`homepage-polish`) | Lowered the logo slightly with minimal layout impact | 2026-02-16 06:38 | 2026-02-16 06:50 | 11m | 3 | 1 | 1 |  |
 | Homepage Redesign (`homepage-redesign`) | Explore current homepage and plan a redesigned layout | 2026-02-16 06:25 | 2026-02-16 06:37 | 12m | 5 | 0 | 0 |  |
 | Camera Zoom (`camera-zoom`) | Simplify zoom behavior to focus on selected objects | 2026-02-16 05:55 | 2026-02-16 06:26 | 31m | 8 | 1 | 1 |  |
 | Scene Object Selection (`scene-object-selection`) | Investigate potential edge case where model children become unselectable after project reload | 2026-02-16 05:59 | 2026-02-16 06:01 | 1m | 1 | 0 | 0 |  |
