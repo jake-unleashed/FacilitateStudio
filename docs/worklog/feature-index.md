@@ -1,11 +1,13 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 3:51:19 pm
+**Updated**: 16/02/2026, 4:12:58 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Trainee Experience (`trainee-experience`) | Plan landing page and polished trainee flow for published sims | 2026-02-16 04:07 | 2026-02-16 04:51 | 43m | 5 | 1 | 1 |  |
+| Post-Feature (`post-feature`) | Make Home navigation transitions + guided home button production-ready | 2026-02-11 03:15 | 2026-02-16 05:12 | 121h 57m | 1 | 1 | 1 |  |
+| Codebase Health (`codebase-health`) | Completed audit, applied quick fixes, and prioritized debt | 2026-02-16 05:04 | 2026-02-16 05:12 | 8m | 1 | 0 | 0 |  |
+| Trainee Experience (`trainee-experience`) | Plan landing page and polished trainee flow for published sims | 2026-02-16 04:07 | 2026-02-16 04:55 | 47m | 7 | 2 | 2 |  |
 | Scene Navigation (`scene-navigation`) | Ensure edit-mode scene controls are responsive immediately | 2026-02-16 03:58 | 2026-02-16 04:12 | 13m | 3 | 0 | 0 |  |
 | Project Storage (`project-storage`) | Research how projects are currently stored and plan account-scoped storage | 2026-02-16 02:40 | 2026-02-16 03:56 | 1h 16m | 6 | 1 | 1 |  |
 | Step Extraction (`step-extraction`) | Explain why extraction works for you but not teammate | 2026-02-16 03:13 | 2026-02-16 03:30 | 17m | 8 | 0 | 0 |  |
@@ -31,7 +33,6 @@
 | Backend (`backend`) | Research backend documentation and plan first implementation item | 2026-02-11 22:41 | 2026-02-11 23:04 | 23m | 8 | 1 | 1 |  |
 | Repo Hygiene (`repo-hygiene`) | Ignore local Reference project folder and commit/push the remaining docs/plans | 2026-02-11 05:45 | 2026-02-11 22:39 | 16h 53m | 2 | 0 | 0 |  |
 | Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-11 05:45 | 2h 56m | 12 | 2 | 2 |  |
-| Post-Feature (`post-feature`) | Make Home navigation transitions + guided home button production-ready | 2026-02-11 03:15 | 2026-02-11 03:29 | 13m | 1 | 1 | 1 |  |
 | Route Transitions (`route-transitions`) | Add premium fade transitions between Home and editor routes | 2026-02-11 02:59 | 2026-02-11 03:15 | 15m | 1 | 0 | 0 |  |
 | Debug Tools (`debug-tools`) | Consolidate performance monitor into DebugMenu | 2026-02-11 02:55 | 2026-02-11 02:57 | 2m | 1 | 0 | 0 |  |
 | Deployment (`deployment`) | Investigate OpenAI API key configuration for Vercel deployment | 2026-02-11 02:38 | 2026-02-11 02:45 | 6m | 1 | 0 | 0 |  |

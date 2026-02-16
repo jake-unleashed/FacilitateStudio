@@ -116,6 +116,19 @@ describe('AssetUploadButton', () => {
       expect(clickSpy).toHaveBeenCalled();
     });
 
+    it('opens file dialog on Enter key', async () => {
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const clickSpy = vi.spyOn(input, 'click');
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
+
+      uploadArea.focus();
+      fireEvent.keyDown(uploadArea, { key: 'Enter' });
+
+      expect(clickSpy).toHaveBeenCalled();
+    });
+
     it('does not open file dialog when disabled', async () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 

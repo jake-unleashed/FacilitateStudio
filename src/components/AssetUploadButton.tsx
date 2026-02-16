@@ -8,7 +8,7 @@
  * - Clear error/warning messages
  */
 
-import React, { useRef, useState, useCallback, useMemo, DragEvent } from 'react';
+import React, { useRef, useState, useCallback, useMemo, useEffect, DragEvent } from 'react';
 import { Upload, Loader2, CheckCircle2, AlertTriangle, FileBox } from 'lucide-react';
 import { UploadProgress, validateModelFile } from '../types/model';
 import { usePopup } from '../contexts/PopupContext';
@@ -47,6 +47,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
   uploadProgress,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Global popup for showing errors
   const { showPopup } = usePopup();
@@ -131,13 +132,17 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
         }));
 
         // Reset after brief success display
-        setTimeout(() => {
+        if (resetTimeoutRef.current !== null) {
+          clearTimeout(resetTimeoutRef.current);
+        }
+        resetTimeoutRef.current = setTimeout(() => {
           setInternalState({
             isUploading: false,
             error: null,
             fileName: null,
             stage: 'idle',
           });
+          resetTimeoutRef.current = null;
         }, SUCCESS_DISPLAY_DURATION);
       } catch (err) {
         // Show error popup, reset button to idle so it stays usable
@@ -255,9 +260,28 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     return 'Upload 3D Model';
   }, [isDragging, isUploading, currentStage]);
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (disabled || isUploading) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleClick();
+      }
+    },
+    [disabled, isUploading, handleClick]
+  );
+
   const progressWidth = useMemo(() => {
     return uploadProgress?.progress ?? STAGE_CONFIG[currentStage]?.progress ?? 0;
   }, [uploadProgress?.progress, currentStage]);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current !== null) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Styles
@@ -317,6 +341,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
 
       <div
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
