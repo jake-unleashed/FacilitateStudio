@@ -365,6 +365,15 @@ export async function saveCachedProjectsSnapshot(
   });
 }
 
+/**
+ * Clear the legacy shared local projects store.
+ * This is used to remove device-level projects after migrating to account-scoped cloud data.
+ */
+export async function clearIndexedDbProjectsStore(): Promise<void> {
+  const db = await getDB();
+  await db.clear('projects');
+}
+
 // =============================================================================
 // Default Export
 // =============================================================================

@@ -1,13 +1,14 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 1:55:57 pm
+**Updated**: 16/02/2026, 2:55:20 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Starter Models Hierarchy (`starter-models-hierarchy`) | Explain why starter models lose children and outline a safe fix | 2026-02-16 02:24 | 2026-02-16 02:55 | 31m | 1 | 0 | 0 |  |
+| Project Storage (`project-storage`) | Research how projects are currently stored and plan account-scoped storage | 2026-02-16 02:40 | 2026-02-16 03:55 | 1h 14m | 4 | 0 | 0 |  |
+| Step Extraction (`step-extraction`) | Explain why extraction works for you but not teammate | 2026-02-16 03:13 | 2026-02-16 03:30 | 17m | 8 | 0 | 0 |  |
+| Starter Models Hierarchy (`starter-models-hierarchy`) | Explain why starter models lose children and outline a safe fix | 2026-02-16 02:24 | 2026-02-16 02:57 | 33m | 3 | 1 | 1 |  |
 | Auth & Email (`auth-email`) | Investigate signup/email confirmation flow and plan improvements | 2026-02-16 02:04 | 2026-02-16 02:47 | 42m | 9 | 1 | 1 |  |
-| Project Storage (`project-storage`) | Research how projects are currently stored and plan account-scoped storage | 2026-02-16 02:40 | 2026-02-16 02:40 | 0m | 0 | 0 | 0 |  |
 | Publish Panel (`publish-panel`) | Research current implementation and plan UX redesign | 2026-02-16 00:08 | 2026-02-16 02:16 | 2h 7m | 8 | 2 | 2 |  |
 | UX Polish (`ux-polish`) | Investigate loading screen and backend-blocking UX issues | 2026-02-16 01:03 | 2026-02-16 02:09 | 1h 6m | 9 | 0 | 0 |  |
 | Post-Feature QA (`post-feature-qa`) | Run full test suite and generate digest | 2026-02-16 00:50 | 2026-02-16 00:59 | 8m | 3 | 1 | 1 |  |

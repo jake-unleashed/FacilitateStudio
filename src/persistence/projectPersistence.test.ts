@@ -4,6 +4,7 @@ import {
   LocalStorageProjectPersistence,
   IndexedDBProjectPersistence,
   createProjectPersistence,
+  clearIndexedDbProjectsStore,
   upsertProject,
   removeProject,
   PROJECTS_STORAGE_KEY,
@@ -413,6 +414,23 @@ describe('projectPersistence', () => {
         await persistence.deleteProject('to-delete');
         loaded = await persistence.getProject('to-delete');
         expect(loaded).toBeUndefined();
+      });
+
+      it('clearIndexedDbProjectsStore clears legacy shared projects store', async () => {
+        await persistence.saveProject({
+          id: 'legacy-1',
+          name: 'Legacy Project',
+          objects: [],
+          steps: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        expect((await persistence.loadProjects()).length).toBeGreaterThan(0);
+
+        await clearIndexedDbProjectsStore();
+        const loadedAfterClear = await persistence.loadProjects();
+        expect(loadedAfterClear).toEqual([]);
       });
 
       it('should update existing project', async () => {

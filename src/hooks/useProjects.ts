@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Project, ProjectMetadata } from '../types/project';
 import {
+  clearIndexedDbProjectsStore,
   createProjectPersistence,
   createSupabasePersistence,
   loadCachedProjectsSnapshot,
@@ -14,6 +15,7 @@ import {
 } from '../utils/thumbnailUpload';
 
 const CLOUD_SAVE_RETRY_DELAY_MS = 1500;
+const LOCAL_PROJECTS_CLEANUP_KEY_PREFIX = 'local-projects-cleaned';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -51,9 +53,10 @@ export interface UseProjectsResult {
  * Hook for managing projects using local (IndexedDB) and cloud (Supabase) persistence.
  *
  * Behavior:
- * - When signed out: use local IndexedDB persistence
- * - When signed in: prefer cloud projects, but keep local projects available as a fallback
- *   until a dedicated migration flow is implemented.
+ * - When signed out: uses local IndexedDB persistence (primarily for dev/fallback scenarios)
+ * - When signed in: uses cloud (Supabase) as the source of truth
+ *   - Uses the user-scoped `project-cache` snapshot for fast startup and best-effort offline reads
+ *   - Does NOT read or merge device-level projects into the signed-in experience
  *
  * @returns Object containing projects state and CRUD operations
  */
@@ -68,10 +71,16 @@ export function useProjects(): UseProjectsResult {
 
   // Track mounted state to avoid setting state after unmount.
   const isMountedRef = useRef(true);
+  // Used to gate rollback when multiple saves happen rapidly for the same project.
+  // This avoids relying on timestamps (which can collide within the same millisecond).
+  const saveTokenByProjectIdRef = useRef<Map<string, number>>(new Map());
   const persistenceMode = useMemo(() => (userId ? 'cloud' : 'local'), [userId]);
 
-  // Local persistence is always available for fallback / offline usage.
-  const localPersistence = useMemo(() => createProjectPersistence(), []);
+  // Local persistence is only used while signed out.
+  const localPersistence = useMemo(
+    () => (userId ? null : createProjectPersistence()),
+    [userId]
+  );
   // Cloud persistence is only available when authenticated.
   const cloudPersistence = useMemo(() => (userId ? createSupabasePersistence() : null), [userId]);
 
@@ -104,7 +113,7 @@ export function useProjects(): UseProjectsResult {
 
       try {
         if (!cloudPersistence) {
-          const loaded = await localPersistence.loadProjects();
+          const loaded = localPersistence ? await localPersistence.loadProjects() : [];
           if (isMountedRef.current) {
             setProjects(loaded);
             setError(null);
@@ -116,47 +125,42 @@ export function useProjects(): UseProjectsResult {
           return;
         }
 
-        const [cloudResult, localResult] = await Promise.allSettled([
-          cloudPersistence.loadProjects(),
-          localPersistence.loadProjects(),
-        ]);
-
-        const cloudProjects = cloudResult.status === 'fulfilled' ? cloudResult.value : [];
-        const localProjects = localResult.status === 'fulfilled' ? localResult.value : [];
-
-        // Merge by ID, preferring cloud versions.
-        const mergedById = new Map<string, Project>();
-        for (const project of cloudProjects) {
-          mergedById.set(project.id, project);
-        }
-        for (const project of localProjects) {
-          if (!mergedById.has(project.id)) {
-            mergedById.set(project.id, project);
-          }
-        }
-
-        const merged = Array.from(mergedById.values()).sort(
+        const cloudProjects = await cloudPersistence.loadProjects();
+        const sortedProjects = [...cloudProjects].sort(
           (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         );
 
         if (isMountedRef.current) {
-          setProjects(merged);
-          if (cloudResult.status === 'rejected' && localResult.status === 'fulfilled') {
-            setError('Cloud is unavailable right now. Showing projects saved on this device.');
-          } else if (cloudResult.status === 'rejected') {
-            setError('Failed to load cloud projects. Check your connection and try again.');
-          } else if (localResult.status === 'rejected') {
-            // Cloud load succeeded; local fallback isn't essential, but log for debugging.
-            console.warn('[useProjects] Local project cache unavailable:', localResult.reason);
-            setError(null);
-          } else {
-            setError(null);
-          }
+          setProjects(sortedProjects);
+          setError(null);
           setIsSyncing(false);
         }
-        void saveCachedProjectsSnapshot(merged, userId).catch((cacheError) => {
+        void saveCachedProjectsSnapshot(sortedProjects, userId).catch((cacheError) => {
           console.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
         });
+        if (userId) {
+          const cleanupKey = `${LOCAL_PROJECTS_CLEANUP_KEY_PREFIX}:${userId}`;
+          try {
+            if (localStorage.getItem(cleanupKey) !== 'true') {
+              void clearIndexedDbProjectsStore()
+                .then(() => {
+                  try {
+                    localStorage.setItem(cleanupKey, 'true');
+                  } catch (storageError) {
+                    console.warn(
+                      '[useProjects] Failed to persist legacy cleanup flag to localStorage:',
+                      storageError
+                    );
+                  }
+                })
+                .catch((cleanupError) => {
+                  console.warn('[useProjects] Failed to clear legacy local project store:', cleanupError);
+                });
+            }
+          } catch (storageError) {
+            console.warn('[useProjects] Legacy cleanup flag unavailable in localStorage:', storageError);
+          }
+        }
       } catch (err) {
         console.error(`[useProjects] Failed to load ${persistenceMode} projects:`, err);
         if (isMountedRef.current) {
@@ -196,6 +200,9 @@ export function useProjects(): UseProjectsResult {
       // Signed out: local-only.
       if (!cloudPersistence) {
         try {
+          if (!localPersistence) {
+            return undefined;
+          }
           return await localPersistence.getProject(id);
         } catch (err) {
           console.error('[useProjects] Failed to get local project:', err);
@@ -206,7 +213,7 @@ export function useProjects(): UseProjectsResult {
         }
       }
 
-      // Signed in: prefer cloud; fall back to local if missing or cloud fails.
+      // Signed in: prefer cloud; fall back to user-scoped cached snapshot if needed.
       let cloudError: unknown | null = null;
       try {
         const cloudProject = await cloudPersistence.getProject(id);
@@ -219,13 +226,14 @@ export function useProjects(): UseProjectsResult {
       }
 
       try {
-        const localProject = await localPersistence.getProject(id);
-        if (localProject && cloudError && isMountedRef.current) {
-          setError('Cloud is unavailable right now. Opened a project saved on this device.');
+        const cachedProjects = await loadCachedProjectsSnapshot(userId);
+        const cachedProject = cachedProjects?.find((project) => project.id === id);
+        if (cachedProject && cloudError && isMountedRef.current) {
+          setError('Cloud is unavailable right now. Opened your latest cached project.');
         }
-        return localProject;
+        return cachedProject;
       } catch (err) {
-        console.error('[useProjects] Failed to get local fallback project:', err);
+        console.error('[useProjects] Failed to load cached project fallback:', err);
         if (cloudError) {
           if (isMountedRef.current) {
             setError('Failed to load project. Check your connection and try again.');
@@ -238,7 +246,7 @@ export function useProjects(): UseProjectsResult {
         throw err;
       }
     },
-    [projects, cloudPersistence, localPersistence]
+    [projects, cloudPersistence, localPersistence, userId]
   );
 
   /**
@@ -247,6 +255,10 @@ export function useProjects(): UseProjectsResult {
    */
   const saveProject = useCallback(
     async (project: Project): Promise<void> => {
+      const previousProject = projects.find((existing) => existing.id === project.id);
+      const projectId = project.id;
+      const nextSaveToken = (saveTokenByProjectIdRef.current.get(projectId) ?? 0) + 1;
+      saveTokenByProjectIdRef.current.set(projectId, nextSaveToken);
       const now = new Date().toISOString();
       const updated: Project = {
         ...project,
@@ -273,6 +285,9 @@ export function useProjects(): UseProjectsResult {
       // Persist to local first if signed out.
       if (!cloudPersistence) {
         try {
+          if (!localPersistence) {
+            throw new Error('Local persistence unavailable while signed out.');
+          }
           await localPersistence.saveProject(updated);
           if (isMountedRef.current) {
             setError(null);
@@ -287,8 +302,7 @@ export function useProjects(): UseProjectsResult {
         return;
       }
 
-      // Signed in: save to cloud; keep a local copy best-effort for fallback/offline.
-      const previousProject = projects.find((existing) => existing.id === updated.id);
+      // Signed in: save to cloud only.
       const previousThumbnail =
         previousProject && !isBase64Thumbnail(previousProject.thumbnail)
           ? previousProject.thumbnail
@@ -318,9 +332,6 @@ export function useProjects(): UseProjectsResult {
         if (isMountedRef.current) {
           setError(null);
         }
-        void localPersistence.saveProject(updated).catch((localErr) => {
-          console.warn('[useProjects] Failed to save local fallback copy:', localErr);
-        });
 
         if (shouldUploadThumbnail && updated.thumbnail && user?.id) {
           const thumbnailDataUrl = updated.thumbnail;
@@ -338,9 +349,6 @@ export function useProjects(): UseProjectsResult {
 
             try {
               await cloudPersistence.saveProject(projectWithCloudThumbnail);
-              void localPersistence.saveProject(projectWithCloudThumbnail).catch((localErr) => {
-                console.warn('[useProjects] Failed to cache uploaded thumbnail ref locally:', localErr);
-              });
 
               if (isMountedRef.current) {
                 setProjects((currentProjects) =>
@@ -361,14 +369,28 @@ export function useProjects(): UseProjectsResult {
         }
       } catch (err) {
         console.error('[useProjects] Failed to save project to cloud:', err);
-        // Ensure the user's work is still persisted locally.
-        try {
-          await localPersistence.saveProject(updated);
-        } catch (localErr) {
-          console.error('[useProjects] Additionally failed to save local fallback copy:', localErr);
-        }
+        // Roll back the optimistic update when no further edits occurred.
+        // If the project was saved/edited again since this save began, keep the latest in-memory state.
+        setProjects((currentProjects) => {
+          const currentIndex = currentProjects.findIndex((p) => p.id === updated.id);
+          if (currentIndex === -1) {
+            return currentProjects;
+          }
+          const currentToken = saveTokenByProjectIdRef.current.get(projectId);
+          if (currentToken !== nextSaveToken) {
+            return currentProjects;
+          }
+
+          if (previousProject) {
+            const next = [...currentProjects];
+            next[currentIndex] = previousProject;
+            return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+          }
+
+          return currentProjects.filter((p) => p.id !== updated.id);
+        });
         if (isMountedRef.current) {
-          setError('Failed to save to cloud. Your changes were saved on this device.');
+          setError('Failed to save to cloud. Check your connection and try again.');
         }
         throw err;
       }
@@ -388,6 +410,9 @@ export function useProjects(): UseProjectsResult {
       // Signed out: local-only delete.
       if (!cloudPersistence) {
         try {
+          if (!localPersistence) {
+            throw new Error('Local persistence unavailable while signed out.');
+          }
           await localPersistence.deleteProject(id);
           if (isMountedRef.current) {
             setError(null);
@@ -406,15 +431,12 @@ export function useProjects(): UseProjectsResult {
         return;
       }
 
-      // Signed in: delete from cloud, and best-effort delete local fallback copy.
+      // Signed in: delete from cloud only.
       try {
         await cloudPersistence.deleteProject(id);
         if (isMountedRef.current) {
           setError(null);
         }
-        void localPersistence.deleteProject(id).catch((localErr) => {
-          console.warn('[useProjects] Failed to delete local fallback copy:', localErr);
-        });
       } catch (err) {
         console.error('[useProjects] Failed to delete project from cloud:', err);
         // Restore optimistic removal if we can.
