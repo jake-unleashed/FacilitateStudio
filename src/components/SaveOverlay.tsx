@@ -1,6 +1,7 @@
 import { Button } from './Button';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { useLatestRef } from '../hooks/useLatestRef';
 
 export type SaveOverlayMode = 'saving' | 'error';
 
@@ -29,6 +30,7 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 export function SaveOverlay({ mode, errorMessage, onStay, onLeaveAnyway }: SaveOverlayProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onStayRef = useLatestRef(onStay);
 
   // Focus trap + restore focus on close/unmount.
   useEffect(() => {
@@ -45,7 +47,7 @@ export function SaveOverlay({ mode, errorMessage, onStay, onLeaveAnyway }: SaveO
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onStay();
+        onStayRef.current();
         return;
       }
 
@@ -86,7 +88,7 @@ export function SaveOverlay({ mode, errorMessage, onStay, onLeaveAnyway }: SaveO
         toRestore?.focus?.();
       }, 0);
     };
-  }, [onStay]);
+  }, []);
 
   return (
     <div

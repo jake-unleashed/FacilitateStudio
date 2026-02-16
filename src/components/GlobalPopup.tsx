@@ -15,6 +15,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { AlertCircle, AlertTriangle, Info, CheckCircle } from 'lucide-react';
 import { usePopup, PopupType } from '../contexts/PopupContext';
+import { useLatestRef } from '../hooks/useLatestRef';
 
 // =============================================================================
 // Constants
@@ -111,6 +112,7 @@ export const GlobalPopup: React.FC = () => {
       dismissPopup();
     }, ANIMATION_DURATION);
   }, [dismissPopup]);
+  const handleDismissRef = useLatestRef(handleDismiss);
 
   // Reset exiting state when popup changes
   useEffect(() => {
@@ -133,7 +135,7 @@ export const GlobalPopup: React.FC = () => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        handleDismiss();
+        handleDismissRef.current();
         return;
       }
 
@@ -181,7 +183,7 @@ export const GlobalPopup: React.FC = () => {
         toRestore?.focus?.();
       }, 0);
     };
-  }, [popup, handleDismiss]);
+  }, [popup]);
 
   // Don't render if no popup
   if (!popup) {

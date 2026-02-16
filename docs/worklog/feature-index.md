@@ -1,13 +1,13 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 1:08:41 pm
+**Updated**: 16/02/2026, 1:13:31 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Publish Panel (`publish-panel`) | Research current implementation and plan UX redesign | 2026-02-16 00:08 | 2026-02-16 02:08 | 1h 59m | 4 | 0 | 0 |  |
+| Publish Panel (`publish-panel`) | Research current implementation and plan UX redesign | 2026-02-16 00:08 | 2026-02-16 02:13 | 2h 4m | 6 | 1 | 1 |  |
+| UX Polish (`ux-polish`) | Investigate loading screen and backend-blocking UX issues | 2026-02-16 01:03 | 2026-02-16 02:09 | 1h 6m | 9 | 0 | 0 |  |
 | Auth & Email (`auth-email`) | Investigate signup/email confirmation flow and plan improvements | 2026-02-16 02:04 | 2026-02-16 02:04 | 0m | 0 | 0 | 0 |  |
-| UX Polish (`ux-polish`) | Investigate loading screen and backend-blocking UX issues | 2026-02-16 01:03 | 2026-02-16 02:03 | 59m | 8 | 0 | 0 |  |
 | Post-Feature QA (`post-feature-qa`) | Run full test suite and generate digest | 2026-02-16 00:50 | 2026-02-16 00:59 | 8m | 3 | 1 | 1 |  |
 | Publish/Preview Gating (`publish-preview-gating`) | Wire top-bar buttons to show friendly message when no steps | 2026-02-16 00:27 | 2026-02-16 00:47 | 19m | 2 | 0 | 0 |  |
 | Vercel deployment (`vercel-deployment`) | Concise step-by-step env and settings checklist | 2026-02-15 23:35 | 2026-02-16 00:06 | 31m | 1 | 0 | 0 |  |

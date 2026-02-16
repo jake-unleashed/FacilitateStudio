@@ -14,7 +14,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'inline-flex items-center justify-center font-semibold transition-all duration-300 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed active:scale-95';
+    'inline-flex items-center justify-center font-semibold transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-300 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed active:scale-95';
 
   const variants = {
     primary:

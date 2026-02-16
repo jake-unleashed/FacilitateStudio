@@ -402,6 +402,9 @@ function EditorPageContent() {
     flushSaveNow,
     showPopup,
   });
+  const handleClosePublishModal = useCallback(() => {
+    setIsPublishModalOpen(false);
+  }, [setIsPublishModalOpen]);
 
   const currentProjectId = currentProject?.id ?? null;
   const publishProjectView = useMemo(() => {
@@ -1677,7 +1680,7 @@ function EditorPageContent() {
               <PublishModal
                 project={publishProjectView ?? currentProject}
                 isOpen={isPublishModalOpen}
-                onClose={() => setIsPublishModalOpen(false)}
+                onClose={handleClosePublishModal}
               />
             ) : null,
           }}

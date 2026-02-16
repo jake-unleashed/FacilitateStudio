@@ -7,6 +7,7 @@ import { copyToClipboard, generatePublishURL } from '../utils/publishUtils';
 import { hasUsableSteps } from '../utils/stepValidation';
 import { useAuth } from '../contexts/AuthContext';
 import { getExistingPublish, unpublishProject } from '../services/publishService';
+import { useLatestRef } from '../hooks/useLatestRef';
 
 export interface PublishModalProps {
   project: Project;
@@ -43,6 +44,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const hasSetInitialFocusRef = useRef(false);
+  const onCloseRef = useLatestRef(onClose);
   const [publishUrl, setPublishUrl] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
   const [isLoadingPublishState, setIsLoadingPublishState] = useState(false);
@@ -215,7 +217,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -259,7 +261,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
         toRestore?.focus?.();
       }, 0);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;

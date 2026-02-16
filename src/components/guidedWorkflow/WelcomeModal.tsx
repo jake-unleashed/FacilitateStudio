@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, PencilRuler } from 'lucide-react';
+import { useLatestRef } from '../../hooks/useLatestRef';
 
 export interface WelcomeModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export function WelcomeModal({
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
+  const onSelectEditorRef = useLatestRef(onSelectEditor);
 
   const prefersReducedMotion = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -103,7 +105,7 @@ export function WelcomeModal({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onSelectEditor();
+        onSelectEditorRef.current();
         return;
       }
 
@@ -146,7 +148,7 @@ export function WelcomeModal({
         toRestore?.focus?.();
       }, 0);
     };
-  }, [isOpen, onSelectEditor]);
+  }, [isOpen]);
 
   if (!shouldRender) return null;
 
