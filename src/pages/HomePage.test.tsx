@@ -168,6 +168,15 @@ describe('HomePage', () => {
     });
   });
 
+  describe('top corner UI', () => {
+    it('renders the top-right account UI', () => {
+      renderHomePage();
+
+      expect(screen.getByText('test@example.com')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+    });
+  });
+
   describe('create new button', () => {
     it('renders the Create New Project button', () => {
       renderHomePage();

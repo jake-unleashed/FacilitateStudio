@@ -340,6 +340,7 @@ export function HomePage(): JSX.Element {
         aria-hidden="true"
       />
 
+      {/* Floating top-right account UI */}
       <div className="absolute right-6 top-6 z-20">
         <div className="flex items-center gap-2 rounded-[20px] border border-white/60 bg-white/70 px-2 py-1.5 shadow-glass-sm backdrop-blur-sm">
           <span className="max-w-[220px] truncate px-2 text-xs font-semibold text-slate-500">
@@ -366,9 +367,11 @@ export function HomePage(): JSX.Element {
       <main className="relative z-10 mx-auto w-full max-w-4xl px-6 py-16 sm:py-24">
         {/* Hero section */}
         <section className="flex flex-col items-center">
-          <HomeBranding enableHover={false} />
+          <div className="mt-4">
+            <HomeBranding enableHover={false} />
+          </div>
 
-          <p className="mt-8 text-center text-sm leading-relaxed text-slate-400">
+          <p className="mt-6 max-w-md text-center text-sm leading-relaxed text-slate-400">
             Create immersive training simulations for your team
           </p>
 
@@ -376,7 +379,7 @@ export function HomePage(): JSX.Element {
             variant="primary"
             size="lg"
             onClick={handleCreateNew}
-            className="group mt-10 gap-2.5 rounded-[20px] px-8 py-4 text-base shadow-lg shadow-blue-500/30 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/40"
+            className="group mt-8 gap-2.5 rounded-[20px] px-8 py-4 text-base shadow-lg shadow-blue-500/30 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/40"
           >
             <Plus
               size={20}

@@ -1,11 +1,13 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 5:22:21 pm
+**Updated**: 16/02/2026, 5:40:08 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Camera Zoom (`camera-zoom`) | Simplify zoom behavior to focus on selected objects | 2026-02-16 05:55 | 2026-02-16 06:22 | 27m | 5 | 0 | 0 |  |
+| Homepage Polish (`homepage-polish`) | Lowered the logo slightly with minimal layout impact | 2026-02-16 06:38 | 2026-02-16 06:40 | 1m | 1 | 0 | 0 |  |
+| Homepage Redesign (`homepage-redesign`) | Explore current homepage and plan a redesigned layout | 2026-02-16 06:25 | 2026-02-16 06:37 | 12m | 5 | 0 | 0 |  |
+| Camera Zoom (`camera-zoom`) | Simplify zoom behavior to focus on selected objects | 2026-02-16 05:55 | 2026-02-16 06:26 | 31m | 8 | 1 | 1 |  |
 | Scene Object Selection (`scene-object-selection`) | Investigate potential edge case where model children become unselectable after project reload | 2026-02-16 05:59 | 2026-02-16 06:01 | 1m | 1 | 0 | 0 |  |
 | Codebase Health (`codebase-health`) | Completed audit, applied quick fixes, and prioritized debt | 2026-02-16 05:04 | 2026-02-16 05:52 | 48m | 2 | 0 | 0 |  |
 | Post-Feature (`post-feature`) | Make Home navigation transitions + guided home button production-ready | 2026-02-11 03:15 | 2026-02-16 05:50 | 122h 34m | 2 | 2 | 4 |  |
