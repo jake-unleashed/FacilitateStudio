@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
-import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { usePopup } from '../contexts/PopupContext';
-import { fetchPublishedSnapshotByToken } from '../services/publishService';
-import { SceneObject, SimStep } from '../types';
+import { SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
-import { clearAssetResolver, setAssetResolver } from '../utils/modelCache';
-import { seedStarterAssets, shouldReseedLibrary } from '../utils/starterAssets/seedStarterAssets';
+import { PublishedCenterCard } from './published/PublishedCenterCard';
+import { PublishedTrainingLanding } from './published/PublishedTrainingLanding';
+import { PublishedTrainingCompleteDialog } from './published/PublishedTrainingCompleteDialog';
+import { usePublishedSnapshot } from './published/usePublishedSnapshot';
+
+const START_TRANSITION_MS = 600;
+const COMPLETION_DELAY_MS = 800;
 
 /**
  * PublishedSimulationPage renders a published simulation snapshot by share token.
@@ -23,98 +26,44 @@ export function PublishedSimulationPage(): JSX.Element {
     return null;
   }, [tokenParam]);
 
-  // Project state
-  const [project, setProject] = useState<{
-    objects: SceneObject[];
-    steps: SimStep[];
-    name: string;
-  } | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [previewObjects, setPreviewObjects] = useState<SceneObject[]>([]);
+  const { project, isInitialized, previewObjects, setPreviewObjects } = usePublishedSnapshot(tokenParam, showPopup);
   const [isComplete, setIsComplete] = useState(false);
+  const [showCompletion, setShowCompletion] = useState(false);
   const [currentPreviewStep, setCurrentPreviewStep] = useState<SimStep | null>(null);
   const [shouldAnimateMoveItem, setShouldAnimateMoveItem] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const objectClickHandlerRef = useRef<((objectId: string) => void) | null>(null);
   const stepCompleteHandlerRef = useRef<(() => void) | null>(null);
+  const transitionTimeoutRef = useRef<number | null>(null);
 
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
   const [, setControlsReady] = useState(false);
 
-  // Clean up the asset resolver ONLY when the component unmounts.
-  // This must be a separate effect from the data-loading effect below because
-  // the data-loading effect re-runs when `isInitialized` changes — its cleanup
-  // would clear the resolver at exactly the moment it's needed by child
-  // components that mount in the same render cycle.
-  useEffect(() => {
-    return () => {
-      clearAssetResolver();
-    };
+  const clearTransitionTimeout = useCallback(() => {
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
   }, []);
 
-  // Load project data
+  const setTransitionTimeout = useCallback(
+    (fn: () => void, ms: number) => {
+      clearTransitionTimeout();
+      transitionTimeoutRef.current = window.setTimeout(() => {
+        transitionTimeoutRef.current = null;
+        fn();
+      }, ms);
+    },
+    [clearTransitionTimeout]
+  );
+
   useEffect(() => {
-    if (isInitialized) return;
-
-    let isCancelled = false;
-
-    const loadProject = async () => {
-      if (!tokenParam) {
-        setIsInitialized(true);
-        setProject(null);
-        return;
-      }
-
-      try {
-        const snapshot = await fetchPublishedSnapshotByToken(tokenParam);
-        if (isCancelled) return;
-        if (!snapshot) {
-          setProject(null);
-          setIsInitialized(true);
-          return;
-        }
-
-        // Ensure starter assets are available if the snapshot references them.
-        const usesStarter = snapshot.objects.some(
-          (obj) => typeof obj.properties?.modelAssetId === 'string' && obj.properties.modelAssetId.startsWith('starter:')
-        );
-        if (usesStarter && shouldReseedLibrary()) {
-          await seedStarterAssets();
-        }
-
-        setAssetResolver((assetId) => {
-          const entry = snapshot.assetManifest?.[assetId];
-          if (!entry) return null;
-          return { url: entry.url, fileType: entry.fileType };
-        });
-
-        setProject({
-          objects: snapshot.objects,
-          steps: snapshot.steps,
-          name: snapshot.name,
-        });
-        setPreviewObjects(snapshot.objects.map((obj) => ({ ...obj })));
-        setIsInitialized(true);
-      } catch (error) {
-        console.error('[PublishedSimulationPage] Failed to load published snapshot:', error);
-        showPopup({
-          type: 'error',
-          title: 'Simulation Load Failed',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Unable to load this simulation right now. Please try again.',
-        });
-        setProject(null);
-        setIsInitialized(true);
-      }
-    };
-
-    void loadProject();
-
     return () => {
-      isCancelled = true;
+      clearTransitionTimeout();
     };
-  }, [isInitialized, showPopup, tokenParam]);
+  }, [clearTransitionTimeout]);
 
   // Handle camera controls ready
   const handleCameraControlsReady = useCallback((controls: CameraControlsImpl) => {
@@ -138,7 +87,6 @@ export function PublishedSimulationPage(): JSX.Element {
         if (!obj) return prev;
 
         if (childPath) {
-          // Child target: position is world-space (child), rotation/scale are local (child).
           const updatedForPos = applyChildWorldPosition(obj, childPath, update.position) ?? obj;
           const updatedForRotScale =
             applyChildLocalTransform(updatedForPos, childPath, {
@@ -153,7 +101,6 @@ export function PublishedSimulationPage(): JSX.Element {
           return prev.map((o) => (o.id === objectId ? updatedForRotScale : o));
         }
 
-        // Parent target: position/rotation/scale are local (parent transform).
         return prev.map((o) =>
           o.id === objectId
             ? {
@@ -175,126 +122,135 @@ export function PublishedSimulationPage(): JSX.Element {
         );
       });
     },
-    []
+    [setPreviewObjects]
   );
 
   const handlePreviewComplete = useCallback(() => {
     setIsComplete(true);
-  }, []);
+    setTransitionTimeout(() => setShowCompletion(true), COMPLETION_DELAY_MS);
+  }, [setTransitionTimeout]);
 
   const handleRetry = useCallback(() => {
-    // Reset to initial state and restart simulation
     if (project) {
+      clearTransitionTimeout();
       setPreviewObjects(project.objects.map((obj) => ({ ...obj })));
       setIsComplete(false);
+      setShowCompletion(false);
       setCurrentPreviewStep(null);
       setShouldAnimateMoveItem(false);
+      setRetryKey((k) => k + 1);
     }
-  }, [project]);
+  }, [clearTransitionTimeout, project, setPreviewObjects]);
 
   useEffect(() => {
     setShouldAnimateMoveItem(false);
   }, [currentPreviewStep?.id]);
 
-  // Loading
-  if (!isInitialized) {
-    return <LoadingScreen message="Loading your training..." />;
-  }
+  const canStartTraining = isInitialized && !!project && !isStarting;
+  const landingTitle = project?.name?.trim() || 'Preparing your training';
+
+  const handleStart = useCallback(() => {
+    if (!canStartTraining) return;
+
+    setIsStarting(true);
+    setTransitionTimeout(() => {
+      setHasStarted(true);
+      setIsStarting(false);
+    }, START_TRANSITION_MS);
+  }, [canStartTraining, setTransitionTimeout]);
 
   // Missing / invalid link
   if (invalidReason === 'missingToken') {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
-          <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
-          <p className="mb-6 text-sm text-slate-600">This link is missing a token.</p>
-        </div>
-      </div>
+      <PublishedCenterCard
+        eyebrow="Published Training"
+        title="Invalid published link"
+        description="This link is missing a token."
+      />
     );
   }
 
   // Invalid or unavailable published link.
-  if (!project) {
+  if (isInitialized && !project) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm">
-          <h2 className="mb-2 text-xl font-bold text-slate-800">Invalid published link</h2>
-          <p className="mb-6 text-sm text-slate-600">This link is invalid or no longer available.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Completion screen
-  if (isComplete) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div className="animate-in fade-in relative mx-4 w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 px-6 py-8 text-center shadow-2xl backdrop-blur-sm duration-300">
-          <div className="mb-4 text-4xl">✓</div>
-          <h2 className="mb-2 text-2xl font-bold text-slate-800">Simulation Complete</h2>
-          <p className="mb-6 text-sm text-slate-600">
-            You have completed all steps in this training simulation.
-          </p>
-          <button
-            onClick={handleRetry}
-            className="rounded-[12px] bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition-all hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            Retry Simulation
-          </button>
-        </div>
-      </div>
+      <PublishedCenterCard
+        eyebrow="Published Training"
+        title="Invalid published link"
+        description="This link is invalid or no longer available."
+      />
     );
   }
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black">
-      <MainCanvas
-        objects={previewObjects}
-        selectedObjectId={null}
-        onSelectObject={() => {}}
-        onUpdateObject={() => {}}
-        onCameraControlsReady={handleCameraControlsReady}
-        showPerformanceMonitor={false}
-        previewMode={true}
-        previewStep={currentPreviewStep}
-        onPreviewObjectClick={(objectId) => {
-          if (objectClickHandlerRef.current) {
-            objectClickHandlerRef.current(objectId);
-          }
-        }}
-        shouldAnimateMoveItem={shouldAnimateMoveItem}
-        onPreviewTransformUpdate={(update, childPath?: string) => {
-          if (currentPreviewStep?.targetObjectId) {
-            handleTransformUpdate(currentPreviewStep.targetObjectId, update, childPath);
-          }
-        }}
-        onPreviewStepComplete={() => {
-          if (stepCompleteHandlerRef.current) {
-            stepCompleteHandlerRef.current();
-          }
-        }}
-      />
+      {/* 3D canvas -- mounts as soon as project loads so models preload behind the landing page */}
+      {project ? (
+        <div className="absolute inset-0">
+          <MainCanvas
+            objects={previewObjects}
+            selectedObjectId={null}
+            onSelectObject={() => {}}
+            onUpdateObject={() => {}}
+            onCameraControlsReady={handleCameraControlsReady}
+            showPerformanceMonitor={false}
+            previewMode={true}
+            previewStep={currentPreviewStep}
+            onPreviewObjectClick={(objectId) => {
+              if (objectClickHandlerRef.current) {
+                objectClickHandlerRef.current(objectId);
+              }
+            }}
+            shouldAnimateMoveItem={shouldAnimateMoveItem}
+            onPreviewTransformUpdate={(update, childPath?: string) => {
+              if (currentPreviewStep?.targetObjectId) {
+                handleTransformUpdate(currentPreviewStep.targetObjectId, update, childPath);
+              }
+            }}
+            onPreviewStepComplete={() => {
+              if (stepCompleteHandlerRef.current) {
+                stepCompleteHandlerRef.current();
+              }
+            }}
+          />
 
-      <PreviewStepExecutor
-        steps={project.steps}
-        objects={previewObjects}
-        onComplete={handlePreviewComplete}
-        onSetCurrentPreviewStep={setCurrentPreviewStep}
-        onObjectClick={() => {
-          setShouldAnimateMoveItem(true);
-        }}
-        onRegisterObjectClickHandler={(handler) => {
-          objectClickHandlerRef.current = handler;
-        }}
-        onRegisterStepCompleteHandler={(handler) => {
-          stepCompleteHandlerRef.current = handler;
-        }}
-      />
+          {hasStarted ? (
+            <PreviewStepExecutor
+              key={retryKey}
+              steps={project.steps}
+              objects={previewObjects}
+              onComplete={handlePreviewComplete}
+              onSetCurrentPreviewStep={setCurrentPreviewStep}
+              onObjectClick={() => {
+                setShouldAnimateMoveItem(true);
+              }}
+              onRegisterObjectClickHandler={(handler) => {
+                objectClickHandlerRef.current = handler;
+              }}
+              onRegisterStepCompleteHandler={(handler) => {
+                stepCompleteHandlerRef.current = handler;
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
-      <div className="pointer-events-none fixed bottom-4 right-4 z-30 rounded-full border border-slate-200/60 bg-white/90 px-3 py-1 text-xs font-medium text-slate-500 shadow-sm backdrop-blur-sm">
-        Powered by Facilitate
-      </div>
+      {!hasStarted ? (
+        <PublishedTrainingLanding
+          title={landingTitle}
+          canStart={canStartTraining}
+          isStarting={isStarting}
+          onStart={handleStart}
+        />
+      ) : null}
+
+      {/* Completion overlay -- blurs the 3D scene and shows the card on top */}
+      {hasStarted && isComplete ? (
+        <PublishedTrainingCompleteDialog
+          visible={showCompletion}
+          title={project?.name?.trim() || 'Training Complete'}
+          onRestart={handleRetry}
+        />
+      ) : null}
     </div>
   );
 }
-
