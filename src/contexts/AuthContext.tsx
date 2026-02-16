@@ -25,6 +25,9 @@ interface AuthContextValue {
   isLoading: boolean;
   signUp: (email: string, password: string) => Promise<AuthActionResult>;
   signIn: (email: string, password: string) => Promise<AuthActionResult>;
+  resendSignUpConfirmation: (email: string) => Promise<Error | null>;
+  requestPasswordReset: (email: string) => Promise<Error | null>;
+  updatePassword: (password: string) => Promise<Error | null>;
   signOut: () => Promise<void>;
 }
 
@@ -108,6 +111,26 @@ function readCachedAuthSnapshot(): AuthSnapshot {
   return { user: null, session: null, hasCachedSession: false };
 }
 
+function getEmailAuthRedirectUrl(): string | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return `${window.location.origin}/auth/confirm`;
+}
+
+function clearSupabaseAuthHashIfPresent(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (!window.location.hash.includes('access_token=')) {
+    return;
+  }
+
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+}
+
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const [initialSnapshot] = useState<AuthSnapshot>(() => readCachedAuthSnapshot());
   const [user, setUser] = useState<User | null>(initialSnapshot.user);
@@ -139,6 +162,9 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
       setSession(data.session ?? null);
       setUserIfIdentityChanged(data.session?.user ?? null);
+      if (data.session) {
+        clearSupabaseAuthHashIfPresent();
+      }
       setIsLoading(false);
     };
 
@@ -152,6 +178,9 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       }
       setSession(nextSession);
       setUserIfIdentityChanged(nextSession?.user ?? null);
+      if (nextSession) {
+        clearSupabaseAuthHashIfPresent();
+      }
       setIsLoading(false);
     });
 
@@ -163,7 +192,13 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   const signUp = useCallback(
     async (email: string, password: string): Promise<AuthActionResult> => {
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: getEmailAuthRedirectUrl(),
+        },
+      });
       return {
         error: error ?? null,
         session: data.session ?? null,
@@ -185,6 +220,29 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     []
   );
 
+  const resendSignUpConfirmation = useCallback(async (email: string): Promise<Error | null> => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo: getEmailAuthRedirectUrl(),
+      },
+    });
+    return error ?? null;
+  }, []);
+
+  const requestPasswordReset = useCallback(async (email: string): Promise<Error | null> => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getEmailAuthRedirectUrl(),
+    });
+    return error ?? null;
+  }, []);
+
+  const updatePassword = useCallback(async (password: string): Promise<Error | null> => {
+    const { error } = await supabase.auth.updateUser({ password });
+    return error ?? null;
+  }, []);
+
   const signOut = useCallback(async (): Promise<void> => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -199,9 +257,22 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       isLoading,
       signUp,
       signIn,
+      resendSignUpConfirmation,
+      requestPasswordReset,
+      updatePassword,
       signOut,
     }),
-    [isLoading, session, signIn, signOut, signUp, user]
+    [
+      isLoading,
+      requestPasswordReset,
+      resendSignUpConfirmation,
+      session,
+      signIn,
+      signOut,
+      signUp,
+      updatePassword,
+      user,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

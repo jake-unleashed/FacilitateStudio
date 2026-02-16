@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { AuthPage } from './pages/AuthPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { EditorPage } from './pages/EditorPage';
 import { PreviewPage } from './pages/PreviewPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -33,6 +34,8 @@ function App() {
             <RouteTransitionProvider>
               <Routes>
                 <Route path="/auth" element={<AuthPage />} />
+                <Route path="/auth/reset-password" element={<AuthPage />} />
+                <Route path="/auth/confirm" element={<AuthCallbackPage />} />
                 <Route path="/published" element={<PublishedSimulationPage />} />
                 <Route element={<ProtectedRoute />}>
                   <Route path="/" element={<HomePage />} />

@@ -148,7 +148,7 @@ export function WelcomeModal({
         toRestore?.focus?.();
       }, 0);
     };
-  }, [isOpen]);
+  }, [isOpen, onSelectEditorRef]);
 
   if (!shouldRender) return null;
 

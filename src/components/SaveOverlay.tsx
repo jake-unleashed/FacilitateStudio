@@ -88,7 +88,7 @@ export function SaveOverlay({ mode, errorMessage, onStay, onLeaveAnyway }: SaveO
         toRestore?.focus?.();
       }, 0);
     };
-  }, []);
+  }, [onStayRef]);
 
   return (
     <div

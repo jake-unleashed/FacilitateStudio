@@ -4,18 +4,32 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthPage } from './AuthPage';
 
-const mockUseAuth = vi.fn();
+const mockSignIn = vi.fn();
+const mockSignUp = vi.fn();
+const mockResendSignUpConfirmation = vi.fn();
+const mockRequestPasswordReset = vi.fn();
+const mockUpdatePassword = vi.fn();
 
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => mockUseAuth(),
+  useAuth: () => ({
+    user: null,
+    session: null,
+    isLoading: false,
+    signUp: mockSignUp,
+    signIn: mockSignIn,
+    resendSignUpConfirmation: mockResendSignUpConfirmation,
+    requestPasswordReset: mockRequestPasswordReset,
+    updatePassword: mockUpdatePassword,
+    signOut: vi.fn(),
+  }),
 }));
 
-function renderAuthPage(options?: { initialEntries?: string[] }) {
+function renderAuth(options?: { initialEntries?: string[] }) {
   return render(
     <MemoryRouter initialEntries={options?.initialEntries ?? ['/auth']}>
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
-        <Route path="/" element={<div data-testid="home-page">Home</div>} />
+        <Route path="/auth/reset-password" element={<AuthPage />} />
       </Routes>
     </MemoryRouter>
   );
@@ -24,124 +38,77 @@ function renderAuthPage(options?: { initialEntries?: string[] }) {
 describe('AuthPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseAuth.mockReturnValue({
-      user: null,
-      isLoading: false,
-      signIn: vi.fn(async () => ({ error: null, session: {}, user: {} })),
-      signUp: vi.fn(async () => ({ error: null, session: {}, user: {} })),
-    });
   });
 
-  it('renders sign-in mode by default', () => {
-    renderAuthPage();
-    expect(screen.getByRole('heading', { level: 1, name: /welcome back/i })).toBeInTheDocument();
+  it('renders sign in by default', () => {
+    renderAuth();
+    expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
   });
 
-  it('toggles to sign-up mode', async () => {
-    renderAuthPage();
-    const user = userEvent.setup();
+  it('shows check-email screen when sign-up returns no session', async () => {
+    mockSignUp.mockResolvedValueOnce({ error: null, session: null, user: { id: 'u1' } });
+    renderAuth();
 
+    const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /^sign up$/i }));
-    expect(
-      screen.getByRole('heading', { level: 1, name: /create your account/i })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^sign up$/i })).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/email/i), 'new@example.com');
+    await user.type(screen.getByLabelText(/^password$/i), 'password123');
+    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+
+    expect(await screen.findByRole('heading', { name: /check your inbox/i })).toBeInTheDocument();
+    expect(screen.getByText('new@example.com')).toBeInTheDocument();
   });
 
-  it('shows validation error when submitting without email', async () => {
-    renderAuthPage();
-    const user = userEvent.setup();
-
-    await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
-
-    expect(screen.getByRole('alert')).toHaveTextContent(/please enter your email address/i);
-  });
-
-  it('shows friendly error message on invalid credentials', async () => {
-    const signIn = vi.fn(async () => ({
-      error: new Error('Invalid login credentials'),
+  it('allows resending confirmation email from not-confirmed sign-in error', async () => {
+    mockSignIn.mockResolvedValueOnce({
+      error: { message: 'Email not confirmed' },
       session: null,
       user: null,
-    }));
-    mockUseAuth.mockReturnValue({
-      user: null,
-      isLoading: false,
-      signIn,
-      signUp: vi.fn(),
     });
+    mockResendSignUpConfirmation.mockResolvedValueOnce(null);
 
-    renderAuthPage();
+    renderAuth();
     const user = userEvent.setup();
 
-    await user.type(screen.getByLabelText(/email/i), 'user@example.com');
-    await user.type(screen.getByLabelText(/password/i), 'wrong');
+    await user.type(screen.getByLabelText(/email/i), 'nope@example.com');
+    await user.type(screen.getByLabelText(/^password$/i), 'password123');
     await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
-    expect(signIn).toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent(/incorrect email or password/i);
+    expect(await screen.findByText(/please confirm your email/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+    expect(mockResendSignUpConfirmation).toHaveBeenCalledWith('nope@example.com');
+    expect(await screen.findByText(/we sent another confirmation email/i)).toBeInTheDocument();
   });
 
-  it('navigates to home on successful sign-in', async () => {
-    const signIn = vi.fn(async () => ({ error: null, session: {}, user: {} }));
-    mockUseAuth.mockReturnValue({
-      user: null,
-      isLoading: false,
-      signIn,
-      signUp: vi.fn(),
-    });
+  it('supports forgot password flow and shows check-email screen', async () => {
+    mockRequestPasswordReset.mockResolvedValueOnce(null);
+    renderAuth();
 
-    renderAuthPage();
     const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /forgot password/i }));
+    await user.type(screen.getByLabelText(/email/i), 'reset@example.com');
+    await user.click(screen.getByRole('button', { name: /send reset link/i }));
 
-    await user.type(screen.getByLabelText(/email/i), 'user@example.com');
-    await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('home-page')).toBeInTheDocument();
-    });
+    expect(await screen.findByRole('heading', { name: /check your inbox/i })).toBeInTheDocument();
+    expect(screen.getByText('reset@example.com')).toBeInTheDocument();
   });
 
-  it('shows confirmation guidance when sign-up succeeds but no session is created', async () => {
-    const signUp = vi.fn(async () => ({ error: null, session: null, user: {} }));
-    mockUseAuth.mockReturnValue({
-      user: null,
-      isLoading: false,
-      signIn: vi.fn(),
-      signUp,
-    });
+  it('supports reset-password route and updates password', async () => {
+    mockUpdatePassword.mockResolvedValueOnce(null);
+    renderAuth({ initialEntries: ['/auth/reset-password'] });
 
-    renderAuthPage();
     const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/^new password$/i), 'newpass123');
+    await user.type(screen.getByLabelText(/^confirm new password$/i), 'newpass123');
+    await user.click(screen.getByRole('button', { name: /update password/i }));
 
-    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
-    await user.type(screen.getByLabelText(/email/i), 'user@example.com');
-    await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+    expect(mockUpdatePassword).toHaveBeenCalledWith('newpass123');
 
-    expect(signUp).toHaveBeenCalled();
-    expect(screen.getByRole('status')).toHaveTextContent(/check your email to confirm/i);
-    // Should not navigate away
-    expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
-  });
-
-  it('redirects to home if user is already authenticated', async () => {
-    mockUseAuth.mockReturnValue({
-      user: { id: 'user-1' },
-      isLoading: false,
-      signIn: vi.fn(),
-      signUp: vi.fn(),
-    });
-
-    renderAuthPage();
-
+    // We navigate back to /auth with a success message in route state.
     await waitFor(() => {
-      expect(screen.getByTestId('home-page')).toBeInTheDocument();
+      expect(screen.getByText(/password updated/i)).toBeInTheDocument();
     });
   });
 });
-

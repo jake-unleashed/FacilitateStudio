@@ -1,53 +1,84 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '../components/Button';
-import { Input } from '../components/Input';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { useAuth } from '../contexts/AuthContext';
-
-type AuthMode = 'sign-in' | 'sign-up';
-
-function toFriendlyAuthErrorMessage(message: string): string {
-  const normalized = message.toLowerCase();
-
-  if (normalized.includes('invalid login credentials')) {
-    return 'Incorrect email or password.';
-  }
-
-  if (normalized.includes('email not confirmed')) {
-    return 'Please confirm your email before signing in.';
-  }
-
-  if (normalized.includes('password')) {
-    return 'Your password does not meet requirements. Try at least 6 characters.';
-  }
-
-  if (normalized.includes('email')) {
-    return 'Please enter a valid email address.';
-  }
-
-  return 'Authentication failed. Please try again.';
-}
+import { AuthCheckEmailPanel } from './auth/AuthCheckEmailPanel';
+import { AuthFormPanel } from './auth/AuthFormPanel';
+import { isEmailNotConfirmedError, toFriendlyAuthErrorMessage } from './auth/authErrors';
+import type { AuthMode, AuthSuccessState, PendingEmailState } from './auth/authTypes';
 
 export function AuthPage(): JSX.Element {
+  const location = useLocation();
   const navigate = useNavigate();
-  const { user, isLoading, signIn, signUp } = useAuth();
+  const {
+    user,
+    isLoading,
+    signIn,
+    signUp,
+    resendSignUpConfirmation,
+    requestPasswordReset,
+    updatePassword,
+  } = useAuth();
 
-  const [mode, setMode] = useState<AuthMode>('sign-in');
+  const isResetPasswordRoute = location.pathname === '/auth/reset-password';
+  const [mode, setMode] = useState<AuthMode>(isResetPasswordRoute ? 'reset-password' : 'sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(() => {
+    const state = location.state as AuthSuccessState | null;
+    return state?.authSuccessMessage ?? null;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingEmailState, setPendingEmailState] = useState<PendingEmailState | null>(null);
+  const [canResendConfirmation, setCanResendConfirmation] = useState(false);
+  const [resendTargetEmail, setResendTargetEmail] = useState('');
 
   useEffect(() => {
-    if (!isLoading && user) {
+    const state = location.state as AuthSuccessState | null;
+    if (state?.authSuccessMessage) {
+      setSuccessMessage(state.authSuccessMessage);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (isResetPasswordRoute) {
+      setMode('reset-password');
+      setErrorMessage(null);
+      setPendingEmailState(null);
+      setCanResendConfirmation(false);
+      return;
+    }
+
+    if (mode === 'reset-password') {
+      setMode('sign-in');
+      setErrorMessage(null);
+      setCanResendConfirmation(false);
+      setPassword('');
+      setConfirmPassword('');
+    }
+  }, [isResetPasswordRoute, mode]);
+
+  useEffect(() => {
+    if (!isLoading && user && mode !== 'reset-password') {
       navigate('/', { replace: true });
     }
-  }, [isLoading, navigate, user]);
+  }, [isLoading, mode, navigate, user]);
 
-  const title = mode === 'sign-in' ? 'Welcome back' : 'Create your account';
-  const submitLabel = mode === 'sign-in' ? 'Sign In' : 'Sign Up';
+  const title = useMemo(() => {
+    if (mode === 'sign-up') return 'Create your account';
+    if (mode === 'forgot-password') return 'Reset your password';
+    if (mode === 'reset-password') return 'Choose a new password';
+    return 'Welcome back';
+  }, [mode]);
+
+  const submitLabel = useMemo(() => {
+    if (mode === 'sign-up') return 'Sign Up';
+    if (mode === 'forgot-password') return 'Send reset link';
+    if (mode === 'reset-password') return 'Update password';
+    return 'Sign In';
+  }, [mode]);
 
   const footerMessage = useMemo(
     () =>
@@ -59,24 +90,137 @@ export function AuthPage(): JSX.Element {
 
   const footerActionLabel = mode === 'sign-in' ? 'Sign up' : 'Sign in';
 
+  const switchToSignIn = (): void => {
+    navigate('/auth', { replace: true, state: null });
+    setMode('sign-in');
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setPendingEmailState(null);
+    setCanResendConfirmation(false);
+    setPassword('');
+    setConfirmPassword('');
+  };
+
+  const switchToSignUp = (): void => {
+    navigate('/auth', { replace: true, state: null });
+    setMode('sign-up');
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setPendingEmailState(null);
+    setCanResendConfirmation(false);
+    setPassword('');
+    setConfirmPassword('');
+  };
+
+  const handleResendConfirmation = async (targetEmail: string): Promise<void> => {
+    const trimmedEmail = targetEmail.trim();
+    if (!trimmedEmail) {
+      setErrorMessage('Please enter your email address first.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    const resendError = await resendSignUpConfirmation(trimmedEmail);
+    setIsSubmitting(false);
+
+    if (resendError) {
+      setErrorMessage(toFriendlyAuthErrorMessage(resendError.message));
+      return;
+    }
+
+    setSuccessMessage(`We sent another confirmation email to ${trimmedEmail}.`);
+  };
+
+  const handleResendPendingEmail = async (pendingState: PendingEmailState): Promise<void> => {
+    if (pendingState.kind === 'sign-up') {
+      await handleResendConfirmation(pendingState.email);
+      return;
+    }
+
+    const trimmedEmail = pendingState.email.trim();
+    if (!trimmedEmail) {
+      setErrorMessage('Please enter your email address first.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    const resetError = await requestPasswordReset(trimmedEmail);
+    setIsSubmitting(false);
+
+    if (resetError) {
+      setErrorMessage(toFriendlyAuthErrorMessage(resetError.message));
+      return;
+    }
+
+    setSuccessMessage(`We sent another reset link to ${trimmedEmail}.`);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setCanResendConfirmation(false);
 
     const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
+    const needsEmail = mode === 'sign-in' || mode === 'sign-up' || mode === 'forgot-password';
+    const needsPassword = mode === 'sign-in' || mode === 'sign-up' || mode === 'reset-password';
+
+    if (needsEmail && !trimmedEmail) {
       setErrorMessage('Please enter your email address.');
       return;
     }
 
-    if (!password) {
+    if (needsPassword && !password) {
       setErrorMessage('Please enter your password.');
       return;
     }
 
+    if (mode === 'reset-password') {
+      if (!confirmPassword) {
+        setErrorMessage('Please confirm your new password.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setErrorMessage('Passwords do not match.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
+      if (mode === 'forgot-password') {
+        const resetError = await requestPasswordReset(trimmedEmail);
+        if (resetError) {
+          setErrorMessage(toFriendlyAuthErrorMessage(resetError.message));
+          return;
+        }
+        setPendingEmailState({
+          email: trimmedEmail,
+          kind: 'password-reset',
+        });
+        return;
+      }
+
+      if (mode === 'reset-password') {
+        const updateError = await updatePassword(password);
+        if (updateError) {
+          setErrorMessage(toFriendlyAuthErrorMessage(updateError.message));
+          return;
+        }
+        setMode('sign-in');
+        navigate('/auth', {
+          replace: true,
+          state: { authSuccessMessage: 'Password updated. You can now sign in with your new password.' } satisfies AuthSuccessState,
+        });
+        setPassword('');
+        setConfirmPassword('');
+        return;
+      }
+
       const result =
         mode === 'sign-in'
           ? await signIn(trimmedEmail, password)
@@ -84,15 +228,20 @@ export function AuthPage(): JSX.Element {
 
       if (result.error) {
         setErrorMessage(toFriendlyAuthErrorMessage(result.error.message));
+        if (mode === 'sign-in' && isEmailNotConfirmedError(result.error.message)) {
+          setCanResendConfirmation(true);
+          setResendTargetEmail(trimmedEmail);
+        }
         return;
       }
 
-      // Many Supabase projects require email confirmation for sign-up, which creates the user but
-      // does not establish a session yet. In that case, keep the user on this page with guidance.
       if (mode === 'sign-up' && !result.session) {
+        setPendingEmailState({
+          email: trimmedEmail,
+          kind: 'sign-up',
+        });
         setMode('sign-in');
         setPassword('');
-        setSuccessMessage('Account created. Check your email to confirm, then sign in.');
         return;
       }
 
@@ -128,122 +277,53 @@ export function AuthPage(): JSX.Element {
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
         <section className="w-full max-w-md rounded-[32px] border border-white/40 bg-white/75 p-7 shadow-glass backdrop-blur-xl sm:p-8">
-          <div className="mb-6 flex items-center justify-center gap-2 rounded-[20px] border border-white/50 bg-white/40 p-1 shadow-sm">
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => {
-                setMode('sign-in');
-                setErrorMessage(null);
-                setSuccessMessage(null);
-                setPassword('');
-              }}
-              className={`w-1/2 rounded-[12px] px-3 py-2 text-xs font-semibold transition-all ${
-                mode === 'sign-in'
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                  : 'text-slate-500 hover:bg-white/60 hover:text-slate-700'
-              }`}
-              aria-label="Switch to sign in mode"
-              aria-pressed={mode === 'sign-in'}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => {
-                setMode('sign-up');
-                setErrorMessage(null);
-                setSuccessMessage(null);
-                setPassword('');
-              }}
-              className={`w-1/2 rounded-[12px] px-3 py-2 text-xs font-semibold transition-all ${
-                mode === 'sign-up'
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                  : 'text-slate-500 hover:bg-white/60 hover:text-slate-700'
-              }`}
-              aria-label="Switch to sign up mode"
-              aria-pressed={mode === 'sign-up'}
-            >
-              Sign Up
-            </button>
-          </div>
-
-          <h1 className="text-center text-lg font-bold tracking-tight text-slate-800">{title}</h1>
-          <p className="mt-1 text-center text-sm text-slate-500">
-            {mode === 'sign-in'
-              ? 'Sign in to access your projects.'
-              : 'Create an account to start saving projects in the cloud.'}
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
-            <Input
-              label="Email"
-              type="email"
-              autoComplete="email"
-              autoFocus
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@company.com"
-              required
-              disabled={isSubmitting}
+          {pendingEmailState ? (
+            <AuthCheckEmailPanel
+              pendingEmailState={pendingEmailState}
+              isSubmitting={isSubmitting}
+              successMessage={successMessage}
+              errorMessage={errorMessage}
+              onResend={() => void handleResendPendingEmail(pendingEmailState)}
+              onBackToSignIn={switchToSignIn}
             />
-            <Input
-              label="Password"
-              type="password"
-              autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Enter password"
-              required
-              disabled={isSubmitting}
-            />
-
-            {successMessage ? (
-              <p
-                className="rounded-[12px] border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-800"
-                role="status"
-              >
-                {successMessage}
-              </p>
-            ) : null}
-
-            {errorMessage ? (
-              <p
-                className="rounded-[12px] border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
-                role="alert"
-              >
-                {errorMessage}
-              </p>
-            ) : null}
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              disabled={isSubmitting}
-              className="mt-1 w-full justify-center rounded-[20px]"
-            >
-              {isSubmitting ? 'Please wait...' : submitLabel}
-            </Button>
-          </form>
-
-          <div className="mt-5 text-center text-xs font-medium text-slate-500">
-            {footerMessage}{' '}
-            <button
-              type="button"
-              disabled={isSubmitting}
-              className="font-semibold text-blue-600 hover:text-blue-500"
-              onClick={() => {
-                setMode((prev) => (prev === 'sign-in' ? 'sign-up' : 'sign-in'));
+          ) : (
+            <AuthFormPanel
+              mode={mode}
+              title={title}
+              submitLabel={submitLabel}
+              email={email}
+              password={password}
+              confirmPassword={confirmPassword}
+              isSubmitting={isSubmitting}
+              successMessage={successMessage}
+              errorMessage={errorMessage}
+              canResendConfirmation={canResendConfirmation}
+              onEmailChange={setEmail}
+              onPasswordChange={setPassword}
+              onConfirmPasswordChange={setConfirmPassword}
+              onSubmit={handleSubmit}
+              onSwitchToSignIn={switchToSignIn}
+              onSwitchToSignUp={switchToSignUp}
+              onForgotPassword={() => {
+                setMode('forgot-password');
                 setErrorMessage(null);
                 setSuccessMessage(null);
+                setCanResendConfirmation(false);
                 setPassword('');
+                setConfirmPassword('');
               }}
-            >
-              {footerActionLabel}
-            </button>
-          </div>
+              onResendConfirmation={() => void handleResendConfirmation(resendTargetEmail || email)}
+              footerMessage={footerMessage}
+              footerActionLabel={footerActionLabel}
+              onFooterToggle={() => {
+                if (mode === 'sign-in') {
+                  switchToSignUp();
+                  return;
+                }
+                switchToSignIn();
+              }}
+            />
+          )}
         </section>
       </main>
     </div>

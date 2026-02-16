@@ -261,7 +261,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
         toRestore?.focus?.();
       }, 0);
     };
-  }, [isOpen]);
+  }, [isOpen, onCloseRef]);
 
   useEffect(() => {
     if (!isOpen) return;

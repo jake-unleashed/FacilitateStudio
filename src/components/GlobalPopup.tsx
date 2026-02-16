@@ -119,7 +119,7 @@ export const GlobalPopup: React.FC = () => {
     if (popup) {
       setIsExiting(false);
     }
-  }, [popup]);
+  }, [handleDismissRef, popup]);
 
   // Focus management + focus trap + Escape.
   useEffect(() => {
@@ -183,7 +183,7 @@ export const GlobalPopup: React.FC = () => {
         toRestore?.focus?.();
       }, 0);
     };
-  }, [popup]);
+  }, [handleDismissRef, popup]);
 
   // Don't render if no popup
   if (!popup) {
