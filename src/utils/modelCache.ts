@@ -12,9 +12,14 @@
 
 import * as THREE from 'three';
 import { ModelMetrics, STORAGE_CONFIG } from '../types/model';
+import type { AssetMetadata } from '../types/model';
 import type { ModelFileType } from '../types/model';
 import { getAsset, updateAssetMetadata, blobToArrayBuffer } from './modelAssetStore';
-import { loadAndPreprocessModelFromArrayBuffer, PreprocessedModel } from './modelLoaders';
+import {
+  extractChildMeshes,
+  loadAndPreprocessModelFromArrayBuffer,
+  PreprocessedModel,
+} from './modelLoaders';
 import { deepCloneGroup } from './deepCloneModel';
 import { supabase } from '../lib/supabase';
 
@@ -256,9 +261,16 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
   // Include originalScale from preprocessing to track the normalization factor
   const metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
 
-  // Update stored metadata if metrics weren't present
+  // Update stored metadata if any derived data is missing.
+  const metadataUpdates: Partial<AssetMetadata> = {};
   if (!assetData.metadata.metrics) {
-    await updateAssetMetadata(assetId, { metrics });
+    metadataUpdates.metrics = metrics;
+  }
+  if (assetData.metadata.children === undefined) {
+    metadataUpdates.children = extractChildMeshes(preprocessed.model);
+  }
+  if (Object.keys(metadataUpdates).length > 0) {
+    await updateAssetMetadata(assetId, metadataUpdates);
   }
 
   // Cleanup if needed before adding to cache

@@ -29,7 +29,7 @@ import {
   blobToArrayBuffer,
 } from '../utils/modelAssetStore';
 import { loadAndPreprocessModelFromArrayBuffer, extractChildMeshes } from '../utils/modelLoaders';
-import { cachePreprocessedModel } from '../utils/modelCache';
+import { cachePreprocessedModel, getOrLoadModel } from '../utils/modelCache';
 import { ChildMesh } from '../types';
 import { calculateOptimalPosition, generateUniqueName } from './modelUpload/positioning';
 import { createSceneObject } from './modelUpload/sceneObject';
@@ -242,6 +242,16 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           await updateAssetMetadata(assetId, { metrics, children });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to process model';
+          setError(assetName, `Invalid model: ${msg}`);
+          return null;
+        }
+      } else if (children === undefined) {
+        try {
+          const { model } = await getOrLoadModel(assetId);
+          children = extractChildMeshes(model);
+          await updateAssetMetadata(assetId, { children });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Failed to extract model children';
           setError(assetName, `Invalid model: ${msg}`);
           return null;
         }

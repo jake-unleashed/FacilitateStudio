@@ -28,6 +28,7 @@ vi.mock('../utils/modelLoaders', () => ({
 
 vi.mock('../utils/modelCache', () => ({
   cachePreprocessedModel: vi.fn(),
+  getOrLoadModel: vi.fn(),
 }));
 
 vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
@@ -42,12 +43,13 @@ import {
   saveAsset,
   getAsset,
   getRecentAssets,
+  updateAssetMetadata,
   deleteAsset,
   hasLegacyAssets,
   migrateLegacyAssets,
 } from '../utils/modelAssetStore';
-import { loadAndPreprocessModelFromArrayBuffer } from '../utils/modelLoaders';
-import { cachePreprocessedModel } from '../utils/modelCache';
+import { extractChildMeshes, loadAndPreprocessModelFromArrayBuffer } from '../utils/modelLoaders';
+import { cachePreprocessedModel, getOrLoadModel } from '../utils/modelCache';
 
 describe('useModelUpload', () => {
   // ===========================================================================
@@ -455,7 +457,7 @@ describe('useModelUpload', () => {
   describe('addRecentAssetToScene', () => {
     it('uses cached metrics when available', async () => {
       const metrics = createMockMetrics();
-      const metadata = { ...createMockMetadata(), metrics };
+      const metadata = { ...createMockMetadata(), metrics, children: [] };
 
       const { result } = renderHook(() => useModelUpload());
 
@@ -468,6 +470,46 @@ describe('useModelUpload', () => {
       // Note: Progress stage remains 'idle' for recent assets - feedback is
       // shown on the asset card instead of the upload button
       expect(result.current.uploadProgress.stage).toBe('idle');
+    });
+
+    it('backfills children when metrics cached but children missing', async () => {
+      const metrics = createMockMetrics();
+      const metadata = { ...createMockMetadata(), metrics }; // children intentionally missing
+
+      vi.mocked(getOrLoadModel).mockResolvedValue({
+        model: new THREE.Group(),
+        metrics,
+      });
+
+      vi.mocked(extractChildMeshes).mockReturnValueOnce([
+        {
+          name: 'Child A',
+          path: ['Scene', 'ChildA'],
+          localTransform: {
+            x: 0,
+            y: 0,
+            z: 0,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            scaleX: 1,
+            scaleY: 1,
+            scaleZ: 1,
+          },
+        },
+      ]);
+
+      const { result } = renderHook(() => useModelUpload());
+
+      await act(async () => {
+        await result.current.addRecentAssetToScene(metadata, []);
+      });
+
+      expect(getOrLoadModel).toHaveBeenCalledWith(metadata.id);
+      expect(loadAndPreprocessModelFromArrayBuffer).not.toHaveBeenCalled();
+      expect(updateAssetMetadata).toHaveBeenCalledWith(metadata.id, {
+        children: expect.any(Array),
+      });
     });
 
     it('processes model when metrics not cached', async () => {
@@ -491,7 +533,7 @@ describe('useModelUpload', () => {
 
     it('returns scene object', async () => {
       const metrics = createMockMetrics();
-      const metadata = { ...createMockMetadata(), metrics };
+      const metadata = { ...createMockMetadata(), metrics, children: [] };
 
       const { result } = renderHook(() => useModelUpload());
 
