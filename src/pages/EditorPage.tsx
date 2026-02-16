@@ -1556,8 +1556,8 @@ function EditorPageContent() {
 
         {isEntryFadeVisible && (
           <div
-            className={`pointer-events-auto absolute inset-0 z-40 bg-slate-100 transition-opacity duration-500 ease-out ${
-              isEntryFadeFading ? 'opacity-0' : 'opacity-100'
+            className={`absolute inset-0 z-40 bg-slate-100 transition-opacity duration-500 ease-out ${
+              isEntryFadeFading ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
             }`}
             aria-hidden="true"
           >

@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import type { MutableRefObject, RefObject } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { CameraControls, Environment, PerspectiveCamera } from '@react-three/drei';
@@ -31,6 +31,81 @@ import { GridWithNoDepth } from '../GridWithNoDepth';
 const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
 
 const GRID_FADE_STRENGTH = 2.0;
+const GUIDED_BODY_ATTRIBUTE_FILTER = [
+  'data-guided-nav-lock',
+  'data-guided-phase',
+  'data-guided-position-mode',
+];
+
+interface GuidedBodyDatasetState {
+  isNavigationDisabled: boolean;
+  guidedPhase?: string;
+  guidedPositionMode?: string;
+}
+
+function readGuidedBodyDatasetState(): GuidedBodyDatasetState {
+  if (typeof document === 'undefined') {
+    return {
+      isNavigationDisabled: false,
+      guidedPhase: undefined,
+      guidedPositionMode: undefined,
+    };
+  }
+
+  return {
+    isNavigationDisabled: document.body.dataset.guidedNavLock === 'true',
+    guidedPhase: document.body.dataset.guidedPhase,
+    guidedPositionMode: document.body.dataset.guidedPositionMode,
+  };
+}
+
+function useGuidedBodyDatasetState(): GuidedBodyDatasetState {
+  const [guidedBodyState, setGuidedBodyState] = useState<GuidedBodyDatasetState>(
+    readGuidedBodyDatasetState
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const updateGuidedBodyState = () => {
+      setGuidedBodyState((previousState) => {
+        const nextState = readGuidedBodyDatasetState();
+        if (
+          previousState.isNavigationDisabled === nextState.isNavigationDisabled &&
+          previousState.guidedPhase === nextState.guidedPhase &&
+          previousState.guidedPositionMode === nextState.guidedPositionMode
+        ) {
+          return previousState;
+        }
+        return nextState;
+      });
+    };
+
+    // Ensure we’re in sync even if state was constructed before `document.body` was ready.
+    updateGuidedBodyState();
+
+    const observer = new MutationObserver((mutationList) => {
+      for (const mutation of mutationList) {
+        const attributeName = mutation.attributeName;
+        if (!attributeName) continue;
+        if (!GUIDED_BODY_ATTRIBUTE_FILTER.includes(attributeName)) continue;
+        updateGuidedBodyState();
+        break;
+      }
+    });
+
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: GUIDED_BODY_ATTRIBUTE_FILTER,
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  return guidedBodyState;
+}
 
 export interface SceneContentViewProps {
   objects: SceneObject[];
@@ -92,9 +167,11 @@ export interface SceneContentViewProps {
 
 export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const ghostObject = props.ghostObject;
-  const isNavigationDisabled =
-    typeof document !== 'undefined' && document.body.dataset.guidedNavLock === 'true';
-  const guidedPhase = typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+  const guidedBodyState = useGuidedBodyDatasetState();
+
+  const isNavigationDisabled = guidedBodyState.isNavigationDisabled;
+  const guidedPhase = guidedBodyState.guidedPhase;
+  const guidedPositionMode = guidedBodyState.guidedPositionMode;
   const isGuidedModelUpload = guidedPhase === 'model-upload';
   return (
     <>
@@ -276,11 +353,6 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         ((props.recordingPositionForStepId && props.ghostObject && props.selectedParentId === props.ghostObject.id) ||
           (!props.recordingPositionForStepId && props.selectedObject)) &&
         (() => {
-          const guidedPhase =
-            typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
-          const guidedPositionMode =
-            typeof document !== 'undefined' ? document.body.dataset.guidedPositionMode : undefined;
-
           const isGuidedPositioning = guidedPhase === 'model-positioning';
           const isGuidedStepConfig = guidedPhase === 'step-configuration';
           const shouldShowGizmo =

@@ -1,11 +1,13 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 16/02/2026, 2:55:20 pm
+**Updated**: 16/02/2026, 3:07:30 pm
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Project Storage (`project-storage`) | Research how projects are currently stored and plan account-scoped storage | 2026-02-16 02:40 | 2026-02-16 03:55 | 1h 14m | 4 | 0 | 0 |  |
+| Trainee Experience (`trainee-experience`) | Plan landing page and polished trainee flow for published sims | 2026-02-16 04:07 | 2026-02-16 04:07 | 0m | 0 | 0 | 0 |  |
+| Scene Navigation (`scene-navigation`) | Ensure edit-mode scene controls are responsive immediately | 2026-02-16 03:58 | 2026-02-16 04:05 | 6m | 2 | 0 | 0 |  |
+| Project Storage (`project-storage`) | Research how projects are currently stored and plan account-scoped storage | 2026-02-16 02:40 | 2026-02-16 03:56 | 1h 16m | 6 | 1 | 1 |  |
 | Step Extraction (`step-extraction`) | Explain why extraction works for you but not teammate | 2026-02-16 03:13 | 2026-02-16 03:30 | 17m | 8 | 0 | 0 |  |
 | Starter Models Hierarchy (`starter-models-hierarchy`) | Explain why starter models lose children and outline a safe fix | 2026-02-16 02:24 | 2026-02-16 02:57 | 33m | 3 | 1 | 1 |  |
 | Auth & Email (`auth-email`) | Investigate signup/email confirmation flow and plan improvements | 2026-02-16 02:04 | 2026-02-16 02:47 | 42m | 9 | 1 | 1 |  |
