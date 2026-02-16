@@ -1,6 +1,8 @@
 import type { PublishURLResult } from '../types/publish';
 import type { Project } from '../types/project';
 import { publishProject } from '../services/publishService';
+import { ValidationError } from './errors';
+import { logger } from './logger';
 
 /**
  * Generate a backend-backed publish URL for a project.
@@ -12,10 +14,10 @@ import { publishProject } from '../services/publishService';
  */
 export async function generatePublishURL(project: Project, userId: string): Promise<PublishURLResult> {
   if (!project.id || !project.id.trim()) {
-    throw new Error('Project ID is required to generate a publish URL');
+    throw new ValidationError('Project ID is required to generate a publish URL');
   }
   if (!userId || !userId.trim()) {
-    throw new Error('Authenticated user ID is required to generate a publish URL');
+    throw new ValidationError('Authenticated user ID is required to generate a publish URL');
   }
 
   return publishProject(project, userId.trim());
@@ -46,7 +48,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     document.body.removeChild(textarea);
     return success;
   } catch (error) {
-    console.error('[publishUtils] Failed to copy to clipboard:', error);
+    logger.error('[publishUtils] Failed to copy to clipboard:', error);
     return false;
   }
 }

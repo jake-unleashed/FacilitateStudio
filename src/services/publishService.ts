@@ -5,6 +5,8 @@ import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
 import { syncAssetToCloud } from '../utils/modelAssetStore';
 import { hasUsableSteps } from '../utils/stepValidation';
+import { NotFoundError, StorageError, ValidationError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 const USER_ASSETS_BUCKET = 'user-assets';
 const PUBLISHED_ASSETS_BUCKET = 'published-assets';
@@ -48,7 +50,7 @@ function toPublishedUrl(shareToken: string): string {
 
 function toModelFileType(value: string): ModelFileType {
   if (value === 'glb' || value === 'fbx' || value === 'obj') return value;
-  throw new Error(`Unsupported asset file type "${value}" in publish flow.`);
+  throw new ValidationError(`Unsupported asset file type "${value}" in publish flow.`);
 }
 
 function toMimeType(fileType: ModelFileType): string {
@@ -94,8 +96,8 @@ async function getAssetRowByAssetId(assetId: string, userId: string): Promise<As
       .eq('id', assetId)
       .eq('owner_id', userId)
       .maybeSingle();
-    if (error) throw new Error(`Failed to query asset "${assetId}": ${error.message}`);
-    return (data as AssetRow | null) ?? null;
+    if (error) throw new StorageError(`Failed to query asset "${assetId}": ${error.message}`);
+    return toAssetRowOrNull(data, assetId);
   }
 
   const { data, error } = await supabase
@@ -107,8 +109,8 @@ async function getAssetRowByAssetId(assetId: string, userId: string): Promise<As
     .limit(1)
     .maybeSingle();
 
-  if (error) throw new Error(`Failed to query asset "${assetId}": ${error.message}`);
-  return (data as AssetRow | null) ?? null;
+  if (error) throw new StorageError(`Failed to query asset "${assetId}": ${error.message}`);
+  return toAssetRowOrNull(data, assetId);
 }
 
 async function ensureAssetInCloud(assetId: string, userId: string): Promise<AssetRow> {
@@ -120,7 +122,7 @@ async function ensureAssetInCloud(assetId: string, userId: string): Promise<Asse
   row = await getAssetRowByAssetId(assetId, userId);
   if (row) return row;
 
-  throw new Error(
+  throw new NotFoundError(
     `Asset "${assetId}" could not be found locally or in cloud storage. Try re-uploading the model, then publish again.`
   );
 }
@@ -138,7 +140,7 @@ async function copyAssetToPublishedBucket(args: {
     .from(USER_ASSETS_BUCKET)
     .download(args.row.storage_key);
   if (sourceError || !sourceBlob) {
-    throw new Error(
+    throw new StorageError(
       `Failed to download source asset "${args.assetId}" from "${args.row.storage_key}": ${sourceError?.message ?? 'Unknown error'}`
     );
   }
@@ -152,7 +154,7 @@ async function copyAssetToPublishedBucket(args: {
     }
   );
   if (uploadError) {
-    throw new Error(
+    throw new StorageError(
       `Failed to upload published asset "${args.assetId}" to "${publishedStoragePath}": ${uploadError.message}`
     );
   }
@@ -183,27 +185,93 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isAssetRow(value: unknown): value is AssetRow {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.owner_id === 'string' &&
+    typeof value.storage_key === 'string' &&
+    typeof value.filename === 'string' &&
+    typeof value.file_type === 'string'
+  );
+}
+
+function toAssetRowOrNull(value: unknown, assetId: string): AssetRow | null {
+  if (!value) return null;
+  if (isAssetRow(value)) return value;
+  throw new StorageError(`Received invalid asset row shape while loading "${assetId}".`);
+}
+
+function isExistingPublishRow(value: unknown): value is ExistingPublishRow {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.share_token === 'string' &&
+    typeof value.is_active === 'boolean'
+  );
+}
+
+function isSceneObjectLike(value: unknown): value is SceneObject {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    isRecord(value.transform) &&
+    isRecord(value.properties)
+  );
+}
+
+function isSimStepLike(value: unknown): value is SimStep {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.description === 'string'
+  );
+}
+
+function isAssetManifestEntry(value: unknown): value is AssetManifestEntry {
+  return (
+    isRecord(value) &&
+    typeof value.url === 'string' &&
+    (value.fileType === 'glb' || value.fileType === 'fbx' || value.fileType === 'obj')
+  );
+}
+
 function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
   if (!isRecord(value)) {
-    throw new Error('Invalid published snapshot payload.');
+    throw new ValidationError('Invalid published snapshot payload.');
   }
   const name = value.name;
   const objects = value.objects;
   const steps = value.steps;
   const assetManifest = value.assetManifest;
 
-  if (typeof name !== 'string') throw new Error('Invalid published snapshot: missing name.');
-  if (!Array.isArray(objects)) throw new Error('Invalid published snapshot: missing objects.');
-  if (!Array.isArray(steps)) throw new Error('Invalid published snapshot: missing steps.');
-  if (!isRecord(assetManifest)) throw new Error('Invalid published snapshot: missing asset manifest.');
+  if (typeof name !== 'string') throw new ValidationError('Invalid published snapshot: missing name.');
+  if (!Array.isArray(objects)) throw new ValidationError('Invalid published snapshot: missing objects.');
+  if (!Array.isArray(steps)) throw new ValidationError('Invalid published snapshot: missing steps.');
+  if (!isRecord(assetManifest)) {
+    throw new ValidationError('Invalid published snapshot: missing asset manifest.');
+  }
+
+  if (!objects.every(isSceneObjectLike)) {
+    throw new ValidationError('Invalid published snapshot: malformed objects.');
+  }
+  if (!steps.every(isSimStepLike)) {
+    throw new ValidationError('Invalid published snapshot: malformed steps.');
+  }
+  if (!Object.values(assetManifest).every(isAssetManifestEntry)) {
+    throw new ValidationError('Invalid published snapshot: malformed asset manifest.');
+  }
+  const validatedAssetManifest = assetManifest as Record<string, AssetManifestEntry>;
 
   // Best-effort structural validation: we validate top-level shape here, and rely on downstream
   // code to be tolerant of scene/object details while the published flow is still MVP.
   return {
     name,
-    objects: objects as SceneObject[],
-    steps: steps as SimStep[],
-    assetManifest: assetManifest as Record<string, AssetManifestEntry>,
+    objects,
+    steps,
+    assetManifest: validatedAssetManifest,
   };
 }
 
@@ -213,16 +281,16 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
  */
 export async function publishProject(project: Project, userId: string): Promise<PublishURLResult> {
   if (!project.id?.trim()) {
-    throw new Error('Project ID is required to publish.');
+    throw new ValidationError('Project ID is required to publish.');
   }
   if (!userId?.trim()) {
-    throw new Error('Authenticated user ID is required to publish.');
+    throw new ValidationError('Authenticated user ID is required to publish.');
   }
   if (!Array.isArray(project.steps) || project.steps.length === 0) {
-    throw new Error('Add at least one step before publishing.');
+    throw new ValidationError('Add at least one step before publishing.');
   }
   if (!hasUsableSteps(project.steps)) {
-    throw new Error('Choose a step type before publishing.');
+    throw new ValidationError('Choose a step type before publishing.');
   }
 
   const projectId = project.id.trim();
@@ -259,11 +327,14 @@ export async function publishProject(project: Project, userId: string): Promise<
     .eq('owner_id', userId)
     .maybeSingle();
   if (existingError) {
-    throw new Error(`Failed to check existing published snapshot: ${existingError.message}`);
+    throw new StorageError(`Failed to check existing published snapshot: ${existingError.message}`);
   }
 
   if (existing) {
-    const existingRow = existing as ExistingPublishRow;
+    if (!isExistingPublishRow(existing)) {
+      throw new StorageError('Received invalid published snapshot row shape from database.');
+    }
+    const existingRow = existing;
     const { error: updateError } = await supabase
       .from('published_projects')
       .update({
@@ -274,7 +345,7 @@ export async function publishProject(project: Project, userId: string): Promise<
       .eq('id', existingRow.id)
       .eq('owner_id', userId);
     if (updateError) {
-      throw new Error(`Failed to update published snapshot: ${updateError.message}`);
+      throw new StorageError(`Failed to update published snapshot: ${updateError.message}`);
     }
 
     return {
@@ -292,7 +363,7 @@ export async function publishProject(project: Project, userId: string): Promise<
     is_active: true,
   });
   if (insertError) {
-    throw new Error(`Failed to create published snapshot: ${insertError.message}`);
+    throw new StorageError(`Failed to create published snapshot: ${insertError.message}`);
   }
 
   return {
@@ -317,11 +388,14 @@ export async function getExistingPublish(
     .eq('owner_id', userId)
     .maybeSingle();
   if (error) {
-    throw new Error(`Failed to load existing publish state: ${error.message}`);
+    throw new StorageError(`Failed to load existing publish state: ${error.message}`);
   }
   if (!data) return null;
 
-  const token = data.share_token as string;
+  const token = typeof data.share_token === 'string' ? data.share_token : null;
+  if (!token) {
+    throw new StorageError('Received invalid publish token shape from database.');
+  }
   return {
     shareToken: token,
     url: toPublishedUrl(token),
@@ -335,10 +409,10 @@ export async function getExistingPublish(
  */
 export async function unpublishProject(projectId: string, userId: string): Promise<void> {
   if (!projectId?.trim()) {
-    throw new Error('Project ID is required to unpublish.');
+    throw new ValidationError('Project ID is required to unpublish.');
   }
   if (!userId?.trim()) {
-    throw new Error('Authenticated user ID is required to unpublish.');
+    throw new ValidationError('Authenticated user ID is required to unpublish.');
   }
 
   const { error } = await supabase
@@ -350,7 +424,7 @@ export async function unpublishProject(projectId: string, userId: string): Promi
     .eq('project_id', projectId)
     .eq('owner_id', userId);
   if (error) {
-    throw new Error(`Failed to unpublish project: ${error.message}`);
+    throw new StorageError(`Failed to unpublish project: ${error.message}`);
   }
 
   // Best-effort cleanup: remove copied assets from the published-assets bucket.
@@ -382,28 +456,27 @@ export async function unpublishProject(projectId: string, userId: string): Promi
   } catch (cleanupError) {
     // Non-critical: published assets are publicly readable but won't be linked
     // after the snapshot is deactivated. Log and continue.
-    console.warn('[publishService] Failed to clean up published assets:', cleanupError);
+    logger.warn('[publishService] Failed to clean up published assets:', cleanupError);
   }
 }
 
 /**
  * Public lookup: resolve a share token to a published snapshot.
  *
- * Note: RLS allows public SELECT only for `is_active = true`, so inactive tokens will resolve as null.
+ * Note: public access is routed through a narrow RPC to avoid broad anon
+ * table reads while still allowing token-based published viewing.
  */
 export async function fetchPublishedSnapshotByToken(shareToken: string): Promise<PublishedSnapshot | null> {
   if (!shareToken?.trim()) return null;
 
-  const { data, error } = await supabase
-    .from('published_projects')
-    .select('snapshot')
-    .eq('share_token', shareToken.trim())
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('get_published_snapshot', {
+    p_share_token: shareToken.trim(),
+  });
 
   if (error) {
-    throw new Error(`Failed to load published simulation: ${error.message}`);
+    throw new StorageError(`Failed to load published simulation: ${error.message}`);
   }
-  if (!data?.snapshot) return null;
+  if (!data) return null;
 
-  return parsePublishedSnapshot(data.snapshot);
+  return parsePublishedSnapshot(data);
 }

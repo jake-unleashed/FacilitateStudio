@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: vi.fn(),
+    rpc: vi.fn(),
     storage: {
       from: vi.fn(),
     },
@@ -27,6 +28,7 @@ function createQueryBuilder(): QueryBuilder {
 
 describe('publishService', () => {
   const mockFrom = vi.mocked(supabase.from);
+  const mockRpc = vi.mocked(supabase.rpc);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,14 +60,13 @@ describe('publishService', () => {
   });
 
   it('throws when published snapshot payload shape is invalid', async () => {
-    const query = createQueryBuilder();
-    query.select.mockReturnThis();
-    query.eq.mockReturnThis();
-    query.maybeSingle.mockResolvedValueOnce({
-      data: { snapshot: { name: 'Bad Snapshot', objects: [] } },
+    mockRpc.mockResolvedValueOnce({
+      data: { name: 'Bad Snapshot', objects: [] },
       error: null,
+      count: null,
+      status: 200,
+      statusText: 'OK',
     });
-    mockFrom.mockReturnValueOnce(query as never);
 
     await expect(fetchPublishedSnapshotByToken('token-abc')).rejects.toThrow(
       'Invalid published snapshot: missing steps.'

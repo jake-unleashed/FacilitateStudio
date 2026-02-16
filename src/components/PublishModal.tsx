@@ -8,6 +8,7 @@ import { hasUsableSteps } from '../utils/stepValidation';
 import { useAuth } from '../contexts/AuthContext';
 import { getExistingPublish, unpublishProject } from '../services/publishService';
 import { useLatestRef } from '../hooks/useLatestRef';
+import { logger } from '../utils/logger';
 
 export interface PublishModalProps {
   project: Project;
@@ -84,7 +85,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
         }
       } catch (error) {
         if (isCancelled) return;
-        console.error('[PublishModal] Failed to load existing publish state:', error);
+        logger.error('[PublishModal] Failed to load existing publish state:', error);
         setPublishError('Unable to check publish status right now. You can still try publishing.');
       } finally {
         if (!isCancelled) {

@@ -5,6 +5,7 @@ import { PopupOptions } from '../../contexts/PopupContext';
 import { SceneObject, SimStep } from '../../types';
 import { clearAssetResolver, setAssetResolver } from '../../utils/modelCache';
 import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
+import { logger } from '../../utils/logger';
 
 interface PublishedProject {
   objects: SceneObject[];
@@ -82,7 +83,7 @@ export function usePublishedSnapshot(
         setPreviewObjects(snapshot.objects.map((obj) => ({ ...obj })));
         setLoadedToken(tokenParam);
       } catch (error) {
-        console.error('[usePublishedSnapshot] Failed to load published snapshot:', error);
+        logger.error('[usePublishedSnapshot] Failed to load published snapshot:', error);
         showPopup({
           type: 'error',
           title: 'Training Load Failed',
