@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { LoadingScreen } from './ui/LoadingScreen';
 
 /**
  * Route guard for authenticated-only sections of the app.
@@ -11,11 +12,7 @@ export function ProtectedRoute(): JSX.Element {
   const { isLoading, user } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-100">
-        <div className="text-slate-500">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen message="Restoring your session..." />;
   }
 
   if (!user) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
+import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { usePopup } from '../contexts/PopupContext';
 import { fetchPublishedSnapshotByToken } from '../services/publishService';
 import { SceneObject, SimStep } from '../types';
@@ -197,11 +198,7 @@ export function PublishedSimulationPage(): JSX.Element {
 
   // Loading
   if (!isInitialized) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-100">
-        <div className="text-slate-500">Loading published simulation...</div>
-      </div>
-    );
+    return <LoadingScreen message="Loading your training..." />;
   }
 
   // Missing / invalid link

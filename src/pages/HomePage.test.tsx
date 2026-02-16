@@ -44,6 +44,7 @@ const mockDeleteProject = vi.fn().mockResolvedValue(undefined);
 const mockGetProjectMetadata = vi.fn<() => ProjectMetadata[]>();
 const mockSaveProject = vi.fn();
 let mockIsLoading = false;
+let mockIsSyncing = false;
 const mockClearError = vi.fn();
 let mockError: string | null = null;
 
@@ -64,6 +65,7 @@ vi.mock('../hooks/useProjects', () => ({
       steps: [],
     }),
     isLoading: mockIsLoading,
+    isSyncing: mockIsSyncing,
   }),
 }));
 
@@ -142,6 +144,7 @@ describe('HomePage', () => {
     vi.clearAllMocks();
     mockGetProjectMetadata.mockReturnValue([]);
     mockIsLoading = false;
+    mockIsSyncing = false;
     mockError = null;
     mockResolveThumbnailUrl.mockResolvedValue(undefined);
   });
@@ -361,7 +364,7 @@ describe('HomePage', () => {
       mockGetProjectMetadata.mockReturnValue([]);
       renderHomePage();
 
-      expect(screen.getByText('Loading...')).toBeInTheDocument();
+      expect(screen.getByLabelText('Loading projects')).toBeInTheDocument();
       expect(screen.queryByText('No recent projects')).not.toBeInTheDocument();
     });
 
@@ -370,7 +373,17 @@ describe('HomePage', () => {
       mockGetProjectMetadata.mockReturnValue(sampleProjects);
       renderHomePage();
 
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Loading projects')).not.toBeInTheDocument();
+      expect(screen.getByText('Test Project 1')).toBeInTheDocument();
+    });
+
+    it('shows non-blocking syncing indicator when isSyncing is true', () => {
+      mockIsLoading = false;
+      mockIsSyncing = true;
+      mockGetProjectMetadata.mockReturnValue(sampleProjects);
+      renderHomePage();
+
+      expect(screen.getByText('Syncing projects...')).toBeInTheDocument();
       expect(screen.getByText('Test Project 1')).toBeInTheDocument();
     });
   });

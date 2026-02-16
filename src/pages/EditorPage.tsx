@@ -10,6 +10,7 @@ import { CameraResetButton } from '../components/CameraResetButton';
 import { SaveOverlay } from '../components/SaveOverlay';
 import { RecordingModeOverlay } from '../components/RecordingModeOverlay';
 import { PublishModal } from '../components/PublishModal';
+import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { GuidedWorkflowOverlay, WelcomeModal } from '../components/guidedWorkflow';
 import { PhaseIndicator } from '../components/guidedWorkflow/PhaseIndicator';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
@@ -1523,13 +1524,9 @@ function EditorPageContent() {
   // Dev-only: performance stats surfaced inside DebugMenu.
   const [performanceStats, setPerformanceStats] = useState<PerformanceStats | null>(null);
 
-  // Show loading state while initializing or loading projects
-  if (isLoadingProjects || !isInitialized) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-100">
-        <div className="text-slate-500">Loading...</div>
-      </div>
-    );
+  // Keep the editor interactive during background project refreshes.
+  if (!isInitialized) {
+    return <LoadingScreen message="Opening your studio..." />;
   }
 
   return (

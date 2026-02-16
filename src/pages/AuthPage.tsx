@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { useAuth } from '../contexts/AuthContext';
 
 type AuthMode = 'sign-in' | 'sign-up';
@@ -107,11 +108,7 @@ export function AuthPage(): JSX.Element {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="text-sm font-medium text-slate-500">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen message="Checking sign-in status..." />;
   }
 
   return (

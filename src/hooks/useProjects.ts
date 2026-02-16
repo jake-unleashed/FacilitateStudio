@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Project, ProjectMetadata } from '../types/project';
-import { createProjectPersistence, createSupabasePersistence } from '../persistence/projectPersistence';
+import {
+  createProjectPersistence,
+  createSupabasePersistence,
+  loadCachedProjectsSnapshot,
+  saveCachedProjectsSnapshot,
+} from '../persistence/projectPersistence';
 import { useAuth } from '../contexts/AuthContext';
 import {
   isBase64Thumbnail,
@@ -24,6 +29,8 @@ export interface UseProjectsResult {
   projects: Project[];
   /** True while projects are being loaded from storage */
   isLoading: boolean;
+  /** True while cached projects are being refreshed in background */
+  isSyncing: boolean;
   /** Error message if project operations failed */
   error: string | null;
   /** Clear the current error */
@@ -52,19 +59,21 @@ export interface UseProjectsResult {
  */
 export function useProjects(): UseProjectsResult {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   /** Error message if project operations fail (can be displayed to user) */
   const [error, setError] = useState<string | null>(null);
 
   // Track mounted state to avoid setting state after unmount.
   const isMountedRef = useRef(true);
-  const persistenceMode = useMemo(() => (user ? 'cloud' : 'local'), [user]);
+  const persistenceMode = useMemo(() => (userId ? 'cloud' : 'local'), [userId]);
 
   // Local persistence is always available for fallback / offline usage.
   const localPersistence = useMemo(() => createProjectPersistence(), []);
   // Cloud persistence is only available when authenticated.
-  const cloudPersistence = useMemo(() => (user ? createSupabasePersistence() : null), [user]);
+  const cloudPersistence = useMemo(() => (userId ? createSupabasePersistence() : null), [userId]);
 
   /** Clear the current error */
   const clearError = useCallback(() => setError(null), []);
@@ -72,16 +81,38 @@ export function useProjects(): UseProjectsResult {
   // Load projects from the active persistence backend.
   useEffect(() => {
     isMountedRef.current = true;
-    setIsLoading(true);
 
     async function loadProjects() {
+      let hasCachedProjects = false;
+
+      try {
+        const cachedProjects = await loadCachedProjectsSnapshot(userId);
+        if (isMountedRef.current && cachedProjects !== null) {
+          setProjects(cachedProjects);
+          setError(null);
+          setIsLoading(false);
+          setIsSyncing(true);
+          hasCachedProjects = true;
+        }
+      } catch (cacheError) {
+        console.warn('[useProjects] Failed to read cached project snapshot:', cacheError);
+      }
+
+      if (!hasCachedProjects && isMountedRef.current) {
+        setIsLoading(true);
+      }
+
       try {
         if (!cloudPersistence) {
           const loaded = await localPersistence.loadProjects();
           if (isMountedRef.current) {
             setProjects(loaded);
             setError(null);
+            setIsSyncing(false);
           }
+          void saveCachedProjectsSnapshot(loaded, userId).catch((cacheError) => {
+            console.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
+          });
           return;
         }
 
@@ -121,7 +152,11 @@ export function useProjects(): UseProjectsResult {
           } else {
             setError(null);
           }
+          setIsSyncing(false);
         }
+        void saveCachedProjectsSnapshot(merged, userId).catch((cacheError) => {
+          console.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
+        });
       } catch (err) {
         console.error(`[useProjects] Failed to load ${persistenceMode} projects:`, err);
         if (isMountedRef.current) {
@@ -130,10 +165,12 @@ export function useProjects(): UseProjectsResult {
               ? 'Failed to load cloud projects. Check your connection and try again.'
               : 'Failed to load projects. Your browser storage may be corrupted or inaccessible.'
           );
+          setIsSyncing(false);
         }
       } finally {
         if (isMountedRef.current) {
           setIsLoading(false);
+          setIsSyncing(false);
         }
       }
     }
@@ -143,7 +180,7 @@ export function useProjects(): UseProjectsResult {
     return () => {
       isMountedRef.current = false;
     };
-  }, [cloudPersistence, localPersistence, persistenceMode]);
+  }, [cloudPersistence, localPersistence, persistenceMode, userId]);
 
   /**
    * Get a full project by ID from persistence.
@@ -424,9 +461,21 @@ export function useProjects(): UseProjectsResult {
     return newProject;
   }, []);
 
+  // Keep the startup snapshot fresh after any successful load/save/delete mutation.
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    void saveCachedProjectsSnapshot(projects, userId).catch((cacheError) => {
+      console.warn('[useProjects] Failed to persist project snapshot cache:', cacheError);
+    });
+  }, [isLoading, projects, userId]);
+
   return {
     projects,
     isLoading,
+    isSyncing,
     /** Error message if project operations failed */
     error,
     /** Clear the current error */

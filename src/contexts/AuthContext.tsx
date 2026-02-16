@@ -34,13 +34,97 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+interface AuthSnapshot {
+  user: User | null;
+  session: Session | null;
+  hasCachedSession: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+
+function isLikelyValidCachedSession(value: unknown): value is Session {
+  if (!isRecord(value)) return false;
+
+  // Minimum fields we expect on a persisted Supabase session-like object.
+  const hasAccessToken = typeof value.access_token === 'string' && value.access_token.length > 0;
+  const hasUser = isRecord(value.user) && typeof value.user.id === 'string' && value.user.id.length > 0;
+
+  // Some session shapes include expires_at (seconds since epoch). If present and expired, reject.
+  const expiresAt = value.expires_at;
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (expiresAt <= nowSeconds) return false;
+  }
+
+  return hasAccessToken && hasUser;
+}
+
+function tryReadSessionFromSupabaseStorageValue(rawValue: string): Session | null {
+  const parsedValue: unknown = JSON.parse(rawValue);
+  const candidate = Array.isArray(parsedValue) ? parsedValue[0] : parsedValue;
+  if (!isRecord(candidate)) {
+    return null;
+  }
+
+  // Supabase storage value formats vary across versions. Prefer an explicit currentSession field.
+  const potentialSession = 'currentSession' in candidate ? candidate.currentSession : candidate;
+  return isLikelyValidCachedSession(potentialSession) ? (potentialSession as Session) : null;
+}
+
+function readCachedAuthSnapshot(): AuthSnapshot {
+  if (typeof window === 'undefined') {
+    return { user: null, session: null, hasCachedSession: false };
+  }
+
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !key.startsWith('sb-') || !key.endsWith('-auth-token')) {
+        continue;
+      }
+
+      const rawValue = window.localStorage.getItem(key);
+      if (!rawValue) {
+        continue;
+      }
+
+      const potentialSession = tryReadSessionFromSupabaseStorageValue(rawValue);
+      if (!potentialSession) {
+        continue;
+      }
+
+      return {
+        session: potentialSession,
+        user: potentialSession.user ?? null,
+        hasCachedSession: true,
+      };
+    }
+  } catch (error) {
+    console.warn('[AuthContext] Failed to read cached auth snapshot:', error);
+  }
+
+  return { user: null, session: null, hasCachedSession: false };
+}
+
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [initialSnapshot] = useState<AuthSnapshot>(() => readCachedAuthSnapshot());
+  const [user, setUser] = useState<User | null>(initialSnapshot.user);
+  const [session, setSession] = useState<Session | null>(initialSnapshot.session);
+  const [isLoading, setIsLoading] = useState(!initialSnapshot.hasCachedSession);
 
   useEffect(() => {
     let isMounted = true;
+
+    const setUserIfIdentityChanged = (nextUser: User | null): void => {
+      setUser((currentUser) => {
+        if (currentUser?.id === nextUser?.id) {
+          return currentUser;
+        }
+        return nextUser;
+      });
+    };
 
     const bootstrapSession = async (): Promise<void> => {
       const { data, error } = await supabase.auth.getSession();
@@ -54,7 +138,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       }
 
       setSession(data.session ?? null);
-      setUser(data.session?.user ?? null);
+      setUserIfIdentityChanged(data.session?.user ?? null);
       setIsLoading(false);
     };
 
@@ -63,8 +147,11 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) {
+        return;
+      }
       setSession(nextSession);
-      setUser(nextSession?.user ?? null);
+      setUserIfIdentityChanged(nextSession?.user ?? null);
       setIsLoading(false);
     });
 

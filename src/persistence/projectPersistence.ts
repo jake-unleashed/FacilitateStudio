@@ -4,8 +4,9 @@ import { SupabaseProjectPersistence } from './supabasePersistence';
 
 export const PROJECTS_STORAGE_KEY = 'facilitate-studio-projects';
 const PROJECTS_DB_NAME = 'facilitate-studio-projects-db';
-const PROJECTS_DB_VERSION = 1;
+const PROJECTS_DB_VERSION = 2;
 const MIGRATION_COMPLETE_KEY = 'facilitate-studio-projects-indexeddb-migration-complete';
+const PROJECT_CACHE_KEY_PREFIX = 'projects-cache';
 
 // =============================================================================
 // Interfaces
@@ -44,6 +45,14 @@ interface ProjectStoreDB extends DBSchema {
     key: string;
     value: Project;
     indexes: { 'by-updated': string };
+  };
+  'project-cache': {
+    key: string;
+    value: {
+      key: string;
+      projects: Project[];
+      updatedAt: string;
+    };
   };
 }
 
@@ -112,9 +121,21 @@ async function getDB(): Promise<IDBPDatabase<ProjectStoreDB>> {
 
   if (!dbPromise) {
     dbPromise = openDB<ProjectStoreDB>(PROJECTS_DB_NAME, PROJECTS_DB_VERSION, {
-      upgrade(db) {
-        const store = db.createObjectStore('projects', { keyPath: 'id' });
-        store.createIndex('by-updated', 'updatedAt');
+      upgrade(db, _oldVersion, _newVersion, transaction) {
+        if (!db.objectStoreNames.contains('projects')) {
+          const store = db.createObjectStore('projects', { keyPath: 'id' });
+          store.createIndex('by-updated', 'updatedAt');
+        } else {
+          // Defensive: ensure expected indexes exist even if schema drifted in older builds.
+          const store = transaction.objectStore('projects');
+          if (!store.indexNames.contains('by-updated')) {
+            store.createIndex('by-updated', 'updatedAt');
+          }
+        }
+
+        if (!db.objectStoreNames.contains('project-cache')) {
+          db.createObjectStore('project-cache', { keyPath: 'key' });
+        }
       },
     })
       .then((db) => {
@@ -308,6 +329,40 @@ export class LocalStorageProjectPersistence implements ProjectPersistence {
     // Let errors bubble so callers can present a UI.
     localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
   }
+}
+
+function toProjectCacheKey(userId?: string | null): string {
+  return `${PROJECT_CACHE_KEY_PREFIX}:${userId ?? 'anonymous'}`;
+}
+
+/**
+ * Load the cached merged project snapshot for the active user.
+ * Returns null when no cache exists yet.
+ */
+export async function loadCachedProjectsSnapshot(
+  userId?: string | null
+): Promise<Project[] | null> {
+  const db = await getDB();
+  const cacheEntry = await db.get('project-cache', toProjectCacheKey(userId));
+  if (!cacheEntry) {
+    return null;
+  }
+  return sortByMostRecentlyUpdated(cacheEntry.projects);
+}
+
+/**
+ * Save a merged project snapshot for quick stale-while-revalidate startup.
+ */
+export async function saveCachedProjectsSnapshot(
+  projects: Project[],
+  userId?: string | null
+): Promise<void> {
+  const db = await getDB();
+  await db.put('project-cache', {
+    key: toProjectCacheKey(userId),
+    projects: sortByMostRecentlyUpdated(projects),
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 // =============================================================================

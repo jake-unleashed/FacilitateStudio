@@ -7,6 +7,7 @@ import { PreviewPage } from './pages/PreviewPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GlobalPopup } from './components/GlobalPopup';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { LoadingScreen } from './components/ui/LoadingScreen';
 import { RouteTransitionProvider } from './contexts/RouteTransitionContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { PopupProvider } from './contexts/PopupContext';
@@ -23,9 +24,7 @@ function App() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full items-center justify-center bg-slate-100">
-          <div className="text-slate-500">Loading…</div>
-        </div>
+        <LoadingScreen message="Loading workspace..." />
       }
     >
       <ErrorBoundary>

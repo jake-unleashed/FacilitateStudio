@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
+import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { usePopup } from '../contexts/PopupContext';
 import { useProjects } from '../hooks/useProjects';
 import { SceneObject, SimStep } from '../types';
@@ -171,12 +172,8 @@ export function PreviewPage() {
   }, [navigate, projectId]);
 
   // Show loading state
-  if (isLoadingProjects || !isInitialized || !project) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-100">
-        <div className="text-slate-500">Loading preview...</div>
-      </div>
-    );
+  if (!isInitialized || !project) {
+    return <LoadingScreen message="Preparing preview..." />;
   }
 
   // Show completion screen

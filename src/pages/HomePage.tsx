@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import { Plus, Clock, Layers, Trash2, LogOut } from 'lucide-react';
 import { Button } from '../components/Button';
 import { LocalProjectMigration } from '../components/LocalProjectMigration';
+import { ProjectCardSkeleton } from '../components/ui/ProjectCardSkeleton';
 import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
 import { useLocalProjectMigration } from '../hooks/useLocalProjectMigration';
@@ -267,7 +268,8 @@ export function HomePage(): JSX.Element {
   const { transitionTo } = useRouteTransition();
   const { user, signOut } = useAuth();
   const { showPopup } = usePopup();
-  const { getProjectMetadata, saveProject, deleteProject, isLoading, error, clearError } = useProjects();
+  const { getProjectMetadata, saveProject, deleteProject, isLoading, isSyncing, error, clearError } =
+    useProjects();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const recentProjects = getProjectMetadata();
   const {
@@ -440,14 +442,15 @@ export function HomePage(): JSX.Element {
             </div>
           ) : null}
 
-          {isLoading ? (
-            <div
-              className="flex items-center justify-center py-16"
-              role="status"
-              aria-label="Loading projects"
-            >
-              <div className="text-sm text-slate-400">Loading...</div>
+          {isSyncing && !isLoading ? (
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 shadow-sm backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
+              Syncing projects...
             </div>
+          ) : null}
+
+          {isLoading ? (
+            <ProjectCardSkeleton />
           ) : recentProjects.length === 0 ? (
             <EmptyState />
           ) : (
