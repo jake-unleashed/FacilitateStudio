@@ -1,41 +1,15 @@
-import { memo, useCallback, useState } from 'react';
-import { Menu, MonitorPlay, Share2, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { memo, useCallback } from 'react';
+import { Menu, MonitorPlay, Share2 } from 'lucide-react';
 import { Button } from '../Button';
-import { useAuth } from '../../contexts/AuthContext';
 import { usePopup } from '../../contexts/PopupContext';
-import { logger } from '../../utils/logger';
 
 export const ActionButtons = memo<{
   onPreviewClick?: () => void;
   onPublishClick?: () => void;
   hasUsableSteps?: boolean;
 }>(({ onPreviewClick, onPublishClick, hasUsableSteps = true }) => {
-  const navigate = useNavigate();
-  const { signOut } = useAuth();
   const { showPopup } = usePopup();
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const actionsDisabled = !hasUsableSteps;
-
-  const handleSignOut = useCallback(async () => {
-    setIsSigningOut(true);
-    try {
-      await signOut();
-      navigate('/auth', { replace: true });
-    } catch (error) {
-      logger.error('[ActionButtons] Failed to sign out:', error);
-      showPopup({
-        type: 'error',
-        title: 'Sign Out Failed',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unable to sign out right now. Please try again.',
-      });
-    } finally {
-      setIsSigningOut(false);
-    }
-  }, [navigate, showPopup, signOut]);
 
   const handlePreview = useCallback(() => {
     if (actionsDisabled) {
@@ -86,19 +60,6 @@ export const ActionButtons = memo<{
       >
         <Share2 size={16} />
         Publish
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={() => {
-          void handleSignOut();
-        }}
-        disabled={isSigningOut}
-        aria-label="Sign out"
-        title="Sign out"
-      >
-        <LogOut size={18} />
       </Button>
       <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Menu">
         <Menu size={20} />
