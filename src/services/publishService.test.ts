@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchPublishedSnapshotByToken, getExistingPublish } from './publishService';
 import { supabase } from '../lib/supabase';
+import { logger } from '../utils/logger';
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
@@ -9,6 +10,15 @@ vi.mock('../lib/supabase', () => ({
     storage: {
       from: vi.fn(),
     },
+  },
+}));
+
+vi.mock('../utils/logger', () => ({
+  logger: {
+    warn: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -29,6 +39,7 @@ function createQueryBuilder(): QueryBuilder {
 describe('publishService', () => {
   const mockFrom = vi.mocked(supabase.from);
   const mockRpc = vi.mocked(supabase.rpc);
+  const mockLoggerWarn = vi.mocked(logger.warn);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,5 +82,46 @@ describe('publishService', () => {
     await expect(fetchPublishedSnapshotByToken('token-abc')).rejects.toThrow(
       'Invalid published snapshot: missing steps.'
     );
+  });
+
+  it('falls back to direct lookup when RPC is missing in schema cache', async () => {
+    const fallbackQuery = createQueryBuilder();
+    fallbackQuery.select.mockReturnThis();
+    fallbackQuery.eq.mockReturnThis();
+    fallbackQuery.maybeSingle.mockResolvedValueOnce({
+      data: {
+        snapshot: {
+          name: 'Published training',
+          objects: [],
+          steps: [],
+          assetManifest: {},
+        },
+      },
+      error: null,
+    });
+
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message:
+          'Could not find the function public.get_published_snapshot(p_share_token) in the schema cache',
+      },
+      count: null,
+      status: 404,
+      statusText: 'Not Found',
+    } as never);
+    mockFrom.mockReturnValueOnce(fallbackQuery as never);
+
+    const result = await fetchPublishedSnapshotByToken('token-fallback');
+
+    expect(mockLoggerWarn).toHaveBeenCalledOnce();
+    expect(mockFrom).toHaveBeenCalledWith('published_projects');
+    expect(result).toEqual({
+      name: 'Published training',
+      objects: [],
+      steps: [],
+      assetManifest: {},
+    });
   });
 });

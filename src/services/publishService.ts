@@ -275,6 +275,32 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
   };
 }
 
+function isMissingPublishedSnapshotRpc(error: { code?: string; message: string }): boolean {
+  if (error.code === 'PGRST202') return true;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('schema cache') ||
+    message.includes('could not find the function') ||
+    message.includes('get_published_snapshot')
+  );
+}
+
+async function fetchPublishedSnapshotDirect(shareToken: string): Promise<PublishedSnapshot | null> {
+  const { data, error } = await supabase
+    .from('published_projects')
+    .select('snapshot')
+    .eq('share_token', shareToken)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    throw new StorageError(`Failed to load published simulation: ${error.message}`);
+  }
+  if (!data?.snapshot) return null;
+
+  return parsePublishedSnapshot(data.snapshot);
+}
+
 /**
  * Publish a project by creating/updating a backend snapshot and copying user assets to a public bucket.
  * Starter assets (`starter:*`) are not copied; they are app-bundled and resolved client-side.
@@ -468,12 +494,19 @@ export async function unpublishProject(projectId: string, userId: string): Promi
  */
 export async function fetchPublishedSnapshotByToken(shareToken: string): Promise<PublishedSnapshot | null> {
   if (!shareToken?.trim()) return null;
+  const trimmedToken = shareToken.trim();
 
   const { data, error } = await supabase.rpc('get_published_snapshot', {
-    p_share_token: shareToken.trim(),
+    p_share_token: trimmedToken,
   });
 
   if (error) {
+    if (isMissingPublishedSnapshotRpc(error)) {
+      logger.warn(
+        '[publishService] get_published_snapshot RPC missing from schema cache; falling back to direct lookup. Apply migration 006.'
+      );
+      return fetchPublishedSnapshotDirect(trimmedToken);
+    }
     throw new StorageError(`Failed to load published simulation: ${error.message}`);
   }
   if (!data) return null;
