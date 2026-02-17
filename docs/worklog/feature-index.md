@@ -1,11 +1,13 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 17/02/2026, 11:37:06 am
+**Updated**: 18/02/2026, 10:27:10 am
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Code Quality (`code-quality`) | Full backend and project quality assessment | 2026-02-16 06:54 | 2026-02-17 00:37 | 17h 43m | 25 | 6 | 2 |  |
+| Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-17 23:27 | 164h 38m | 15 | 2 | 2 |  |
+| Publishing (`publishing`) | Investigate broken published simulation links - schema cache error | 2026-02-17 23:18 | 2026-02-17 23:26 | 8m | 1 | 0 | 0 |  |
+| Code Quality (`code-quality`) | Full backend and project quality assessment | 2026-02-16 06:54 | 2026-02-17 23:08 | 40h 14m | 27 | 7 | 3 |  |
 | Final Reviewer Sweep (`final-reviewer-sweep`) | Delivering final gate/security/cleanup report and stop recommendation | 2026-02-16 23:01 | 2026-02-16 23:04 | 2m | 1 | 0 | 0 |  |
 | Production Hardening (`production-hardening`) | Deliver production-readiness report with results, risks, and rate-limit recommendation | 2026-02-16 08:29 | 2026-02-16 08:33 | 3m | 1 | 0 | 0 |  |
 | Code Quality Cleanup (`code-quality-cleanup`) | Completed full quality gate, runtime verification, and targeted correctness fixes | 2026-02-16 07:41 | 2026-02-16 07:44 | 3m | 1 | 0 | 0 |  |
@@ -40,7 +42,6 @@
 | Backlog (`backlog`) | Researching backlog documentation to determine next work item | 2026-02-11 23:25 | 2026-02-11 23:32 | 7m | 0 | 0 | 0 |  |
 | Backend (`backend`) | Research backend documentation and plan first implementation item | 2026-02-11 22:41 | 2026-02-11 23:04 | 23m | 8 | 1 | 1 |  |
 | Repo Hygiene (`repo-hygiene`) | Ignore local Reference project folder and commit/push the remaining docs/plans | 2026-02-11 05:45 | 2026-02-11 22:39 | 16h 53m | 2 | 0 | 0 |  |
-| Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-11 05:45 | 2h 56m | 12 | 2 | 2 |  |
 | Route Transitions (`route-transitions`) | Add premium fade transitions between Home and editor routes | 2026-02-11 02:59 | 2026-02-11 03:15 | 15m | 1 | 0 | 0 |  |
 | Debug Tools (`debug-tools`) | Consolidate performance monitor into DebugMenu | 2026-02-11 02:55 | 2026-02-11 02:57 | 2m | 1 | 0 | 0 |  |
 | Deployment (`deployment`) | Investigate OpenAI API key configuration for Vercel deployment | 2026-02-11 02:38 | 2026-02-11 02:45 | 6m | 1 | 0 | 0 |  |

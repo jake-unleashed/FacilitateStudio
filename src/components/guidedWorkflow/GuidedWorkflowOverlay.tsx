@@ -240,14 +240,16 @@ export function GuidedWorkflowOverlay({
         <div
           className={`${
             isCentered
-              ? `w-full ${isFinish ? 'max-w-xl' : 'max-w-3xl'} overflow-hidden rounded-[32px] border border-white/40 bg-white/80 p-8 shadow-glass backdrop-blur-xl`
+              ? `flex max-h-[calc(100vh-120px)] w-full flex-col ${isFinish ? 'max-w-xl' : 'max-w-3xl'} overflow-hidden rounded-[32px] border border-white/40 bg-white/80 p-8 shadow-glass backdrop-blur-xl`
               : 'w-full overflow-hidden rounded-[32px] border border-white/40 bg-white/70 shadow-glass backdrop-blur-xl'
           } ${phaseTransitionClasses}`}
         >
           <div
             className={
               isCentered
-                ? 'space-y-4'
+                ? isModelUpload && isSubmenuOpen
+                  ? 'min-h-0 max-h-[calc(100vh-200px)] space-y-4 overflow-y-auto pr-4 custom-scrollbar'
+                  : 'space-y-4'
                 : isModelPositioning
                   ? 'space-y-4 p-6'
                   : isStepConfiguration

@@ -97,6 +97,39 @@ describe('Guided model upload flow', () => {
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
   });
 
+  it('applies scrollable classes to content wrapper only when library submenu is open', async () => {
+    const recentAssets: AssetMetadata[] = [
+      {
+        id: 'asset-1',
+        name: 'chair.glb',
+        fileType: 'glb',
+        fileSize: 123,
+        uploadDate: new Date().toISOString(),
+      },
+    ];
+
+    const { container } = render(
+      <GuidedWorkflowOverlay
+        {...baseProps}
+        recentAssets={recentAssets}
+        onAddRecentAsset={vi.fn()}
+      />,
+      {
+        wrapper: ({ children }) => <TestWrapper projectId={projectId}>{children}</TestWrapper>,
+      }
+    );
+
+    // Before opening library: content wrapper should NOT be scrollable
+    expect(container.querySelector('.overflow-y-auto')).not.toBeInTheDocument();
+
+    // Open the library submenu
+    await userEvent.click(screen.getByRole('button', { name: /choose from your library/i }));
+
+    // After opening: content wrapper should have overflow-y-auto (scrollable)
+    expect(container.querySelector('.overflow-y-auto')).toBeInTheDocument();
+    expect(container.querySelector('.custom-scrollbar')).toBeInTheDocument();
+  });
+
   it('clicking a model in the list focuses it', async () => {
     const onFocusObject = vi.fn();
     const objects: SceneObject[] = [
