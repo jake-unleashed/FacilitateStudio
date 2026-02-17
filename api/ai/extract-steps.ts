@@ -6,21 +6,20 @@ import {
 import {
   DEFAULT_IP_LIMIT_PER_MINUTE,
   DEFAULT_USER_LIMIT_PER_MINUTE,
-  MAX_INPUT_TEXT_LENGTH,
   MAX_REQUEST_BODY_BYTES,
   OPENAI_TIMEOUT_MS_DEFAULT,
-} from '../../shared/api/extractStepsConstants.js';
+} from '../../shared/api/extractStepsConstants.ts';
 import {
   buildCorsHeaders,
+  parseExtractStepsRequestBody,
   parseJsonBodyWithByteLimit,
   parseBearerToken,
   parseLimit,
   resolveClientIp,
-  sanitizeFilename,
-} from '../../shared/api/extractStepsHelpers.js';
-import { extractSopStepsWithOpenAI } from '../../shared/api/extractStepsCore.js';
-import { createExtractStepsRateLimiter } from '../../shared/api/extractStepsRateLimiter.js';
-import { validateExtractStepsServerEnv } from '../../shared/api/extractStepsEnv.js';
+} from '../../shared/api/extractStepsHelpers.ts';
+import { extractSopStepsWithOpenAI } from '../../shared/api/extractStepsCore.ts';
+import { createExtractStepsRateLimiter } from '../../shared/api/extractStepsRateLimiter.ts';
+import { validateExtractStepsServerEnv } from '../../shared/api/extractStepsEnv.ts';
 
 export const config = { runtime: 'edge' };
 const rateLimiter = createExtractStepsRateLimiter({
@@ -219,30 +218,12 @@ export default async function handler(req: Request): Promise<Response> {
   if (!parsedBody.ok) {
     return finalize(json({ error: parsedBody.error }, { status: parsedBody.status }), false);
   }
-  const data = parsedBody.data;
-  text = typeof (data as { text?: unknown })?.text === 'string'
-    ? (data as { text: string }).text.trim()
-    : undefined;
-  filename =
-    typeof (data as { filename?: unknown })?.filename === 'string'
-      ? sanitizeFilename((data as { filename: string }).filename)
-      : undefined;
-
-  if (!text) {
-    return finalize(
-      json({ error: 'Missing or empty "text" field' }, { status: 400 }),
-      false
-    );
+  const parsedRequest = parseExtractStepsRequestBody(parsedBody.data);
+  if (!parsedRequest.ok) {
+    return finalize(json({ error: parsedRequest.error }, { status: parsedRequest.status }), false);
   }
-  if (text.length > MAX_INPUT_TEXT_LENGTH) {
-    return finalize(
-      json(
-        { error: `Text exceeds maximum length of ${MAX_INPUT_TEXT_LENGTH} characters` },
-        { status: 400 }
-      ),
-      false
-    );
-  }
+  text = parsedRequest.text;
+  filename = parsedRequest.filename;
 
   // --- Resolve API key ---
   const apiKey = envValidation.values.openAiApiKey;

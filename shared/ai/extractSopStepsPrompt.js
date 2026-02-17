@@ -6,10 +6,9 @@
  * - No browser-only APIs
  * - No Vite-only env access
  *
- * This ensures local dev (`dev-server/devApi.mjs`) and production
+ * This ensures local dev (`dev-server/devApi.ts`) and production
  * (`api/ai/extract-steps.ts`) stay in sync.
  */
-
 export function getExtractSopStepsSystemPrompt() {
   return [
     'You are an expert at converting procedure documents into simulation-ready step lists for interactive simulations (web, desktop, or VR).',
@@ -88,4 +87,3 @@ export function getExtractSopStepsSystemPrompt() {
     '- Leave "steps" undefined and set "error" to one short, friendly sentence explaining what is missing.',
   ].join('\n');
 }
-

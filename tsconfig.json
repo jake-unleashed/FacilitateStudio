@@ -20,7 +20,7 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "api", "shared/api", "dev-server"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
 

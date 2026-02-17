@@ -1,46 +1,37 @@
+import type OpenAI from 'openai';
 import {
   MAX_EXTRACTED_STEPS,
   OPENAI_MAX_TOKENS,
   OPENAI_TIMEOUT_MS_DEFAULT,
-} from './extractStepsConstants.js';
+} from './extractStepsConstants.ts';
 
-/**
- * @param {string} text
- * @param {string | undefined} filename
- * @returns {string}
- */
-export function buildUserPrompt(text, filename) {
+export function buildUserPrompt(text: string, filename: string | undefined): string {
   return filename ? `Document "${filename}":\n\n${text}` : text;
 }
 
-/**
- * @param {unknown} parsed
- * @returns {string[]}
- */
-function normalizeSteps(parsed) {
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.steps)) return [];
+function normalizeSteps(parsed: unknown): string[] {
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { steps?: unknown }).steps)) {
+    return [];
+  }
 
-  return parsed.steps
+  const steps = (parsed as { steps: unknown[] }).steps;
+  return steps
     .map((step) => (typeof step === 'string' ? step.trim() : ''))
     .filter(Boolean)
     .slice(0, MAX_EXTRACTED_STEPS);
 }
 
-/**
- * @param {{
- *   client: import('openai').default;
- *   model: string;
- *   systemInstruction: string;
- *   text: string;
- *   filename?: string;
- *   timeoutMs?: number;
- * }} params
- * @returns {Promise<
- *   | { ok: true; steps: string[] }
- *   | { ok: false; status: number; error: string; stage?: string; rawError?: unknown }
- * >}
- */
-export async function extractSopStepsWithOpenAI(params) {
+export async function extractSopStepsWithOpenAI(params: {
+  client: OpenAI;
+  model: string;
+  systemInstruction: string;
+  text: string;
+  filename?: string;
+  timeoutMs?: number;
+}): Promise<
+  | { ok: true; steps: string[] }
+  | { ok: false; status: number; error: string; stage?: string; rawError?: unknown }
+> {
   const {
     client,
     model,
@@ -74,7 +65,7 @@ export async function extractSopStepsWithOpenAI(params) {
       return { ok: false, status: 502, error: 'Empty AI response' };
     }
 
-    let parsed;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(content);
     } catch {
@@ -86,8 +77,8 @@ export async function extractSopStepsWithOpenAI(params) {
       return { ok: true, steps };
     }
 
-    if (parsed?.error) {
-      return { ok: false, status: 422, error: String(parsed.error) };
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+      return { ok: false, status: 422, error: String((parsed as { error: unknown }).error) };
     }
 
     return { ok: false, status: 422, error: 'No steps could be extracted from this document.' };

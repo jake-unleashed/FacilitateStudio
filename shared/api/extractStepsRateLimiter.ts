@@ -1,30 +1,28 @@
-import { RATE_LIMIT_WINDOW_MS } from './extractStepsConstants.js';
+import { RATE_LIMIT_WINDOW_MS } from './extractStepsConstants.ts';
 import {
   checkRateLimit,
   createRateLimitStore,
   purgeExpiredEntries,
-} from './extractStepsHelpers.js';
+} from './extractStepsHelpers.ts';
 
-/**
- * @typedef {{
- *   check: (key: string, limit: number, now: number) => Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
- *   mode: 'memory' | 'upstash_redis_with_memory_fallback';
- * }} ExtractStepsRateLimiter
- */
+export interface ExtractStepsRateLimiter {
+  check: (
+    key: string,
+    limit: number,
+    now: number
+  ) => Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
+  mode: 'memory' | 'upstash_redis_with_memory_fallback';
+}
 
-/**
- * @param {string} url
- * @returns {string}
- */
-function trimTrailingSlash(url) {
+function trimTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
-/**
- * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} env
- * @returns {{ url: string; token: string; keyPrefix: string } | null}
- */
-function resolveUpstashConfig(env) {
+function resolveUpstashConfig(env: Record<string, string | undefined>): {
+  url: string;
+  token: string;
+  keyPrefix: string;
+} | null {
   const url = env.UPSTASH_REDIS_REST_URL ?? env.AI_RATE_LIMIT_REDIS_URL;
   const token = env.UPSTASH_REDIS_REST_TOKEN ?? env.AI_RATE_LIMIT_REDIS_TOKEN;
   if (!url || !token) return null;
@@ -37,12 +35,7 @@ function resolveUpstashConfig(env) {
   };
 }
 
-/**
- * @param {{ url: string; token: string }} config
- * @param {string} key
- * @returns {Promise<number>}
- */
-async function upstashIncr(config, key) {
+async function upstashIncr(config: { url: string; token: string }, key: string): Promise<number> {
   const response = await fetch(`${config.url}/incr/${encodeURIComponent(key)}`, {
     method: 'POST',
     headers: {
@@ -53,7 +46,7 @@ async function upstashIncr(config, key) {
     throw new Error(`Upstash INCR failed (${response.status})`);
   }
 
-  const payload = /** @type {{ result?: number | string }} */ (await response.json());
+  const payload = (await response.json()) as { result?: number | string };
   const value = Number(payload?.result);
   if (!Number.isFinite(value)) {
     throw new Error('Upstash INCR returned a non-numeric result');
@@ -61,12 +54,7 @@ async function upstashIncr(config, key) {
   return value;
 }
 
-/**
- * @param {{ url: string; token: string }} config
- * @param {string} key
- * @returns {Promise<void>}
- */
-async function upstashSetExpiry(config, key) {
+async function upstashSetExpiry(config: { url: string; token: string }, key: string): Promise<void> {
   const response = await fetch(
     `${config.url}/pexpire/${encodeURIComponent(key)}/${RATE_LIMIT_WINDOW_MS}`,
     {
@@ -81,14 +69,12 @@ async function upstashSetExpiry(config, key) {
   }
 }
 
-/**
- * @param {{ url: string; token: string; keyPrefix: string }} config
- * @param {string} key
- * @param {number} limit
- * @param {number} now
- * @returns {Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>}
- */
-async function checkUpstashRateLimit(config, key, limit, now) {
+async function checkUpstashRateLimit(
+  config: { url: string; token: string; keyPrefix: string },
+  key: string,
+  limit: number,
+  now: number
+): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }> {
   const windowIndex = Math.floor(now / RATE_LIMIT_WINDOW_MS);
   const redisKey = `${config.keyPrefix}:${key}:${windowIndex}`;
   const count = await upstashIncr(config, redisKey);
@@ -108,27 +94,21 @@ async function checkUpstashRateLimit(config, key, limit, now) {
   return { allowed: true };
 }
 
-/**
- * @param {{
- *   env: NodeJS.ProcessEnv | Record<string, string | undefined>;
- *   onPersistentStoreError?: (error: unknown) => void;
- * }} params
- * @returns {ExtractStepsRateLimiter}
- */
-export function createExtractStepsRateLimiter(params) {
+export function createExtractStepsRateLimiter(params: {
+  env: Record<string, string | undefined>;
+  onPersistentStoreError?: (error: unknown) => void;
+}): ExtractStepsRateLimiter {
   const { env, onPersistentStoreError } = params;
   const memoryStore = createRateLimitStore();
   const upstashConfig = resolveUpstashConfig(env);
   let lastMemoryPurgeAt = 0;
   let lastPersistentErrorReportedAt = 0;
 
-  /**
-   * @param {string} key
-   * @param {number} limit
-   * @param {number} now
-   * @returns {{ allowed: true } | { allowed: false; retryAfterSeconds: number }}
-   */
-  const checkMemory = (key, limit, now) => {
+  const checkMemory = (
+    key: string,
+    limit: number,
+    now: number
+  ): { allowed: true } | { allowed: false; retryAfterSeconds: number } => {
     if (now - lastMemoryPurgeAt >= 60_000) {
       lastMemoryPurgeAt = now;
       purgeExpiredEntries(memoryStore, now);

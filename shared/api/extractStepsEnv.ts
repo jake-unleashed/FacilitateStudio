@@ -7,30 +7,26 @@ const supabaseServiceRoleSchema = z
   .min(1, 'SUPABASE_SERVICE_ROLE_KEY is required');
 const supabaseUrlSchema = z.string().trim().url('SUPABASE_URL must be a valid URL');
 
-/**
- * @param {string[]} issues
- * @returns {string}
- */
-function formatIssues(issues) {
+function formatIssues(issues: string[]): string {
   return `Server environment validation failed: ${issues.join('; ')}`;
 }
 
-/**
- * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} env
- * @param {{ allowViteSupabaseUrlFallback?: boolean }} [options]
- * @returns {{
- *   ok: true;
- *   values: {
- *     openAiApiKey: string;
- *     supabaseUrl: string;
- *     supabaseServiceRoleKey: string;
- *   };
- * } | {
- *   ok: false;
- *   message: string;
- * }}
- */
-export function validateExtractStepsServerEnv(env, options = {}) {
+export function validateExtractStepsServerEnv(
+  env: Record<string, string | undefined>,
+  options: { allowViteSupabaseUrlFallback?: boolean } = {}
+):
+  | {
+      ok: true;
+      values: {
+        openAiApiKey: string;
+        supabaseUrl: string;
+        supabaseServiceRoleKey: string;
+      };
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   const { allowViteSupabaseUrlFallback = false } = options;
   const supabaseUrlCandidate =
     env.SUPABASE_URL ??
@@ -42,15 +38,16 @@ export function validateExtractStepsServerEnv(env, options = {}) {
     env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  const issues = [
-    ...(!openAiApiKeyResult.success ? openAiApiKeyResult.error.issues.map((i) => i.message) : []),
-    ...(!supabaseUrlResult.success ? supabaseUrlResult.error.issues.map((i) => i.message) : []),
-    ...(!supabaseServiceRoleResult.success
-      ? supabaseServiceRoleResult.error.issues.map((i) => i.message)
-      : []),
-  ];
-
-  if (issues.length > 0) {
+  if (!openAiApiKeyResult.success || !supabaseUrlResult.success || !supabaseServiceRoleResult.success) {
+    const issues = [
+      ...(!openAiApiKeyResult.success
+        ? openAiApiKeyResult.error.issues.map((i) => i.message)
+        : []),
+      ...(!supabaseUrlResult.success ? supabaseUrlResult.error.issues.map((i) => i.message) : []),
+      ...(!supabaseServiceRoleResult.success
+        ? supabaseServiceRoleResult.error.issues.map((i) => i.message)
+        : []),
+    ];
     return {
       ok: false,
       message: formatIssues(issues),

@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import OpenAI from 'openai';
 import { randomUUID } from 'node:crypto';
 import * as Sentry from '@sentry/node';
@@ -10,20 +10,19 @@ import {
 import {
   DEFAULT_IP_LIMIT_PER_MINUTE,
   DEFAULT_USER_LIMIT_PER_MINUTE,
-  MAX_INPUT_TEXT_LENGTH,
   MAX_REQUEST_BODY_BYTES,
   OPENAI_TIMEOUT_MS_DEFAULT,
-} from '../shared/api/extractStepsConstants.js';
+} from '../shared/api/extractStepsConstants.ts';
 import {
   buildCorsHeaders,
   parseBearerToken,
+  parseExtractStepsRequestBody,
   parseLimit,
   resolveClientIp,
-  sanitizeFilename,
-} from '../shared/api/extractStepsHelpers.js';
-import { extractSopStepsWithOpenAI } from '../shared/api/extractStepsCore.js';
-import { createExtractStepsRateLimiter } from '../shared/api/extractStepsRateLimiter.js';
-import { validateExtractStepsServerEnv } from '../shared/api/extractStepsEnv.js';
+} from '../shared/api/extractStepsHelpers.ts';
+import { extractSopStepsWithOpenAI } from '../shared/api/extractStepsCore.ts';
+import { createExtractStepsRateLimiter } from '../shared/api/extractStepsRateLimiter.ts';
+import { validateExtractStepsServerEnv } from '../shared/api/extractStepsEnv.ts';
 
 // Load local environment variables for development.
 // - `.env.local` is gitignored and is where secrets should live.
@@ -34,8 +33,8 @@ dotenv.config();
 // Keep this fixed to match the Vite dev proxy target.
 const PORT = 8787;
 const rateLimiter = createExtractStepsRateLimiter({
-  env: process.env,
-  onPersistentStoreError: (error) => {
+  env: process.env as Record<string, string | undefined>,
+  onPersistentStoreError: (error: unknown) => {
     // eslint-disable-next-line no-console
     console.error('[dev-api] persistent rate-limit store unavailable:', error);
   },
@@ -50,22 +49,24 @@ if (sentryDsn) {
   });
 }
 
-function captureServerException(error, extra = {}) {
+function captureServerException(error: unknown, extra: Record<string, unknown> = {}): void {
   if (!sentryDsn) return;
   Sentry.captureException(error, { extra });
 }
 
-function getClientIp(req) {
+function getClientIp(req: Request): string {
+  const xRealIpHeader = req.headers['x-real-ip'];
+  const xRealIp = Array.isArray(xRealIpHeader) ? xRealIpHeader[0] : xRealIpHeader;
   return resolveClientIp({
     xForwardedFor: req.headers['x-forwarded-for'],
-    xRealIp: req.headers['x-real-ip'],
+    xRealIp,
     fallbackIp: req.ip,
   });
 }
 
 const app = express();
 app.use(express.json({ limit: MAX_REQUEST_BODY_BYTES }));
-app.use('/api/ai/extract-steps', (req, res, next) => {
+app.use('/api/ai/extract-steps', (req: Request, res: Response, next: NextFunction) => {
   const corsHeaders = buildCorsHeaders(req.get('origin') ?? null, process.env.AI_EXTRACT_ALLOWED_ORIGINS);
   if (corsHeaders) {
     Object.entries(corsHeaders).forEach(([name, value]) => {
@@ -79,7 +80,7 @@ app.use('/api/ai/extract-steps', (req, res, next) => {
   next();
 });
 
-app.post('/api/ai/extract-steps', async (req, res) => {
+app.post('/api/ai/extract-steps', async (req: Request, res: Response) => {
   const requestId = randomUUID();
   const startedAt = Date.now();
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -87,11 +88,16 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     process.env.OPENAI_TIMEOUT_MS,
     OPENAI_TIMEOUT_MS_DEFAULT
   );
-  let userId = null;
+  let userId: string | null = null;
   let responseStatus = 500;
   let requestSucceeded = false;
 
-  const finalize = (status, payload, success = false, extraHeaders = {}) => {
+  const finalize = (
+    status: number,
+    payload: Record<string, unknown>,
+    success = false,
+    extraHeaders: Record<string, string> = {}
+  ): Response => {
     responseStatus = status;
     requestSucceeded = success;
     Object.entries(extraHeaders).forEach(([name, value]) => {
@@ -110,7 +116,7 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     return finalize(401, { error: 'Authentication required' });
   }
 
-  const envValidation = validateExtractStepsServerEnv(process.env, {
+  const envValidation = validateExtractStepsServerEnv(process.env as Record<string, string | undefined>, {
     allowViteSupabaseUrlFallback: true,
   });
   if (!envValidation.ok) {
@@ -166,23 +172,14 @@ app.post('/api/ai/extract-steps', async (req, res) => {
     );
   }
 
-  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-  const filename =
-    typeof req.body?.filename === 'string' ? sanitizeFilename(req.body.filename) : undefined;
-
-  if (!text) {
-    return finalize(400, { error: 'Missing or empty "text" field' });
+  const parsedRequest = parseExtractStepsRequestBody(req.body);
+  if (!parsedRequest.ok) {
+    return finalize(parsedRequest.status, { error: parsedRequest.error });
   }
-  if (text.length > MAX_INPUT_TEXT_LENGTH) {
-    return finalize(400, {
-      error: `Text exceeds maximum length of ${MAX_INPUT_TEXT_LENGTH} characters`,
-    });
-  }
+  const { text, filename } = parsedRequest;
 
   const apiKey = envValidation.values.openAiApiKey;
-
   const client = new OpenAI({ apiKey });
-
   const systemInstruction = getExtractSopStepsSystemPrompt();
 
   try {
@@ -232,8 +229,13 @@ app.post('/api/ai/extract-steps', async (req, res) => {
   }
 });
 
-app.use((error, _req, res, next) => {
-  if (error?.type === 'entity.too.large') {
+app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'type' in error &&
+    (error as { type?: unknown }).type === 'entity.too.large'
+  ) {
     return res.status(413).json({ error: 'Request body too large' });
   }
   if (error instanceof SyntaxError && 'body' in error) {
@@ -246,4 +248,3 @@ app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[dev-api] listening on http://localhost:${PORT}`);
 });
-
