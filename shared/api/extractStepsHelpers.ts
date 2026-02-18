@@ -3,7 +3,7 @@ import {
   MAX_FILENAME_LENGTH,
   MAX_INPUT_TEXT_LENGTH,
   RATE_LIMIT_WINDOW_MS,
-} from './extractStepsConstants.ts';
+} from './extractStepsConstants.js';
 
 export interface RateLimitEntry {
   count: number;

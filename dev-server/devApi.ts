@@ -12,17 +12,17 @@ import {
   DEFAULT_USER_LIMIT_PER_MINUTE,
   MAX_REQUEST_BODY_BYTES,
   OPENAI_TIMEOUT_MS_DEFAULT,
-} from '../shared/api/extractStepsConstants.ts';
+} from '../shared/api/extractStepsConstants.js';
 import {
   buildCorsHeaders,
   parseBearerToken,
   parseExtractStepsRequestBody,
   parseLimit,
   resolveClientIp,
-} from '../shared/api/extractStepsHelpers.ts';
-import { extractSopStepsWithOpenAI } from '../shared/api/extractStepsCore.ts';
-import { createExtractStepsRateLimiter } from '../shared/api/extractStepsRateLimiter.ts';
-import { validateExtractStepsServerEnv } from '../shared/api/extractStepsEnv.ts';
+} from '../shared/api/extractStepsHelpers.js';
+import { extractSopStepsWithOpenAI } from '../shared/api/extractStepsCore.js';
+import { createExtractStepsRateLimiter } from '../shared/api/extractStepsRateLimiter.js';
+import { validateExtractStepsServerEnv } from '../shared/api/extractStepsEnv.js';
 
 // Load local environment variables for development.
 // - `.env.local` is gitignored and is where secrets should live.

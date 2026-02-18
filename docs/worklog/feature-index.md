@@ -1,12 +1,14 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 18/02/2026, 10:27:10 am
+**Updated**: 18/02/2026, 11:00:47 am
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-17 23:27 | 164h 38m | 15 | 2 | 2 |  |
-| Publishing (`publishing`) | Investigate broken published simulation links - schema cache error | 2026-02-17 23:18 | 2026-02-17 23:26 | 8m | 1 | 0 | 0 |  |
+| Vercel Deploy (`vercel-deploy`) | Investigate Edge Function unsupported module references | 2026-02-17 23:55 | 2026-02-18 00:00 | 5m | 3 | 0 | 0 |  |
+| Editor UI (`editor-ui`) | Remove sign out button from editor top bar | 2026-02-17 23:42 | 2026-02-17 23:54 | 12m | 1 | 1 | 1 |  |
+| Publishing (`publishing`) | Investigate broken published simulation links - schema cache error | 2026-02-17 23:18 | 2026-02-17 23:48 | 30m | 7 | 1 | 1 |  |
+| Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-17 23:29 | 164h 40m | 17 | 3 | 3 |  |
 | Code Quality (`code-quality`) | Full backend and project quality assessment | 2026-02-16 06:54 | 2026-02-17 23:08 | 40h 14m | 27 | 7 | 3 |  |
 | Final Reviewer Sweep (`final-reviewer-sweep`) | Delivering final gate/security/cleanup report and stop recommendation | 2026-02-16 23:01 | 2026-02-16 23:04 | 2m | 1 | 0 | 0 |  |
 | Production Hardening (`production-hardening`) | Deliver production-readiness report with results, risks, and rate-limit recommendation | 2026-02-16 08:29 | 2026-02-16 08:33 | 3m | 1 | 0 | 0 |  |

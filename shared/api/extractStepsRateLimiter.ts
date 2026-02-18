@@ -1,9 +1,9 @@
-import { RATE_LIMIT_WINDOW_MS } from './extractStepsConstants.ts';
+import { RATE_LIMIT_WINDOW_MS } from './extractStepsConstants.js';
 import {
   checkRateLimit,
   createRateLimitStore,
   purgeExpiredEntries,
-} from './extractStepsHelpers.ts';
+} from './extractStepsHelpers.js';
 
 export interface ExtractStepsRateLimiter {
   check: (

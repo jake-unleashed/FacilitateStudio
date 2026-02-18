@@ -3,7 +3,7 @@ import {
   MAX_EXTRACTED_STEPS,
   OPENAI_MAX_TOKENS,
   OPENAI_TIMEOUT_MS_DEFAULT,
-} from './extractStepsConstants.ts';
+} from './extractStepsConstants.js';
 
 export function buildUserPrompt(text: string, filename: string | undefined): string {
   return filename ? `Document "${filename}":\n\n${text}` : text;
