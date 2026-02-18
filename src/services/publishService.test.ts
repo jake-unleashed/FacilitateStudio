@@ -122,6 +122,7 @@ describe('publishService', () => {
       objects: [],
       steps: [],
       assetManifest: {},
+      simulationSettings: { allowOrbit: false, allowZoom: false },
     });
   });
 });

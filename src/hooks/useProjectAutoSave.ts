@@ -104,7 +104,7 @@ export function useProjectAutoSave({
       name: data.name,
       objects: data.objects,
       steps: data.steps,
-      simulationSettings: data.simulationSettings,
+      simulationSettings: data.simulationSettings ?? base.simulationSettings,
       thumbnail,
       updatedAt: new Date().toISOString(),
     };
@@ -114,7 +114,12 @@ export function useProjectAutoSave({
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
 
   const computeCurrentData = useCallback((override?: SaveDataSnapshot): SaveDataSnapshot => {
-    if (override) return override;
+    if (override) {
+      return {
+        ...override,
+        simulationSettings: override.simulationSettings ?? toSimulationSettings(latestRef.current.simulationSettings),
+      };
+    }
     return {
       name: latestRef.current.name,
       objects: latestRef.current.objects,

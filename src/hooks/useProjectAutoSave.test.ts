@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useProjectAutoSave } from './useProjectAutoSave';
 import type { Project } from '../types/project';
 import type { SceneObject, SimStep } from '../types';
+import type { SimulationSettings } from '../types/simulationSettings';
 
 describe('useProjectAutoSave', () => {
   let mockProject: Project;
@@ -418,13 +419,22 @@ describe('useProjectAutoSave', () => {
     });
 
     it('should prefer dataOverride snapshot for flushSave', async () => {
+      const settings: SimulationSettings = {
+        allowOrbit: true,
+        allowZoom: true,
+      };
+      const projectWithSettings: Project = {
+        ...mockProject,
+        simulationSettings: settings,
+      };
       const { result, rerender } = renderHook(
         ({ name }) =>
           useProjectAutoSave({
-            project: mockProject,
+            project: projectWithSettings,
             name,
             objects: mockObjects,
             steps: mockSteps,
+            simulationSettings: settings,
             saveProject: mockSaveProject,
           }),
         { initialProps: { name: 'Original' } }
@@ -450,6 +460,7 @@ describe('useProjectAutoSave', () => {
       expect(mockSaveProject).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Override Name',
+          simulationSettings: settings,
         })
       );
     });
