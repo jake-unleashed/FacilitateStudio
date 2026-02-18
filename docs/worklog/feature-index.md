@@ -1,11 +1,11 @@
 # Worklog Feature Index
 
 **Branch**: `mvp`  
-**Updated**: 18/02/2026, 11:04:53 am
+**Updated**: 18/02/2026, 11:09:16 am
 
 | Feature | Description | First seen | Last seen | Duration | Sessions | Commits | Pushes | Notes |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Vercel Deploy (`vercel-deploy`) | Investigate Edge Function unsupported module references | 2026-02-17 23:55 | 2026-02-18 00:04 | 9m | 6 | 1 | 1 |  |
+| Vercel Deploy (`vercel-deploy`) | Investigate Edge Function unsupported module references | 2026-02-17 23:55 | 2026-02-18 00:09 | 13m | 7 | 2 | 2 |  |
 | Editor UI (`editor-ui`) | Remove sign out button from editor top bar | 2026-02-17 23:42 | 2026-02-17 23:54 | 12m | 1 | 1 | 1 |  |
 | Publishing (`publishing`) | Investigate broken published simulation links - schema cache error | 2026-02-17 23:18 | 2026-02-17 23:48 | 30m | 7 | 1 | 1 |  |
 | Guided Workflow (`guided-workflow`) | Plan home navigation escape hatch for guided workflow | 2026-02-11 02:48 | 2026-02-17 23:29 | 164h 40m | 17 | 3 | 3 |  |

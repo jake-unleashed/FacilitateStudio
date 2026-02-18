@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchPublishedSnapshotByToken } from '../../services/publishService';
 import { PopupOptions } from '../../contexts/PopupContext';
 import { SceneObject, SimStep } from '../../types';
+import type { SimulationSettings } from '../../types/simulationSettings';
+import { toSimulationSettings } from '../../types/simulationSettings';
 import { clearAssetResolver, setAssetResolver } from '../../utils/modelCache';
 import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
 import { logger } from '../../utils/logger';
@@ -11,6 +13,7 @@ interface PublishedProject {
   objects: SceneObject[];
   steps: SimStep[];
   name: string;
+  simulationSettings: SimulationSettings;
 }
 
 interface UsePublishedSnapshotResult {
@@ -79,6 +82,7 @@ export function usePublishedSnapshot(
           objects: snapshot.objects,
           steps: snapshot.steps,
           name: snapshot.name,
+          simulationSettings: toSimulationSettings(snapshot.simulationSettings),
         });
         setPreviewObjects(snapshot.objects.map((obj) => ({ ...obj })));
         setLoadedToken(tokenParam);

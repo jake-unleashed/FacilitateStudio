@@ -194,6 +194,7 @@ export function PublishedSimulationPage(): JSX.Element {
             onCameraControlsReady={handleCameraControlsReady}
             showPerformanceMonitor={false}
             previewMode={true}
+            previewSettings={project.simulationSettings}
             previewStep={currentPreviewStep}
             onPreviewObjectClick={(objectId) => {
               if (objectClickHandlerRef.current) {

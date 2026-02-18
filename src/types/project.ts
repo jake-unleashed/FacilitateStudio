@@ -1,4 +1,5 @@
 import { SceneObject, SimStep } from '../types';
+import type { SimulationSettings } from './simulationSettings';
 
 /**
  * Represents a saved project/simulation in Facilitate Studio.
@@ -24,6 +25,8 @@ export interface Project {
   objects: SceneObject[];
   /** Simulation steps */
   steps: SimStep[];
+  /** Trainee interaction settings used in preview and published modes */
+  simulationSettings?: SimulationSettings;
 }
 
 /**

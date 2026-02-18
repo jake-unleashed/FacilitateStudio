@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Project } from '../types/project';
 import type { SceneObject, SimStep } from '../types';
+import type { SimulationSettings } from '../types/simulationSettings';
+import { toSimulationSettings } from '../types/simulationSettings';
 import { hasSerializedChanged, serializeSnapshot, type SaveDataSnapshot, type SerializedSnapshot } from './projectAutoSave/utils';
 import { createRunSave } from './projectAutoSave/createRunSave';
 
@@ -11,6 +13,7 @@ export interface UseProjectAutoSaveArgs {
   name: string;
   objects: SceneObject[];
   steps: SimStep[];
+  simulationSettings?: SimulationSettings;
   saveProject: (project: Project) => Promise<void>;
   captureThumbnail?: () => Promise<string | undefined>;
   debounceMs?: number;
@@ -39,6 +42,7 @@ export function useProjectAutoSave({
   name,
   objects,
   steps,
+  simulationSettings,
   saveProject,
   captureThumbnail,
   debounceMs = 1000,
@@ -58,10 +62,22 @@ export function useProjectAutoSave({
   const hasBaselineRef = useRef(false);
 
   // Keep latest values in refs so callbacks don't need to depend on them
-  const latestRef = useRef({ project, name, objects, steps });
+  const latestRef = useRef({
+    project,
+    name,
+    objects,
+    steps,
+    simulationSettings: toSimulationSettings(simulationSettings),
+  });
   useEffect(() => {
-    latestRef.current = { project, name, objects, steps };
-  }, [project, name, objects, steps]);
+    latestRef.current = {
+      project,
+      name,
+      objects,
+      steps,
+      simulationSettings: toSimulationSettings(simulationSettings),
+    };
+  }, [project, name, objects, simulationSettings, steps]);
 
   // Keep saveProject in a ref to avoid callback chain recreation
   const saveProjectRef = useRef(saveProject);
@@ -88,6 +104,7 @@ export function useProjectAutoSave({
       name: data.name,
       objects: data.objects,
       steps: data.steps,
+      simulationSettings: data.simulationSettings,
       thumbnail,
       updatedAt: new Date().toISOString(),
     };
@@ -102,12 +119,19 @@ export function useProjectAutoSave({
       name: latestRef.current.name,
       objects: latestRef.current.objects,
       steps: latestRef.current.steps,
+      simulationSettings: toSimulationSettings(latestRef.current.simulationSettings),
     };
   }, []);
 
   const currentSerialized = useMemo(
-    () => serializeSnapshot({ name, objects, steps }),
-    [name, objects, steps]
+    () =>
+      serializeSnapshot({
+        name,
+        objects,
+        steps,
+        simulationSettings: toSimulationSettings(simulationSettings),
+      }),
+    [name, objects, simulationSettings, steps]
   );
 
   const runSave = useMemo(() => {
@@ -153,6 +177,7 @@ export function useProjectAutoSave({
       name: latestRef.current.name,
       objects: latestRef.current.objects,
       steps: latestRef.current.steps,
+      simulationSettings: toSimulationSettings(latestRef.current.simulationSettings),
     };
     const serialized = serializeSnapshot(currentData);
     if (!hasSerializedChanged(serialized, lastSavedSerializedRef.current)) return;
@@ -174,6 +199,7 @@ export function useProjectAutoSave({
       name: latestRef.current.name,
       objects: latestRef.current.objects,
       steps: latestRef.current.steps,
+      simulationSettings: toSimulationSettings(latestRef.current.simulationSettings),
     };
     lastSavedDataRef.current = data;
     lastSavedSerializedRef.current = serializeSnapshot(data);

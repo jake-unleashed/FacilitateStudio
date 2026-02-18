@@ -10,6 +10,7 @@ import type { PreviewOutlineTarget } from '../../preview/types';
 import { PreviewMoveItemStepRenderer } from '../../preview/PreviewMoveItemStepRenderer';
 import { DEFAULT_CAMERA_POSITION, GROUND_PLANE_EXTENT } from '../../../constants';
 import type { FocusMode, SceneObject, SimStep } from '../../../types';
+import type { SimulationSettings } from '../../../types/simulationSettings';
 
 import { FixedContactShadows, ContactShadowDebugger } from '../FixedContactShadows';
 import { DragHandler, CursorManager, type DragState } from '../DragHandler';
@@ -115,6 +116,7 @@ export interface SceneContentViewProps {
   selectedObject: SceneObject | null;
 
   previewMode: boolean;
+  previewSettings?: SimulationSettings;
   previewStep: SimStep | null;
   shouldAnimateMoveItem: boolean;
   previewOutlineParentId: string | null;
@@ -132,6 +134,7 @@ export interface SceneContentViewProps {
 
   controlsRef: RefObject<CameraControlsImpl>;
   isPositioningCameraRef: MutableRefObject<boolean>;
+  isCameraPositioning?: boolean;
 
   recordingPositionForStepId?: string | null;
   targetObjectId: string | null;
@@ -174,7 +177,13 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const guidedPositionMode = guidedBodyState.guidedPositionMode;
   const isGuidedModelUpload = guidedPhase === 'model-upload';
   const hasSelection = props.selectedObjectId !== null;
-  const shouldDollyToCursor = !isGuidedModelUpload && !hasSelection;
+  const shouldDollyToCursor = !props.previewMode && !isGuidedModelUpload && !hasSelection;
+  const isPreviewInteractionLocked = props.previewMode && (props.isCameraPositioning ?? props.isPositioningCameraRef.current);
+  const previewAllowOrbit = props.previewMode ? (props.previewSettings?.allowOrbit ?? false) : true;
+  const previewAllowZoom = props.previewMode ? (props.previewSettings?.allowZoom ?? false) : true;
+  const isPreviewCameraInteractionEnabled = previewAllowOrbit || previewAllowZoom;
+  const canUsePreviewOrbit = previewAllowOrbit && !isPreviewInteractionLocked;
+  const canUsePreviewZoom = previewAllowZoom && !isPreviewInteractionLocked;
 
   return (
     <>
@@ -381,7 +390,8 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         enabled={
           !isNavigationDisabled &&
           ((!props.previewMode && (props.dragState === null || !props.dragState.canDrag) && !props.isRecentlyDragged) ||
-            (props.previewMode && props.isPositioningCameraRef.current))
+            (props.previewMode &&
+              (isPreviewInteractionLocked || isPreviewCameraInteractionEnabled)))
         }
         smoothTime={0.6}
         draggingSmoothTime={0.2}
@@ -389,7 +399,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         polarRotateSpeed={0.35}
         truckSpeed={1.2}
         minDistance={0.5}
-        maxDistance={60}
+        maxDistance={props.previewMode ? 20 : 60}
         dollySpeed={0.3}
         dollyToCursor={shouldDollyToCursor}
         minPolarAngle={0}
@@ -397,19 +407,27 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         minAzimuthAngle={-Infinity}
         maxAzimuthAngle={Infinity}
         touches={{
-          one: CameraControlsImpl.ACTION.TOUCH_ROTATE,
-          two: isGuidedModelUpload
-            ? CameraControlsImpl.ACTION.TOUCH_DOLLY
-            : CameraControlsImpl.ACTION.TOUCH_DOLLY_TRUCK,
-          three: isGuidedModelUpload
-            ? CameraControlsImpl.ACTION.NONE
-            : CameraControlsImpl.ACTION.TOUCH_TRUCK,
+          one: canUsePreviewOrbit ? CameraControlsImpl.ACTION.TOUCH_ROTATE : CameraControlsImpl.ACTION.NONE,
+          two: props.previewMode
+            ? canUsePreviewZoom
+              ? CameraControlsImpl.ACTION.TOUCH_DOLLY
+              : CameraControlsImpl.ACTION.NONE
+            : isGuidedModelUpload
+              ? CameraControlsImpl.ACTION.TOUCH_DOLLY
+              : CameraControlsImpl.ACTION.TOUCH_DOLLY_TRUCK,
+          three:
+            props.previewMode || isGuidedModelUpload
+              ? CameraControlsImpl.ACTION.NONE
+              : CameraControlsImpl.ACTION.TOUCH_TRUCK,
         }}
         mouseButtons={{
-          left: CameraControlsImpl.ACTION.ROTATE,
-          middle: CameraControlsImpl.ACTION.DOLLY,
-          right: isGuidedModelUpload ? CameraControlsImpl.ACTION.NONE : CameraControlsImpl.ACTION.TRUCK,
-          wheel: CameraControlsImpl.ACTION.DOLLY,
+          left: canUsePreviewOrbit ? CameraControlsImpl.ACTION.ROTATE : CameraControlsImpl.ACTION.NONE,
+          middle: canUsePreviewZoom ? CameraControlsImpl.ACTION.DOLLY : CameraControlsImpl.ACTION.NONE,
+          right:
+            props.previewMode || isGuidedModelUpload
+              ? CameraControlsImpl.ACTION.NONE
+              : CameraControlsImpl.ACTION.TRUCK,
+          wheel: canUsePreviewZoom ? CameraControlsImpl.ACTION.DOLLY : CameraControlsImpl.ACTION.NONE,
         }}
       />
 

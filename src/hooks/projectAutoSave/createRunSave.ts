@@ -23,6 +23,7 @@ export function createRunSave({
     name: string;
     objects: SceneObject[];
     steps: SimStep[];
+    simulationSettings?: SaveDataSnapshot['simulationSettings'];
   }>;
   saveProjectRef: React.MutableRefObject<(project: Project) => Promise<void>>;
   captureThumbnailRef: React.MutableRefObject<(() => Promise<string | undefined>) | undefined>;

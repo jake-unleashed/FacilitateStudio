@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { Project } from '../types/project';
+import { toSimulationSettings } from '../types/simulationSettings';
 import type { AsyncProjectPersistence } from './projectPersistence';
 import { resolveThumbnailUrl } from '../utils/thumbnailUpload';
 import { StorageError, ValidationError } from '../utils/errors';
@@ -7,6 +8,7 @@ import { StorageError, ValidationError } from '../utils/errors';
 interface ProjectDataRow {
   objects?: Project['objects'];
   steps?: Project['steps'];
+  simulationSettings?: Project['simulationSettings'];
 }
 
 interface ProjectRow {
@@ -36,6 +38,7 @@ async function mapProjectRowToProject(row: ProjectRow): Promise<Project> {
     thumbnail: resolvedThumbnail,
     objects: row.data?.objects ?? [],
     steps: row.data?.steps ?? [],
+    simulationSettings: toSimulationSettings(row.data?.simulationSettings),
   };
 }
 
@@ -123,6 +126,7 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
         data: {
           objects: project.objects,
           steps: project.steps,
+          simulationSettings: toSimulationSettings(project.simulationSettings),
         },
         thumbnail_url: project.thumbnail ?? null,
         created_at: project.createdAt || now,

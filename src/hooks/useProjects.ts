@@ -13,6 +13,7 @@ import {
   toThumbnailStorageRef,
   uploadThumbnailToStorage,
 } from '../utils/thumbnailUpload';
+import { DEFAULT_SIMULATION_SETTINGS, toSimulationSettings } from '../types/simulationSettings';
 import { logger } from '../utils/logger';
 import { StorageError } from '../utils/errors';
 
@@ -23,6 +24,13 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function withSimulationSettings(project: Project): Project {
+  return {
+    ...project,
+    simulationSettings: toSimulationSettings(project.simulationSettings),
+  };
 }
 
 /**
@@ -116,19 +124,20 @@ export function useProjects(): UseProjectsResult {
       try {
         if (!cloudPersistence) {
           const loaded = localPersistence ? await localPersistence.loadProjects() : [];
+          const normalizedLoaded = loaded.map(withSimulationSettings);
           if (isMountedRef.current) {
-            setProjects(loaded);
+            setProjects(normalizedLoaded);
             setError(null);
             setIsSyncing(false);
           }
-          void saveCachedProjectsSnapshot(loaded, userId).catch((cacheError) => {
+          void saveCachedProjectsSnapshot(normalizedLoaded, userId).catch((cacheError) => {
             logger.warn('[useProjects] Failed to update project snapshot cache:', cacheError);
           });
           return;
         }
 
         const cloudProjects = await cloudPersistence.loadProjects();
-        const sortedProjects = [...cloudProjects].sort(
+        const sortedProjects = [...cloudProjects.map(withSimulationSettings)].sort(
           (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         );
 
@@ -196,7 +205,7 @@ export function useProjects(): UseProjectsResult {
     async (id: string): Promise<Project | undefined> => {
       const inMemoryProject = projects.find((p) => p.id === id);
       if (inMemoryProject && !cloudPersistence) {
-        return inMemoryProject;
+        return withSimulationSettings(inMemoryProject);
       }
 
       // Signed out: local-only.
@@ -205,7 +214,8 @@ export function useProjects(): UseProjectsResult {
           if (!localPersistence) {
             return undefined;
           }
-          return await localPersistence.getProject(id);
+          const localProject = await localPersistence.getProject(id);
+          return localProject ? withSimulationSettings(localProject) : undefined;
         } catch (err) {
           logger.error('[useProjects] Failed to get local project:', err);
           if (isMountedRef.current) {
@@ -220,7 +230,7 @@ export function useProjects(): UseProjectsResult {
       try {
         const cloudProject = await cloudPersistence.getProject(id);
         if (cloudProject) {
-          return cloudProject;
+          return withSimulationSettings(cloudProject);
         }
       } catch (err) {
         cloudError = err;
@@ -233,7 +243,7 @@ export function useProjects(): UseProjectsResult {
         if (cachedProject && cloudError && isMountedRef.current) {
           setError('Cloud is unavailable right now. Opened your latest cached project.');
         }
-        return cachedProject;
+        return cachedProject ? withSimulationSettings(cachedProject) : undefined;
       } catch (err) {
         logger.error('[useProjects] Failed to load cached project fallback:', err);
         if (cloudError) {
@@ -264,6 +274,7 @@ export function useProjects(): UseProjectsResult {
       const now = new Date().toISOString();
       const updated: Project = {
         ...project,
+        simulationSettings: toSimulationSettings(project.simulationSettings),
         updatedAt: now,
         createdAt: project.createdAt || now,
       };
@@ -481,6 +492,7 @@ export function useProjects(): UseProjectsResult {
       updatedAt: now,
       objects: [],
       steps: [],
+      simulationSettings: DEFAULT_SIMULATION_SETTINGS,
     };
     return newProject;
   }, []);

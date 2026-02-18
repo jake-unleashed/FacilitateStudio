@@ -5,6 +5,7 @@ import CameraControlsImpl from 'camera-controls';
 import type { PreviewOutlineTarget } from '../preview/types';
 import { createChildSelectionId, parseSelectionId, pathToString, type FocusMode, type SceneObject, type SimStep } from '../../types';
 import { isChildPathWithinSubtree } from '../../utils/previewTargeting';
+import { DEFAULT_SIMULATION_SETTINGS, type SimulationSettings } from '../../types/simulationSettings';
 import { SceneContentView } from './sceneContent/SceneContentView';
 import { useRecordingObjects } from './sceneContent/useRecordingObjects';
 import { calculateCanDrag } from './sceneContent/dragPolicy';
@@ -35,6 +36,7 @@ export interface SceneContentProps {
     endScale?: { x: number; y: number; z: number };
   } | null>;
   previewMode?: boolean;
+  previewSettings?: SimulationSettings;
   previewStep?: SimStep | null;
   onPreviewObjectClick?: (objectId: string) => void;
   onPreviewTransformUpdate?: (
@@ -65,6 +67,7 @@ export function SceneContent({
   steps = [],
   latestRecordingEndPositionRef,
   previewMode = false,
+  previewSettings = DEFAULT_SIMULATION_SETTINGS,
   previewStep = null,
   onPreviewObjectClick,
   onPreviewTransformUpdate,
@@ -74,7 +77,8 @@ export function SceneContent({
   onPreviewOutlineTargetChange,
 }: SceneContentProps): JSX.Element {
   const controlsRef = useRef<CameraControlsImpl>(null!);
-  const isPositioningCameraRef = useRef(false); // Track when camera is being positioned in preview
+  const isPositioningCameraRef = useRef(false);
+  const [isCameraPositioning, setIsCameraPositioning] = useState(false);
   const { invalidate, scene, camera, gl } = useThree();
   const hasNotifiedSceneRef = useRef(false);
 
@@ -121,6 +125,11 @@ export function SceneContent({
     if (controlsRef.current && onCameraControlsReady && !hasNotifiedRef.current) {
       hasNotifiedRef.current = true;
       onCameraControlsReady(controlsRef.current);
+    }
+
+    const refValue = isPositioningCameraRef.current;
+    if (refValue !== isCameraPositioning) {
+      setIsCameraPositioning(refValue);
     }
   });
 
@@ -364,6 +373,7 @@ export function SceneContent({
       selectedObjectId={selectedObjectId}
       selectedObject={selectedObject}
       previewMode={previewMode}
+      previewSettings={previewSettings}
       previewStep={previewStep}
       shouldAnimateMoveItem={shouldAnimateMoveItem}
       previewOutlineParentId={previewOutlineParentId}
@@ -373,6 +383,7 @@ export function SceneContent({
       onPreviewOutlineTargetChange={onPreviewOutlineTargetChange}
       controlsRef={controlsRef}
       isPositioningCameraRef={isPositioningCameraRef}
+      isCameraPositioning={isCameraPositioning}
       recordingPositionForStepId={recordingPositionForStepId}
       targetObjectId={targetObjectId}
       recordingStep={recordingStep}

@@ -4,6 +4,7 @@ import CameraControlsImpl from 'camera-controls';
 import * as THREE from 'three';
 
 import type { FocusMode, SceneObject, SimStep } from '../types';
+import { DEFAULT_SIMULATION_SETTINGS, type SimulationSettings } from '../types/simulationSettings';
 import type { PreviewOutlineTarget } from './preview/types';
 import { PerformanceMonitorScene, type PerformanceStats } from './PerformanceMonitor';
 import { SceneContent } from './scene/SceneContent';
@@ -45,6 +46,8 @@ interface MainCanvasProps {
   } | null>;
   /** Enable preview mode (disables camera controls, enables preview interactions) */
   previewMode?: boolean;
+  /** Preview camera interaction settings (for trainee experience controls) */
+  previewSettings?: SimulationSettings;
   /** Current preview step (used for rendering preview-step UI like move-item) */
   previewStep?: SimStep | null;
   /** Callback when object is clicked in preview mode */
@@ -97,6 +100,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   steps = [],
   latestRecordingEndPositionRef,
   previewMode = false,
+  previewSettings = DEFAULT_SIMULATION_SETTINGS,
   previewStep = null,
   onPreviewObjectClick,
   onPreviewTransformUpdate,
@@ -168,6 +172,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             steps={steps}
             latestRecordingEndPositionRef={latestRecordingEndPositionRef}
             previewMode={previewMode}
+            previewSettings={previewSettings}
             previewStep={previewStep}
             onPreviewObjectClick={onPreviewObjectClick}
             onPreviewTransformUpdate={onPreviewTransformUpdate}

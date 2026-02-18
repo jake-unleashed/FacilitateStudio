@@ -3,6 +3,8 @@ import type { ChildMesh, SceneObject, SimStep } from '../types';
 import type { Project } from '../types/project';
 import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
+import type { SimulationSettings } from '../types/simulationSettings';
+import { toSimulationSettings } from '../types/simulationSettings';
 import { syncAssetToCloud } from '../utils/modelAssetStore';
 import { hasUsableSteps } from '../utils/stepValidation';
 import { NotFoundError, StorageError, ValidationError } from '../utils/errors';
@@ -177,6 +179,7 @@ function toPublishedSnapshot(project: Project, assetManifest: Record<string, Ass
     name: project.name,
     objects: project.objects,
     steps: project.steps,
+    simulationSettings: toSimulationSettings(project.simulationSettings),
     assetManifest,
   };
 }
@@ -245,6 +248,7 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
   const name = value.name;
   const objects = value.objects;
   const steps = value.steps;
+  const simulationSettings = value.simulationSettings;
   const assetManifest = value.assetManifest;
 
   if (typeof name !== 'string') throw new ValidationError('Invalid published snapshot: missing name.');
@@ -271,6 +275,9 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
     name,
     objects,
     steps,
+    simulationSettings: toSimulationSettings(
+      isRecord(simulationSettings) ? (simulationSettings as Partial<SimulationSettings>) : undefined
+    ),
     assetManifest: validatedAssetManifest,
   };
 }

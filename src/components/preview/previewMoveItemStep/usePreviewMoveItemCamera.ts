@@ -7,6 +7,31 @@ import { calculatePreviewMoveItemBaseFraming, generatePreviewCameraCandidatesWit
 import { pickBestPreviewCameraCandidateByRaycastWithMetricsAsync } from '../../../utils/previewCameraOcclusion';
 import { MIN_FOCUS_CAMERA_Y } from '../../../utils/focusCameraOcclusion';
 
+/** Distance epsilon (world units) for declaring camera position settled. */
+const POSITION_EPSILON = 0.02;
+/** Distance epsilon (world units) for declaring camera look-at target settled. */
+const TARGET_EPSILON = 0.02;
+/** Milliseconds the camera must remain within epsilon before settle is confirmed. */
+const SETTLE_STABLE_MS = 180;
+/** Milliseconds after setLookAt fires before the transition is assumed complete regardless of epsilon. */
+const TRANSITION_COMPLETE_MS = 800;
+/** Hard timeout: force-settle if the camera hasn't landed after this many milliseconds. */
+const MAX_SETTLE_WAIT_MS = 5000;
+/** Delay after camera settle before showing the interaction outline. */
+const OUTLINE_SHOW_DELAY_MS = 150;
+/** Number of raycasted azimuth samples used to pick the best camera position. */
+const RAYCAST_SAMPLE_COUNT = 12;
+
+/**
+ * Manages automated camera positioning for a preview move-item step.
+ *
+ * Calculates an occlusion-aware camera position that frames the target object,
+ * smoothly animates the camera there, temporarily disables trainee orbit/zoom
+ * controls during the transition, and reveals the interaction outline once the
+ * camera has settled.
+ *
+ * @returns `showOutline` – whether the interaction outline should be rendered.
+ */
 export function usePreviewMoveItemCamera(args: {
   step: SimStep;
   isValidStep: boolean;
@@ -34,17 +59,26 @@ export function usePreviewMoveItemCamera(args: {
   const targetCameraTargetRef = useRef<THREE.Vector3 | null>(null);
   const cameraSettledTimeRef = useRef<number | null>(null);
   const settleStartTimeRef = useRef<number | null>(null);
+  const transitionStartTimeRef = useRef<number | null>(null);
+  const positioningStartedTimeRef = useRef<number | null>(null);
   const tmpTargetVecRef = useRef(new THREE.Vector3());
   const isCalculatingCameraRef = useRef(false);
 
   const [showOutline, setShowOutline] = useState(false);
 
-  // Premium-feel tuning for camera settling
-  const POSITION_EPSILON = 0.02;
-  const TARGET_EPSILON = 0.02;
-  const SETTLE_STABLE_MS = 180;
-  const OUTLINE_SHOW_DELAY_MS = 150;
-  const RAYCAST_SAMPLE_COUNT = 12;
+  const markCameraAsSettled = (settledAt: number) => {
+    isPositioningRef.current = false;
+    if (isPositioningCameraRef) isPositioningCameraRef.current = false;
+    targetCameraPositionRef.current = null;
+    targetCameraTargetRef.current = null;
+    settleStartTimeRef.current = null;
+    transitionStartTimeRef.current = null;
+    positioningStartedTimeRef.current = null;
+
+    if (cameraSettledTimeRef.current === null) {
+      cameraSettledTimeRef.current = settledAt;
+    }
+  };
 
   // Track step changes and reset camera positioning flag
   useEffect(() => {
@@ -52,17 +86,35 @@ export function usePreviewMoveItemCamera(args: {
     previousStepIdRef.current = step.id;
     cameraSettledTimeRef.current = null;
     settleStartTimeRef.current = null;
+    transitionStartTimeRef.current = null;
+    positioningStartedTimeRef.current = null;
     setShowOutline(false);
     isPositioningRef.current = false;
+    if (isPositioningCameraRef) isPositioningCameraRef.current = false;
     targetCameraPositionRef.current = null;
     targetCameraTargetRef.current = null;
     isCalculatingCameraRef.current = false;
-  }, [step.id]);
+  }, [step.id, isPositioningCameraRef]);
 
   // Keep controls enabled during camera positioning transition
   useFrame((_state, delta) => {
     if (isPositioningRef.current && cameraControlsRef.current) {
       cameraControlsRef.current.update(delta);
+      const now = Date.now();
+
+      const transitionElapsedMs =
+        transitionStartTimeRef.current === null ? null : now - transitionStartTimeRef.current;
+      if (transitionElapsedMs !== null && transitionElapsedMs >= TRANSITION_COMPLETE_MS) {
+        markCameraAsSettled(now);
+        return;
+      }
+
+      const positioningElapsedMs =
+        positioningStartedTimeRef.current === null ? null : now - positioningStartedTimeRef.current;
+      if (positioningElapsedMs !== null && positioningElapsedMs >= MAX_SETTLE_WAIT_MS) {
+        markCameraAsSettled(now);
+        return;
+      }
 
       const targetPos = targetCameraPositionRef.current;
       const targetTarget = targetCameraTargetRef.current;
@@ -80,20 +132,12 @@ export function usePreviewMoveItemCamera(args: {
 
           const stableMs = Date.now() - settleStartTimeRef.current;
           if (stableMs >= SETTLE_STABLE_MS) {
-            isPositioningRef.current = false;
-            if (isPositioningCameraRef) isPositioningCameraRef.current = false;
-            targetCameraPositionRef.current = null;
-            targetCameraTargetRef.current = null;
-            settleStartTimeRef.current = null;
-
-            if (cameraSettledTimeRef.current === null) {
-              cameraSettledTimeRef.current = Date.now();
-            }
+            markCameraAsSettled(now);
+            return;
           } else {
             if (isPositioningCameraRef) isPositioningCameraRef.current = true;
           }
         } else {
-          settleStartTimeRef.current = null;
           if (isPositioningCameraRef) isPositioningCameraRef.current = true;
         }
       } else {
@@ -225,6 +269,9 @@ export function usePreviewMoveItemCamera(args: {
           targetCameraPositionRef.current = new THREE.Vector3(clampedPosition[0], clampedPosition[1], clampedPosition[2]);
           targetCameraTargetRef.current = new THREE.Vector3(base.target[0], base.target[1], base.target[2]);
           settleStartTimeRef.current = null;
+          const now = Date.now();
+          transitionStartTimeRef.current = now;
+          positioningStartedTimeRef.current = now;
 
           isPositioningRef.current = true;
           if (isPositioningCameraRef) isPositioningCameraRef.current = true;

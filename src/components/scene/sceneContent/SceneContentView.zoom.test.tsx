@@ -96,12 +96,17 @@ function createBaseProps(overrides: Partial<SceneContentViewProps> = {}): SceneC
     selectedObjectId: null,
     selectedObject: null,
     previewMode: false,
+    previewSettings: {
+      allowOrbit: false,
+      allowZoom: false,
+    },
     previewStep: null,
     shouldAnimateMoveItem: false,
     previewOutlineParentId: null,
     previewOutlineChildPath: null,
     controlsRef: { current: null } as unknown as SceneContentViewProps['controlsRef'],
     isPositioningCameraRef: { current: false },
+    isCameraPositioning: false,
     actualObject: null,
     ghostObject: null,
     targetObjectId: null,
@@ -189,6 +194,79 @@ describe('SceneContentView zoom behavior', () => {
 
     expect(lastCameraControlsProps).not.toBeNull();
     expect(lastCameraControlsProps?.dollyToCursor).toBe(false);
+  });
+
+  it('always disables dollyToCursor in preview mode regardless of selection', () => {
+    const props = createBaseProps({
+      previewMode: true,
+      selectedObjectId: null,
+    });
+    render(<SceneContentView {...props} />);
+
+    expect(lastCameraControlsProps).not.toBeNull();
+    expect(lastCameraControlsProps?.dollyToCursor).toBe(false);
+  });
+
+  it('uses tighter maxDistance in preview mode', () => {
+    const props = createBaseProps({
+      previewMode: true,
+    });
+
+    render(<SceneContentView {...props} />);
+
+    expect(lastCameraControlsProps).not.toBeNull();
+    expect(lastCameraControlsProps?.maxDistance).toBe(20);
+  });
+
+  it('uses default maxDistance outside preview mode', () => {
+    const props = createBaseProps({
+      previewMode: false,
+    });
+
+    render(<SceneContentView {...props} />);
+
+    expect(lastCameraControlsProps).not.toBeNull();
+    expect(lastCameraControlsProps?.maxDistance).toBe(60);
+  });
+
+  it('locks preview orbit/zoom while camera is positioning', () => {
+    const props = createBaseProps({
+      previewMode: true,
+      previewSettings: {
+        allowOrbit: true,
+        allowZoom: true,
+      },
+      isCameraPositioning: true,
+      isPositioningCameraRef: { current: true },
+    });
+
+    render(<SceneContentView {...props} />);
+
+    expect(lastCameraControlsProps).not.toBeNull();
+    expect((lastCameraControlsProps?.mouseButtons as Record<string, number>).left).toBe(0);
+    expect((lastCameraControlsProps?.mouseButtons as Record<string, number>).wheel).toBe(0);
+    expect((lastCameraControlsProps?.touches as Record<string, number>).one).toBe(0);
+    expect((lastCameraControlsProps?.touches as Record<string, number>).two).toBe(0);
+  });
+
+  it('keeps preview orbit/zoom available during move-item animation', () => {
+    const props = createBaseProps({
+      previewMode: true,
+      previewSettings: {
+        allowOrbit: true,
+        allowZoom: true,
+      },
+      shouldAnimateMoveItem: true,
+      isPositioningCameraRef: { current: false },
+    });
+
+    render(<SceneContentView {...props} />);
+
+    expect(lastCameraControlsProps).not.toBeNull();
+    expect((lastCameraControlsProps?.mouseButtons as Record<string, number>).left).toBe(1);
+    expect((lastCameraControlsProps?.mouseButtons as Record<string, number>).wheel).toBe(2);
+    expect((lastCameraControlsProps?.touches as Record<string, number>).one).toBe(4);
+    expect((lastCameraControlsProps?.touches as Record<string, number>).two).toBe(5);
   });
 });
 

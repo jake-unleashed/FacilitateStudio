@@ -2,12 +2,17 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
+import { PreviewSettingsPanel } from '../components/preview/PreviewSettingsPanel';
 import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { usePopup } from '../contexts/PopupContext';
+import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useProjects } from '../hooks/useProjects';
+import type { Project } from '../types/project';
 import { SceneObject, SimStep } from '../types';
+import { DEFAULT_SIMULATION_SETTINGS, toSimulationSettings, type SimulationSettings } from '../types/simulationSettings';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
+import { logger } from '../utils/logger';
 
 /**
  * PreviewPage - Full-screen preview mode for experiencing the training simulation.
@@ -19,24 +24,40 @@ export function PreviewPage() {
   const { id: projectId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const { showPopup } = usePopup();
-  const { getProject, isLoading: isLoadingProjects } = useProjects();
+  const { getProject, saveProject, isLoading: isLoadingProjects } = useProjects();
 
   // Project state
-  const [project, setProject] = useState<{
-    objects: SceneObject[];
-    steps: SimStep[];
-    name: string;
-  } | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [previewObjects, setPreviewObjects] = useState<SceneObject[]>([]);
   const [isComplete, setIsComplete] = useState(false);
   const [currentPreviewStep, setCurrentPreviewStep] = useState<SimStep | null>(null);
   const [shouldAnimateMoveItem, setShouldAnimateMoveItem] = useState(false);
+  const [previewSettings, setPreviewSettings] = useState<SimulationSettings>(
+    DEFAULT_SIMULATION_SETTINGS
+  );
   const objectClickHandlerRef = useRef<((objectId: string) => void) | null>(null);
   const stepCompleteHandlerRef = useRef<(() => void) | null>(null);
+  const hasSettingsBaselineRef = useRef(false);
 
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
   const [, setControlsReady] = useState(false);
+
+  const { setBaseline, flushSave } = useProjectAutoSave({
+    project,
+    name: project?.name ?? '',
+    objects: project?.objects ?? [],
+    steps: project?.steps ?? [],
+    simulationSettings: previewSettings,
+    saveProject,
+    debounceMs: 500,
+  });
+
+  useEffect(() => {
+    if (!isInitialized || !project || hasSettingsBaselineRef.current) return;
+    setBaseline();
+    hasSettingsBaselineRef.current = true;
+  }, [isInitialized, project, setBaseline]);
 
   // Load project data
   useEffect(() => {
@@ -57,13 +78,11 @@ export function PreviewPage() {
             return;
           }
 
-          setProject({
-            objects: loadedProject.objects,
-            steps: loadedProject.steps,
-            name: loadedProject.name,
-          });
+          setProject(loadedProject);
+          setPreviewSettings(toSimulationSettings(loadedProject.simulationSettings));
           // Initialize preview objects with start positions
           setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
+          hasSettingsBaselineRef.current = false;
           setIsInitialized(true);
         } catch (error) {
           console.error('[PreviewPage] Failed to load project:', error);
@@ -163,13 +182,19 @@ export function PreviewPage() {
   }, [currentPreviewStep?.id]);
 
   // Handle exit
-  const handleExit = useCallback(() => {
+  const handleExit = useCallback(async () => {
+    try {
+      await flushSave({ includeThumbnail: false });
+    } catch (error) {
+      logger.warn('[PreviewPage] Failed to persist preview settings before exit:', error);
+    }
+
     if (projectId) {
       navigate(`/editor/${projectId}`);
     } else {
       navigate('/');
     }
-  }, [navigate, projectId]);
+  }, [flushSave, navigate, projectId]);
 
   // Show loading state
   if (!isInitialized || !project) {
@@ -187,7 +212,9 @@ export function PreviewPage() {
             You have completed all steps in this training simulation.
           </p>
           <button
-            onClick={handleExit}
+            onClick={() => {
+              void handleExit();
+            }}
             className="rounded-[12px] bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition-all hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             Exit Preview
@@ -208,6 +235,7 @@ export function PreviewPage() {
         onCameraControlsReady={handleCameraControlsReady}
         showPerformanceMonitor={false}
         previewMode={true}
+        previewSettings={previewSettings}
         previewStep={currentPreviewStep}
         onPreviewObjectClick={(objectId) => {
           // Forward click to PreviewStepExecutor
@@ -229,12 +257,19 @@ export function PreviewPage() {
         }}
       />
 
+      <PreviewSettingsPanel
+        settings={previewSettings}
+        onSettingsChange={(nextSettings) => setPreviewSettings(toSimulationSettings(nextSettings))}
+      />
+
       {/* Step Executor Overlay */}
       <PreviewStepExecutor
         steps={project.steps}
         objects={previewObjects}
         onComplete={handlePreviewComplete}
-        onExit={handleExit}
+        onExit={() => {
+          void handleExit();
+        }}
         onSetCurrentPreviewStep={setCurrentPreviewStep}
         onObjectClick={() => {
           // Trigger animation via state when object is clicked

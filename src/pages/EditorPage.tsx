@@ -29,6 +29,7 @@ import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { logger } from '../utils/logger';
+import { toSimulationSettings } from '../types/simulationSettings';
 import { PopupProvider, usePopup } from '../contexts/PopupContext';
 import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
 import { GlobalPopup } from '../components/GlobalPopup';
@@ -293,6 +294,7 @@ function EditorPageContent() {
     name: simulationTitle,
     objects,
     steps,
+    simulationSettings: toSimulationSettings(currentProject?.simulationSettings),
     saveProject,
     captureThumbnail: handleCaptureThumbnail,
     debounceMs: 2500,

@@ -1,5 +1,6 @@
 import type { ChildMesh, SceneObject, SimStep } from '../types';
 import type { ModelFileType, ModelMetrics } from './model';
+import type { SimulationSettings } from './simulationSettings';
 
 export interface AssetManifestEntry {
   /** Public URL in the `published-assets` bucket. */
@@ -13,6 +14,7 @@ export interface PublishedSnapshot {
   name: string;
   objects: SceneObject[];
   steps: SimStep[];
+  simulationSettings?: SimulationSettings;
   assetManifest: Record<string, AssetManifestEntry>;
 }
 
