@@ -39,6 +39,49 @@ export interface SOPExtractionError {
   retryable: boolean;
 }
 
+/**
+ * Calls {@link processDocument} and automatically retries on transient
+ * `extraction_failed` errors. Non-transient errors (unsupported format, file
+ * too large, empty document) are re-thrown immediately without retrying.
+ *
+ * @param file        - The file to process.
+ * @param maxAttempts - Maximum number of extraction attempts (including the first).
+ * @param delayMs     - Milliseconds to wait between attempts.
+ * @param onProgress  - Optional callback; receives a "Retrying…" message before each retry.
+ * @returns The extracted plain-text content of the document.
+ */
+async function processDocumentWithRetry(
+  file: File,
+  maxAttempts: number,
+  delayMs: number,
+  onProgress?: (progress: SOPProcessingProgress) => void
+): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const result = await processDocument(file);
+      return result.text;
+    } catch (error) {
+      lastError = error;
+
+      if (error instanceof DocumentProcessingError && error.type !== 'extraction_failed') {
+        throw error;
+      }
+
+      if (attempt < maxAttempts - 1) {
+        onProgress?.({
+          stage: 'extracting-text',
+          message: 'Retrying document extraction\u2026',
+        });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -65,8 +108,7 @@ export async function extractStepsFromFile(
 
   let text: string;
   try {
-    const result = await processDocument(file);
-    text = result.text;
+    text = await processDocumentWithRetry(file, 2, 1_000, onProgress);
   } catch (error) {
     const msg =
       error instanceof DocumentProcessingError
@@ -75,9 +117,12 @@ export async function extractStepsFromFile(
 
     onProgress?.({ stage: 'error', message: msg });
 
-    // Document parsing errors are almost always file-specific (wrong format, too large, empty,
-    // corrupted). Retrying the same file rarely helps, so treat these as non-retryable.
-    throw new SOPServiceError(msg, !(error instanceof DocumentProcessingError));
+    const retryable =
+      error instanceof DocumentProcessingError
+        ? error.type === 'extraction_failed'
+        : true;
+
+    throw new SOPServiceError(msg, retryable);
   }
 
   // ---- Step 2: Call AI extraction API ----

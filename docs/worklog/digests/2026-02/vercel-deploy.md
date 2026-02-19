@@ -1,8 +1,8 @@
 # Feature: vercel-deploy
 
 **Branch**: `mvp`  
-**Duration**: 6h 40m  
-**Period**: 18/02/2026, 11:09:15 am → 18/02/2026, 5:49:59 pm
+**Duration**: 0m  
+**Period**: 19/02/2026, 11:03:02 am → 19/02/2026, 11:03:09 am
 
 ## Summary
 
@@ -10,12 +10,12 @@
 
 Total: 1 commits
 
-- `9194652` feat: add trainee controls settings panel to preview mode (22 files, +620/-61)
+- `818ca33` Add settings callout and raise exit button z-index in preview mode (2 files, +115/-10)
 
 ## Shipped
 
-- Pushed to `origin` at 18/02/2026, 5:49:59 pm
-  Range: `fcb4b52..9194652`
+- Pushed to `origin` at 19/02/2026, 11:03:09 am
+  Range: `f422296..818ca33`
 
 ---
-*Generated from worklog events on 18/02/2026, 6:02:50 pm*
+*Generated from worklog events on 19/02/2026, 11:22:32 am*

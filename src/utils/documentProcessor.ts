@@ -7,7 +7,12 @@ import { ValidationError } from './errors';
 // NOTE: We intentionally lazy-load PDF.js inside `processPDF()`.
 // `pdfjs-dist` depends on browser globals (e.g. DOMMatrix). Importing it at
 // module load time breaks Node/JSDOM unit tests that import this file.
-let isPdfJsConfigured = false;
+//
+// We store the resolved module (not the import promise) so that a failed load
+// attempt (e.g. while offline) doesn't poison the browser's dynamic-import
+// cache. Clearing `cachedPdfJs` forces a fresh `import()` call on the next
+// attempt, bypassing any cached rejected promise.
+let cachedPdfJs: PdfJsModule | null = null;
 type PdfTextContent = { items: unknown[] };
 type PdfPage = { getTextContent: () => Promise<PdfTextContent> };
 type PdfDocument = { numPages: number; getPage: (pageNum: number) => Promise<PdfPage> };
@@ -17,15 +22,26 @@ type PdfJsModule = {
 };
 
 async function loadPdfJs(): Promise<PdfJsModule> {
-  const pdfjsLib = (await import('pdfjs-dist')) as unknown as PdfJsModule;
-  const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
-
-  if (!isPdfJsConfigured) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-    isPdfJsConfigured = true;
+  if (cachedPdfJs) {
+    return cachedPdfJs;
   }
 
-  return pdfjsLib;
+  const pdfjsLib = (await import('pdfjs-dist')) as unknown as PdfJsModule;
+  const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
+  cachedPdfJs = pdfjsLib;
+  return cachedPdfJs;
+}
+
+/**
+ * Clears the cached PDF.js module so the next call to {@link loadPdfJs}
+ * performs a fresh dynamic import. Call this after any PDF processing
+ * failure to prevent a stale or partially-initialised module from causing
+ * every subsequent PDF to fail in the same session.
+ */
+function resetPdfJsState(): void {
+  cachedPdfJs = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,29 +164,44 @@ export async function processDocument(file: File): Promise<DocumentTextResult> {
 // ---------------------------------------------------------------------------
 
 async function processPDF(file: File): Promise<DocumentTextResult> {
-  const pdfjsLib = await loadPdfJs();
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let lastError: unknown;
 
-  let fullText = '';
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: unknown) => {
-        if (!item || typeof item !== 'object') return '';
-        const maybe = item as { str?: unknown };
-        return typeof maybe.str === 'string' ? maybe.str : '';
-      })
-      .join(' ');
-    fullText += pageText + '\n';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const pdfjsLib = await loadPdfJs();
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      let fullText = '';
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: unknown) => {
+            if (!item || typeof item !== 'object') return '';
+            const maybe = item as { str?: unknown };
+            return typeof maybe.str === 'string' ? maybe.str : '';
+          })
+          .join(' ');
+        fullText += pageText + '\n';
+      }
+
+      return {
+        text: fullText.trim(),
+        wordCount: countWords(fullText),
+        pageCount: pdf.numPages,
+      };
+    } catch (error) {
+      lastError = error;
+      resetPdfJsState();
+
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
   }
 
-  return {
-    text: fullText.trim(),
-    wordCount: countWords(fullText),
-    pageCount: pdf.numPages,
-  };
+  throw lastError;
 }
 
 async function processWordDocument(file: File): Promise<DocumentTextResult> {
