@@ -251,7 +251,7 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
       {onExit && (
         <button
           onClick={onExit}
-          className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white/90"
+          className="fixed left-4 top-4 z-[60] flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white/90"
           title="Exit Preview (Esc)"
         >
           <span>Exit</span>
