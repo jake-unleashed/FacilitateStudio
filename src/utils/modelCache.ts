@@ -255,7 +255,9 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
   // This ensures embedded textures in GLB/FBX are properly extracted
   const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
     arrayBuffer,
-    assetData.metadata.fileType
+    assetData.metadata.fileType,
+    undefined,
+    assetData.textures
   );
 
   // Serialize metrics for storage (convert THREE.Vector3/Box3 to plain objects)

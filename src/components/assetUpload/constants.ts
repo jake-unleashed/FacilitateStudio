@@ -1,8 +1,7 @@
 import type { UploadStage } from '../../types/model';
 import { FILE_TYPE_LABELS } from '../../types/model';
 
-export const ACCEPTED_FORMATS = '.obj,.fbx,.glb';
-export const ACCEPTED_EXTENSIONS = new Set<string>(['obj', 'fbx', 'glb']);
+export const ACCEPTED_FORMATS = '.obj,.fbx,.glb,.png,.jpg,.jpeg,.tga,.bmp,.tif,.tiff,.webp';
 
 /** Display configuration for each upload stage */
 export const STAGE_CONFIG: Record<UploadStage, { label: string; progress: number }> = {

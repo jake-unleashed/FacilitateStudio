@@ -41,7 +41,10 @@ interface StoredAsset {
   id: string;
   metadata: AssetMetadata;
   blob: Blob;
+  textures?: AssetTextureMap;
 }
+
+export type AssetTextureMap = Record<string, Blob>;
 
 interface CloudAssetOptions {
   userId?: string;
@@ -115,6 +118,19 @@ function isStarterAsset(assetId: string): boolean {
  * @throws Error if validation fails or storage quota is exceeded
  */
 export async function saveAsset(file: File): Promise<AssetMetadata> {
+  return saveAssetWithTextures(file, []);
+}
+
+/**
+ * Save a new asset and optional texture files to IndexedDB.
+ *
+ * Texture files are keyed by lowercase filename so they can be matched against
+ * material references during model loading.
+ */
+export async function saveAssetWithTextures(
+  file: File,
+  textureFiles: File[] = []
+): Promise<AssetMetadata> {
   const validation = validateModelFile(file);
   if (!validation.valid) {
     throw new Error(validation.error ?? 'Invalid file');
@@ -136,6 +152,7 @@ export async function saveAsset(file: File): Promise<AssetMetadata> {
     id,
     metadata,
     blob: file,
+    textures: buildTextureMap(textureFiles),
   };
 
   try {
@@ -195,6 +212,7 @@ export async function upsertAssetFromBlob(options: {
   fileType: ModelFileType;
   uploadDate: string;
   blob: Blob;
+  textures?: AssetTextureMap;
   metadataOverrides?: Partial<AssetMetadata>;
 }): Promise<AssetMetadata> {
   const db = await getDB();
@@ -212,6 +230,7 @@ export async function upsertAssetFromBlob(options: {
     id: options.id,
     metadata,
     blob: options.blob,
+    textures: options.textures,
   };
 
   try {
@@ -245,7 +264,7 @@ export async function assetExists(assetId: string): Promise<boolean> {
 export async function getAsset(
   assetId: string,
   options?: CloudAssetOptions
-): Promise<{ blob: Blob; metadata: AssetMetadata } | null> {
+): Promise<{ blob: Blob; metadata: AssetMetadata; textures?: AssetTextureMap } | null> {
   const db = await getDB();
   const stored = await db.get('assets', assetId);
 
@@ -253,6 +272,7 @@ export async function getAsset(
     return {
       blob: stored.blob,
       metadata: stored.metadata,
+      textures: stored.textures,
     };
   }
 
@@ -284,6 +304,7 @@ export async function getAsset(
     return {
       blob,
       metadata: cloudAsset.metadata,
+      textures: undefined,
     };
   } catch (error) {
     logger.warn(`[modelAssetStore] Cloud fallback failed for asset ${assetId}:`, error);
@@ -490,6 +511,20 @@ export function blobToBase64(blob: Blob): Promise<string> {
  */
 export function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
   return blob.arrayBuffer();
+}
+
+function buildTextureMap(textureFiles: File[]): AssetTextureMap | undefined {
+  if (!textureFiles.length) {
+    return undefined;
+  }
+
+  const textures: AssetTextureMap = {};
+  for (const textureFile of textureFiles) {
+    const key = textureFile.name.toLowerCase();
+    textures[key] = textureFile;
+  }
+
+  return Object.keys(textures).length > 0 ? textures : undefined;
 }
 
 // =============================================================================

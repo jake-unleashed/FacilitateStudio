@@ -1,5 +1,6 @@
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { LoadingManager } from 'three';
 
 let dracoLoader: DRACOLoader | null = null;
 
@@ -20,8 +21,8 @@ export function getDRACOLoader(): DRACOLoader {
 /**
  * Create a GLTFLoader with DRACO support configured.
  */
-export function createGLTFLoader(): GLTFLoader {
-  const loader = new GLTFLoader();
+export function createGLTFLoader(manager?: LoadingManager): GLTFLoader {
+  const loader = new GLTFLoader(manager);
   loader.setDRACOLoader(getDRACOLoader());
   return loader;
 }

@@ -14,7 +14,7 @@ import { logger } from '../logger';
  * Increment this when adding/removing/changing starter assets to trigger reseeding.
  * Also increment to force thumbnail regeneration with updated lighting/rendering.
  */
-export const STARTER_LIBRARY_VERSION = '4';
+export const STARTER_LIBRARY_VERSION = '5';
 
 /**
  * LocalStorage key for tracking the seeded library version.

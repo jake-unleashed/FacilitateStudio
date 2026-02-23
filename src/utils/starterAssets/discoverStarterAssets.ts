@@ -27,7 +27,7 @@ export interface StarterAssetDescriptor {
 export function discoverStarterAssets(): StarterAssetDescriptor[] {
   // Use Vite's import.meta.glob to get all model files in the starter assets folder
   // The `?url` query tells Vite to give us the URL to the file (not import its contents)
-  const modelFiles = import.meta.glob<string>('/src/starterAssets/models/*.{glb,fbx}', {
+  const modelFiles = import.meta.glob<string>('/src/starterAssets/models/**/*.{glb,fbx}', {
     eager: true,
     query: '?url',
     import: 'default',

@@ -8,6 +8,7 @@ import { analyzeModelTextures } from './textureDiagnostics';
 import type { ModelFileType } from './types';
 import { loadModelFromArrayBuffer } from './loadFromArrayBuffer';
 import { loadModelFromBase64 } from './loadFromBase64';
+import type { AssetTextureMap } from '../modelAssetStore';
 
 /**
  * Load and preprocess model from base64 string.
@@ -35,9 +36,10 @@ export async function loadAndPreprocessModel(
 export async function loadAndPreprocessModelFromArrayBuffer(
   arrayBuffer: ArrayBuffer,
   fileType: ModelFileType,
-  targetSize: number = MODEL_TARGET_SIZE
+  targetSize: number = MODEL_TARGET_SIZE,
+  textures?: AssetTextureMap
 ): Promise<PreprocessedModel> {
-  const rawModel = await loadModelFromArrayBuffer(arrayBuffer, fileType);
+  const rawModel = await loadModelFromArrayBuffer(arrayBuffer, fileType, textures);
 
   if (IS_DEV) {
     analyzeModelTextures(rawModel, `Uploaded ${fileType.toUpperCase()}`);

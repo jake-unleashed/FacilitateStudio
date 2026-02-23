@@ -9,7 +9,7 @@ import { usePopup } from '../../../contexts/PopupContext';
 
 interface ModelUploadPhaseProps {
   objects: SceneObject[];
-  onUploadAsset: (file: File) => Promise<void>;
+  onUploadAsset: (file: File, textureFiles?: File[]) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];

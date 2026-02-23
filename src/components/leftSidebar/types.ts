@@ -18,7 +18,7 @@ export interface LeftSidebarProps {
   onStartRecordingPosition?: (stepId: string) => void;
   onStopRecordingPosition?: (stepId: string) => void;
   recordingPositionForStepId?: string | null;
-  onUploadAsset?: (file: File) => Promise<void>;
+  onUploadAsset?: (file: File, textureFiles?: File[]) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];

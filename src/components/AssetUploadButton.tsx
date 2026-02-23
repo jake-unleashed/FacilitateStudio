@@ -13,21 +13,20 @@ import { Upload, Loader2, CheckCircle2, AlertTriangle, FileBox } from 'lucide-re
 import { UploadProgress, validateModelFile } from '../types/model';
 import { usePopup } from '../contexts/PopupContext';
 import {
-  ACCEPTED_EXTENSIONS,
   ACCEPTED_FORMATS,
   STAGE_CONFIG,
   SUCCESS_DISPLAY_DURATION,
-  SUPPORTED_FORMATS_TEXT,
 } from './assetUpload/constants';
 import type { InternalState } from './assetUpload/types';
+import { classifyUploadFiles } from '../utils/uploadClassifier';
 
 // =============================================================================
 // Types
 // =============================================================================
 
 interface AssetUploadButtonProps {
-  /** Called when a file is selected for upload */
-  onUpload: (file: File) => Promise<void>;
+  /** Called when a model is selected for upload with optional texture files */
+  onUpload: (modelFile: File, textureFiles?: File[]) => Promise<void>;
   /** Disable the upload button */
   disabled?: boolean;
   /** Additional CSS classes */
@@ -81,6 +80,17 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     [showPopup]
   );
 
+  const showInfoPopup = useCallback(
+    (message: string) => {
+      showPopup({
+        type: 'info',
+        title: 'Upload note',
+        message,
+      });
+    },
+    [showPopup]
+  );
+
   const isUploading = useMemo(() => {
     if (uploadProgress) {
       return !['idle', 'complete', 'error'].includes(uploadProgress.stage);
@@ -97,13 +107,27 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     fileInputRef.current?.click();
   }, [disabled, isUploading]);
 
-  const processFile = useCallback(
-    async (file: File) => {
+  const processFiles = useCallback(
+    async (files: File[]) => {
+      const classified = classifyUploadFiles(files);
+      if (classified.warning) {
+        showInfoPopup(classified.warning);
+      }
+      if (!classified.modelFile) {
+        showErrorPopup(classified.error ?? 'No model file provided.');
+        return;
+      }
+
+      const file = classified.modelFile;
+      const textureCount = classified.textureFiles.length;
+      const uploadDisplayName =
+        textureCount > 0 ? `${file.name} + ${textureCount} texture${textureCount === 1 ? '' : 's'}` : file.name;
+
       // Reset state
       setInternalState({
         isUploading: true,
         error: null,
-        fileName: file.name,
+        fileName: uploadDisplayName,
         stage: 'validating',
       });
 
@@ -124,7 +148,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
       // Upload
       try {
         setInternalState((prev) => ({ ...prev, stage: 'processing' }));
-        await onUpload(file);
+        await onUpload(file, classified.textureFiles);
         setInternalState((prev) => ({
           ...prev,
           stage: 'complete',
@@ -162,17 +186,79 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
         }
       }
     },
-    [onUpload, showErrorPopup]
+    [onUpload, showErrorPopup, showInfoPopup]
   );
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        await processFile(file);
+      const fileList = e.target.files;
+      if (fileList && fileList.length > 0) {
+        await processFiles(Array.from(fileList));
       }
     },
-    [processFile]
+    [processFiles]
+  );
+
+  const collectFilesFromDirectoryEntry = useCallback(async (entry: FileSystemEntry): Promise<File[]> => {
+    if (entry.isFile) {
+      const fileEntry = entry as FileSystemFileEntry;
+      const file = await new Promise<File>((resolve, reject) => {
+        fileEntry.file(resolve, reject);
+      });
+      return [file];
+    }
+
+    if (entry.isDirectory) {
+      const directoryEntry = entry as FileSystemDirectoryEntry;
+      const reader = directoryEntry.createReader();
+      const files: File[] = [];
+
+      while (true) {
+        const entries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+          reader.readEntries(resolve, reject);
+        });
+        if (entries.length === 0) {
+          break;
+        }
+
+        for (const childEntry of entries) {
+          const childFiles = await collectFilesFromDirectoryEntry(childEntry);
+          files.push(...childFiles);
+        }
+      }
+
+      return files;
+    }
+
+    return [];
+  }, []);
+
+  const collectDroppedFiles = useCallback(
+    async (dataTransfer: DataTransfer): Promise<File[]> => {
+      const items = Array.from(dataTransfer.items ?? []);
+      if (items.length === 0) {
+        return Array.from(dataTransfer.files);
+      }
+
+      const allFiles: File[] = [];
+      for (const item of items) {
+        if (item.kind !== 'file') continue;
+        const entry = item.webkitGetAsEntry?.();
+        if (entry) {
+          const entryFiles = await collectFilesFromDirectoryEntry(entry);
+          allFiles.push(...entryFiles);
+          continue;
+        }
+
+        const fallbackFile = item.getAsFile();
+        if (fallbackFile) {
+          allFiles.push(fallbackFile);
+        }
+      }
+
+      return allFiles;
+    },
+    [collectFilesFromDirectoryEntry]
   );
 
   // ---------------------------------------------------------------------------
@@ -218,22 +304,15 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
 
       if (disabled || isUploading) return;
 
-      const file = e.dataTransfer.files[0];
-      if (!file) return;
-
-      // Basic extension check (validation will also check this, but we can fail fast)
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      if (!ext || !ACCEPTED_EXTENSIONS.has(ext)) {
-        // Show error popup, keep button usable
-        showErrorPopup(
-          `Unsupported file type: .${ext ?? 'unknown'}. Supported formats: ${SUPPORTED_FORMATS_TEXT}.`
-        );
+      const files = await collectDroppedFiles(e.dataTransfer);
+      if (files.length === 0) {
+        showErrorPopup('No files found in your drop. Try dropping a model file or folder again.');
         return;
       }
 
-      await processFile(file);
+      await processFiles(files);
     },
-    [disabled, isUploading, processFile, showErrorPopup]
+    [collectDroppedFiles, disabled, isUploading, processFiles, showErrorPopup]
   );
 
   // ---------------------------------------------------------------------------
@@ -254,7 +333,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
   }, [isUploading, currentStage, isDragging]);
 
   const getLabel = useCallback((): string => {
-    if (isDragging) return 'Drop file here';
+    if (isDragging) return 'Drop to upload';
     if (isUploading) return STAGE_CONFIG[currentStage]?.label ?? 'Processing...';
     if (currentStage === 'complete') return 'Added to scene!';
     return 'Upload 3D Model';
@@ -333,10 +412,11 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
         ref={fileInputRef}
         type="file"
         accept={ACCEPTED_FORMATS}
+        multiple
         onChange={handleFileChange}
         className="hidden"
         disabled={disabled || isUploading}
-        aria-label="Upload 3D model file"
+        aria-label="Upload 3D model and texture files"
       />
 
       <div
@@ -385,7 +465,7 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
 
             {/* Format hint (shown in idle state) */}
             {!isUploading && currentStage === 'idle' && (
-              <p className="text-xs text-slate-400">Supported: {SUPPORTED_FORMATS_TEXT}</p>
+              <p className="text-xs text-slate-400">Drag model and texture files, or a folder</p>
             )}
 
             {/* Warning */}
@@ -401,3 +481,4 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     </div>
   );
 };
+

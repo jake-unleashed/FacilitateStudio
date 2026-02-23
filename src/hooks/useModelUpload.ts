@@ -20,7 +20,7 @@ import {
   validateModelFile,
 } from '../types/model';
 import {
-  saveAsset,
+  saveAssetWithTextures,
   getAsset,
   getRecentAssets,
   syncAssetToCloud,
@@ -65,8 +65,12 @@ interface UseModelUploadReturn {
   recentAssets: AssetMetadata[];
   /** List of starter assets (seeded from app) */
   starterAssets: AssetMetadata[];
-  /** Upload a file and create a scene object */
-  uploadFile: (file: File, existingObjects: SceneObject[]) => Promise<UploadResult | null>;
+  /** Upload a file and optional textures, then create a scene object */
+  uploadFile: (
+    file: File,
+    existingObjects: SceneObject[],
+    textureFiles?: File[]
+  ) => Promise<UploadResult | null>;
   /** Add an existing asset to the scene */
   addRecentAssetToScene: (
     asset: AssetMetadata,
@@ -228,7 +232,12 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         try {
           // Use ArrayBuffer for proper embedded texture support in GLB/FBX
           const arrayBuffer = await blobToArrayBuffer(assetData.blob);
-          const preprocessed = await loadAndPreprocessModelFromArrayBuffer(arrayBuffer, fileType);
+          const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
+            arrayBuffer,
+            fileType,
+            undefined,
+            assetData.textures
+          );
           // Include originalScale from preprocessing to track the normalization factor
           metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
 
@@ -295,10 +304,18 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   // ---------------------------------------------------------------------------
 
   const uploadFile = useCallback(
-    async (file: File, existingObjects: SceneObject[]): Promise<UploadResult | null> => {
+    async (
+      file: File,
+      existingObjects: SceneObject[],
+      textureFiles: File[] = []
+    ): Promise<UploadResult | null> => {
       try {
+        const textureCount = textureFiles.length;
+        const uploadDisplayName =
+          textureCount > 0 ? `${file.name} + ${textureCount} texture${textureCount === 1 ? '' : 's'}` : file.name;
+
         // Stage 1: Validate
-        setProgress('validating', 10, { fileName: file.name, warning: null });
+        setProgress('validating', 10, { fileName: uploadDisplayName, warning: null });
 
         const validation = validateModelFile(file);
         if (!validation.valid) {
@@ -307,11 +324,14 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         }
 
         // Stage 2: Store in IndexedDB
-        setProgress('storing', 25, { fileName: file.name, warning: validation.warning ?? null });
+        setProgress('storing', 25, {
+          fileName: uploadDisplayName,
+          warning: validation.warning ?? null,
+        });
 
         let metadata: AssetMetadata;
         try {
-          metadata = await saveAsset(file);
+          metadata = await saveAssetWithTextures(file, textureFiles);
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to store file';
           setError(file.name, msg);
@@ -327,7 +347,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         // Stage 3-4: Process and add to scene
         const result = await processAsset(
           metadata.id,
-          file.name,
+          uploadDisplayName,
           metadata.fileType,
           existingObjects
         );
@@ -346,7 +366,15 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         return null;
       }
     },
-    [processAsset, refreshRecentAssets, setProgress, setError, setLastError, starterAssetIds, userId]
+    [
+      processAsset,
+      refreshRecentAssets,
+      setProgress,
+      setError,
+      setLastError,
+      starterAssetIds,
+      userId,
+    ]
   );
 
   // ---------------------------------------------------------------------------

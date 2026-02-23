@@ -31,7 +31,7 @@ export interface GuidedWorkflowOverlayProps {
   onStopRecordingPosition?: () => void;
   recordingPositionForStepId?: string | null;
   latestRecordingEndPositionRef?: React.MutableRefObject<LatestRecordingEndTransformRefValue | null>;
-  onUploadAsset: (file: File) => Promise<void>;
+  onUploadAsset: (file: File, textureFiles?: File[]) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];

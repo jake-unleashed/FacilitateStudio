@@ -545,8 +545,8 @@ function EditorPageContent() {
 
   // Handle asset upload - uses the useModelUpload hook for storage and preprocessing
   const handleUploadAsset = useCallback(
-    async (file: File) => {
-      const result = await uploadFile(file, objects);
+    async (file: File, textureFiles: File[] = []) => {
+      const result = await uploadFile(file, objects, textureFiles);
       if (!result) {
         // Error is handled by the hook and shown in the UI
         return;
@@ -1286,7 +1286,7 @@ interface GuidedWorkflowEntryProps {
   onBatchEnd?: () => void;
   objects: SceneObject[];
   selectedObjectId: string | null;
-  onUploadAsset: (file: File) => Promise<void>;
+  onUploadAsset: (file: File, textureFiles?: File[]) => Promise<void>;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];
