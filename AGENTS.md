@@ -47,5 +47,6 @@ Copy `.env.example` to `.env.local` and fill in values. The app validates env va
 - The 3D canvas tests require mocked WebGL/Canvas contexts (configured in `src/test/setup.ts`).
 - On the mvp branch, `@testing-library/dom` may need to be installed separately (`npm install --legacy-peer-deps @testing-library/dom`) as it's a transitive dependency that can be missing.
 - If port 3000 is already in use, Vite auto-switches to 3001. Kill old processes on port 3000 before restarting.
-- The mvp branch requires Supabase auth — all protected routes redirect to `/auth`. A test account is needed to access the app beyond the login page.
+- The mvp branch requires Supabase auth — all protected routes redirect to `/auth`. A test account is needed to access the app beyond the login page. You can auto-confirm a new signup using the Supabase admin API with `SUPABASE_SERVICE_ROLE_KEY`.
 - The guided workflow has 6 phases: welcome → step-creation → model-upload → model-positioning → step-configuration → finish (preview + publish).
+- To create `.env.local` from environment secrets: populate it with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `OPENAI_API_KEY`, `SUPABASE_URL` (same as `VITE_SUPABASE_URL`), and `SUPABASE_SERVICE_ROLE_KEY`.
