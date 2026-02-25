@@ -171,40 +171,31 @@ describe('SceneContentView zoom behavior', () => {
     originalError = null;
   });
 
-  it('enables dollyToCursor when nothing is selected', () => {
-    const props = createBaseProps({ selectedObjectId: null });
-    render(<SceneContentView {...props} />);
-
-    expect(lastCameraControlsProps).not.toBeNull();
-    expect(lastCameraControlsProps?.dollyToCursor).toBe(true);
-  });
-
-  it('disables dollyToCursor when a selection exists', () => {
-    const props = createBaseProps({ selectedObjectId: 'obj-123' });
-    render(<SceneContentView {...props} />);
-
+  it('always keeps dollyToCursor disabled', () => {
+    const firstRender = render(<SceneContentView {...createBaseProps({ selectedObjectId: null })} />);
     expect(lastCameraControlsProps).not.toBeNull();
     expect(lastCameraControlsProps?.dollyToCursor).toBe(false);
-  });
+    firstRender.unmount();
 
-  it('disables dollyToCursor during guided model-upload even with no selection', () => {
+    const secondRender = render(<SceneContentView {...createBaseProps({ selectedObjectId: 'obj-123' })} />);
+    expect(lastCameraControlsProps?.dollyToCursor).toBe(false);
+    secondRender.unmount();
+
     document.body.dataset.guidedPhase = 'model-upload';
-    const props = createBaseProps({ selectedObjectId: null });
-    render(<SceneContentView {...props} />);
-
-    expect(lastCameraControlsProps).not.toBeNull();
+    const thirdRender = render(<SceneContentView {...createBaseProps({ selectedObjectId: null })} />);
     expect(lastCameraControlsProps?.dollyToCursor).toBe(false);
-  });
+    thirdRender.unmount();
 
-  it('always disables dollyToCursor in preview mode regardless of selection', () => {
-    const props = createBaseProps({
-      previewMode: true,
-      selectedObjectId: null,
-    });
-    render(<SceneContentView {...props} />);
-
-    expect(lastCameraControlsProps).not.toBeNull();
+    const fourthRender = render(
+      <SceneContentView
+        {...createBaseProps({
+          previewMode: true,
+          selectedObjectId: null,
+        })}
+      />
+    );
     expect(lastCameraControlsProps?.dollyToCursor).toBe(false);
+    fourthRender.unmount();
   });
 
   it('uses tighter maxDistance in preview mode', () => {

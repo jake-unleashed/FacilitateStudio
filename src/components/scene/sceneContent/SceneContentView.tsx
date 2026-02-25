@@ -180,8 +180,6 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const guidedPhase = guidedBodyState.guidedPhase;
   const guidedPositionMode = guidedBodyState.guidedPositionMode;
   const isGuidedModelUpload = guidedPhase === 'model-upload';
-  const hasSelection = props.selectedObjectId !== null;
-  const shouldDollyToCursor = !props.previewMode && !isGuidedModelUpload && !hasSelection;
   const isPreviewInteractionLocked = props.previewMode && (props.isCameraPositioning ?? props.isPositioningCameraRef.current);
   const previewAllowOrbit = props.previewMode ? (props.previewSettings?.allowOrbit ?? false) : true;
   const previewAllowZoom = props.previewMode ? (props.previewSettings?.allowZoom ?? false) : true;
@@ -424,7 +422,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
         minDistance={0.5}
         maxDistance={props.previewMode ? 20 : 60}
         dollySpeed={0.3}
-        dollyToCursor={shouldDollyToCursor}
+        dollyToCursor={false}
         minPolarAngle={0}
         maxPolarAngle={Math.PI}
         minAzimuthAngle={-Infinity}
