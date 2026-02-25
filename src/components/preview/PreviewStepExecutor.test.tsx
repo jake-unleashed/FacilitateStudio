@@ -54,6 +54,18 @@ function makeMoveItemStep(partial?: Partial<SimStep>): SimStep {
   };
 }
 
+function makeIdentifyStep(partial?: Partial<SimStep>): SimStep {
+  return {
+    id: partial?.id ?? 'step-identify',
+    title: partial?.title ?? 'Identify',
+    description: partial?.description ?? '',
+    completed: partial?.completed ?? false,
+    type: 'identify',
+    targetObjectId: partial?.targetObjectId ?? 'obj-1',
+    targetChildPath: partial?.targetChildPath,
+  };
+}
+
 describe('PreviewStepExecutor', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -124,7 +136,7 @@ describe('PreviewStepExecutor', () => {
       />
     );
 
-    expect(screen.getByText('Move Item')).toBeInTheDocument();
+    expect(screen.getAllByText('Move Item').length).toBeGreaterThan(0);
   });
 
   it('Escape exits preview', () => {
@@ -191,5 +203,89 @@ describe('PreviewStepExecutor', () => {
     // Now execution state should be "executing"; further clicks should be ignored.
     act(() => objectClickHandler?.('obj-1'));
     expect(onObjectClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows identify step label at the top, with fallback when title is empty', () => {
+    render(
+      <PreviewStepExecutor
+        steps={[makeIdentifyStep({ id: 's1', title: '' })]}
+        objects={[makeCube('obj-1')]}
+        onComplete={vi.fn()}
+        onExit={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText('Identify').length).toBeGreaterThan(0);
+  });
+
+  it('registers a wrong-object click handler and shows/dismisses wrong feedback for identify steps', () => {
+    const onWrongObjectClick = vi.fn();
+    let wrongObjectClickHandler: ((objectId: string) => void) | null = null;
+
+    render(
+      <PreviewStepExecutor
+        steps={[makeIdentifyStep({ id: 's1', targetObjectId: 'obj-1' })]}
+        objects={[makeCube('obj-1'), makeCube('obj-2')]}
+        onComplete={vi.fn()}
+        onExit={vi.fn()}
+        onWrongObjectClick={onWrongObjectClick}
+        onRegisterWrongObjectClickHandler={(handler) => {
+          wrongObjectClickHandler = handler;
+        }}
+      />
+    );
+
+    expect(wrongObjectClickHandler).not.toBeNull();
+
+    act(() => wrongObjectClickHandler?.('obj-2'));
+    expect(onWrongObjectClick).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Not quite right. Try again.')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+    expect(screen.queryByText('Not quite right. Try again.')).not.toBeInTheDocument();
+  });
+
+  it('advances after a correct identify click (shows correct feedback, then completes)', () => {
+    const onObjectClick = vi.fn();
+    const onComplete = vi.fn();
+    let objectClickHandler: ((objectId: string) => void) | null = null;
+
+    render(
+      <PreviewStepExecutor
+        steps={[makeIdentifyStep({ id: 's1', targetObjectId: 'obj-1' })]}
+        objects={[makeCube('obj-1')]}
+        onComplete={onComplete}
+        onExit={vi.fn()}
+        onObjectClick={onObjectClick}
+        onRegisterObjectClickHandler={(handler) => {
+          objectClickHandler = handler;
+        }}
+      />
+    );
+
+    act(() => objectClickHandler?.('obj-1'));
+    expect(onObjectClick).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Correct! Great job.')).toBeInTheDocument();
+
+    // 750ms to confirm correct -> step completes, then 300ms to finalize preview completion.
+    act(() => {
+      vi.advanceTimersByTime(750 + 300);
+    });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters out invalid identify steps (missing target object)', () => {
+    render(
+      <PreviewStepExecutor
+        steps={[makeIdentifyStep({ id: 's1', targetObjectId: 'missing' })]}
+        objects={[makeCube('obj-1')]}
+        onComplete={vi.fn()}
+        onExit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('No valid steps to preview.')).toBeInTheDocument();
   });
 });

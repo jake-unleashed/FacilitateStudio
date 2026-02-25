@@ -39,6 +39,7 @@ export interface SceneContentProps {
   previewSettings?: SimulationSettings;
   previewStep?: SimStep | null;
   onPreviewObjectClick?: (objectId: string) => void;
+  onPreviewWrongClick?: (objectId: string) => void;
   onPreviewTransformUpdate?: (
     update: {
       position: { x: number; y: number; z: number };
@@ -70,6 +71,7 @@ export function SceneContent({
   previewSettings = DEFAULT_SIMULATION_SETTINGS,
   previewStep = null,
   onPreviewObjectClick,
+  onPreviewWrongClick,
   onPreviewTransformUpdate,
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
@@ -149,25 +151,23 @@ export function SceneContent({
     ) => {
       if (e.nativeEvent.button !== 0) return;
 
-      if (previewMode && onPreviewObjectClick && previewStep?.type === 'move-item') {
-        // In preview/published modes, move-item steps should only trigger when the user clicks the
-        // intended target. For child targets, that means the clicked mesh must be within the
-        // targeted child subtree (including descendants).
+      if (previewMode && previewStep && (previewStep.type === 'move-item' || previewStep.type === 'identify')) {
         const isTargetObject = previewStep.targetObjectId === obj.id;
-        if (!isTargetObject) return;
-
         const targetChildPath = previewStep.targetChildPath ?? null;
-        if (targetChildPath) {
-          const clickedChildPathStr = getChildPathFromObject(e.object);
-
-          const isWithinTargetSubtree = isChildPathWithinSubtree(targetChildPath, clickedChildPathStr);
-
-          if (!isWithinTargetSubtree) return;
-        }
+        const clickedChildPathStr = getChildPathFromObject(e.object);
+        const isTargetChildMatch = targetChildPath
+          ? isChildPathWithinSubtree(targetChildPath, clickedChildPathStr)
+          : true;
+        const isCorrectTarget = isTargetObject && isTargetChildMatch;
 
         e.stopPropagation();
         e.nativeEvent.stopPropagation();
-        onPreviewObjectClick(obj.id);
+
+        if (isCorrectTarget) {
+          onPreviewObjectClick?.(obj.id);
+        } else if (previewStep.type === 'identify') {
+          onPreviewWrongClick?.(obj.id);
+        }
         return;
       }
 
@@ -258,6 +258,7 @@ export function SceneContent({
     [
       previewMode,
       onPreviewObjectClick,
+      onPreviewWrongClick,
       previewStep,
       recordingPositionForStepId,
       recordingStep,
@@ -281,8 +282,12 @@ export function SceneContent({
 
   const hoveredObjectId = hoveredHit?.objectId ?? null;
   const isCursorHovering = useMemo(
-    () => (previewMode ? isPreviewTargetHovering : hoveredObjectId !== null),
-    [previewMode, hoveredObjectId, isPreviewTargetHovering]
+    () => {
+      if (!previewMode) return hoveredObjectId !== null;
+      if (previewStep?.type === 'identify') return hoveredObjectId !== null;
+      return isPreviewTargetHovering;
+    },
+    [hoveredObjectId, isPreviewTargetHovering, previewMode, previewStep?.type]
   );
 
   const handleDragEnd = useCallback(

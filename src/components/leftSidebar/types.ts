@@ -39,7 +39,7 @@ export interface LeftSidebarHandle {
 export interface StepTypeConfig {
   type: import('../../types').StepType;
   icon: import('lucide-react').LucideIcon;
-  color: 'text-blue-600' | 'text-purple-600';
+  color: 'text-blue-600' | 'text-purple-600' | 'text-emerald-600';
   label: string;
 }
 

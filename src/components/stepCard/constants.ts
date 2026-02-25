@@ -1,12 +1,13 @@
-import { Info, MoveRight } from 'lucide-react';
+import { Info, MoveRight, MousePointerClick } from 'lucide-react';
 import type React from 'react';
+import type { StepType } from '../../types';
 
 export interface StepTypeConfig {
-  type: 'info-card' | 'move-item';
+  type: StepType;
   label: string;
   description: string;
   icon: React.ElementType;
-  color: 'blue' | 'purple';
+  color: 'blue' | 'purple' | 'emerald';
 }
 
 export const STEP_TYPES: StepTypeConfig[] = [
@@ -23,6 +24,13 @@ export const STEP_TYPES: StepTypeConfig[] = [
     description: 'Guide trainee to move an object',
     icon: MoveRight,
     color: 'purple',
+  },
+  {
+    type: 'identify',
+    label: 'Identify',
+    description: 'Trainee finds and clicks the correct object',
+    icon: MousePointerClick,
+    color: 'emerald',
   },
 ];
 

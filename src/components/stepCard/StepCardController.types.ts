@@ -42,6 +42,7 @@ export interface StepCardController {
   // derived
   isInfoCardSelected: boolean;
   isMoveItemSelected: boolean;
+  isIdentifySelected: boolean;
   currentStepTypeConfig: (typeof STEP_TYPES)[number] | undefined;
   currentTheme: (typeof COLOR_THEMES)[keyof typeof COLOR_THEMES];
   effectiveTargetObjectId: string | undefined;

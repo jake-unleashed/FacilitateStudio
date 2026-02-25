@@ -1,7 +1,7 @@
-import { CheckCircle, CheckCircle2, Circle, Info, X } from 'lucide-react';
+import { CheckCircle, Circle } from 'lucide-react';
 import type { SceneObject, SimStep } from '../../types';
-import { OBJECT_ICONS } from '../../constants';
 import { HelpIcon } from '../HelpIcon';
+import { TargetObjectPicker } from './TargetObjectPicker';
 
 export interface MoveItemSectionProps {
   step: SimStep;
@@ -37,6 +37,8 @@ export function MoveItemSection({
 }: MoveItemSectionProps): JSX.Element | null {
   if (!isVisible) return null;
 
+  const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
+
   return (
     <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
       <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
@@ -45,77 +47,18 @@ export function MoveItemSection({
       </div>
 
       <div className={`mb-4 ${compact ? 'space-y-2' : 'space-y-3'}`}>
-        <div
-          className={`rounded-[16px] border border-white/40 bg-white/40 shadow-sm ${
-            compact ? 'px-3 py-2' : 'px-3 py-2.5'
-          }`}
-        >
-          <div className="mb-2 flex items-center gap-1.5">
-            <label className="text-xs font-semibold text-slate-700">Target Object</label>
-            <HelpIcon content="The object that will move when the trainee performs this step." />
-          </div>
-
-          {targetObject ? (
-            <div className="group relative">
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => onFocusTargetObject(targetObject)}
-                  className="flex w-full items-center gap-2 rounded-[12px] border border-slate-200/60 bg-slate-100/50 px-3 py-2 pr-10 text-left transition-all hover:border-slate-300/80 hover:bg-slate-100/80"
-                >
-                  {(() => {
-                    const Icon = OBJECT_ICONS[targetObject.type] || Info;
-                    return <Icon size={14} className="text-slate-600" />;
-                  })()}
-                  <span className="flex-1 text-xs font-medium text-slate-700">
-                    {targetObject.name}
-                    {targetChildName && ` / ${targetChildName}`}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onRemoveTargetObject}
-                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 opacity-0 transition-all hover:bg-rose-100 hover:text-rose-600 group-hover:opacity-100"
-                  title="Remove target object"
-                  aria-label="Remove target object"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex-1 rounded-[10px] border border-slate-200/60 bg-slate-100/50 px-3 py-2 text-xs text-slate-400">
-                No object selected
-              </div>
-              <button
-                onClick={onUseSelectedObject}
-                disabled={!canUseSelectedObject}
-                className={`
-                  flex w-full items-center justify-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all
-                  ${
-                    canUseSelectedObject
-                      ? 'border-slate-300/60 bg-slate-100/50 text-slate-700 hover:border-slate-400/80 hover:bg-slate-200/60'
-                      : 'cursor-not-allowed border-slate-200/60 bg-slate-100/50 text-slate-400'
-                  }
-                `}
-                title={
-                  canUseSelectedObject ? 'Use the currently selected object in the scene' : 'Select an object in the scene first'
-                }
-              >
-                <CheckCircle2 size={13} />
-                <span>Use Selected Object</span>
-              </button>
-            </div>
-          )}
-
-          {!targetObject && effectiveTargetObjectId && (
-            <p className="mt-2 text-xs text-rose-600">Object not found. It may have been deleted.</p>
-          )}
-          {targetObject && effectiveTargetChildPath && !targetChildName && (
-            <p className="mt-2 text-xs text-rose-600">Child mesh not found. It may have been deleted.</p>
-          )}
-        </div>
+        <TargetObjectPicker
+          compact={compact}
+          helpText="The object that will move when the trainee performs this step."
+          targetObject={targetObject}
+          targetChildName={targetChildName}
+          canUseSelectedObject={canUseSelectedObject}
+          effectiveTargetObjectId={effectiveTargetObjectId}
+          effectiveTargetChildPath={effectiveTargetChildPath}
+          onUseSelectedObject={onUseSelectedObject}
+          onRemoveTargetObject={onRemoveTargetObject}
+          onFocusTargetObject={onFocusTargetObject}
+        />
 
         {targetObject && (
           <div
@@ -145,10 +88,7 @@ export function MoveItemSection({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {(() => {
-                    const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
-                    return hasEndTransform;
-                  })() ? (
+                  {hasEndTransform ? (
                     <div className="flex items-center gap-2 rounded-[10px] border border-green-200/60 bg-green-50/50 px-3 py-2">
                       <CheckCircle size={14} className="text-green-600" />
                       <span className="text-xs font-medium text-green-700">End position recorded</span>
@@ -164,10 +104,7 @@ export function MoveItemSection({
                     className="w-full rounded-[10px] border border-blue-300/60 bg-blue-100/50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:border-blue-400/80 hover:bg-blue-200/60"
                     title="Click to start recording the end position. Move/rotate/scale the object, then click Stop Recording."
                   >
-                    {(() => {
-                      const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
-                      return hasEndTransform ? 'Record end position again' : 'Record end position';
-                    })()}
+                    {hasEndTransform ? 'Record end position again' : 'Record end position'}
                   </button>
                 </div>
               )}
@@ -178,4 +115,3 @@ export function MoveItemSection({
     </div>
   );
 }
-

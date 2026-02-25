@@ -1,19 +1,25 @@
-import { Info, MoveRight } from 'lucide-react';
-import type { SimStep, StepType } from '../../types';
+import { Info, MoveRight, MousePointerClick } from 'lucide-react';
+import type { SimStep } from '../../types';
 import type { StepTypeConfig } from './types';
 
 export const STEP_TYPE_CONFIGS: StepTypeConfig[] = [
   {
-    type: 'info-card' as StepType,
+    type: 'info-card',
     icon: Info,
     color: 'text-blue-600',
     label: 'Info Card',
   },
   {
-    type: 'move-item' as StepType,
+    type: 'move-item',
     icon: MoveRight,
     color: 'text-purple-600',
     label: 'Move Item',
+  },
+  {
+    type: 'identify',
+    icon: MousePointerClick,
+    color: 'text-emerald-600',
+    label: 'Identify',
   },
 ];
 

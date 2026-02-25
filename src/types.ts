@@ -127,7 +127,7 @@ export interface SimStep {
 export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';
 
 /** Step type for simulation steps */
-export type StepType = 'info-card' | 'move-item';
+export type StepType = 'info-card' | 'move-item' | 'identify';
 
 /**
  * Parsed selection ID for objects and their children.

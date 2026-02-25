@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SceneObject, SimStep } from '../../types';
 import { PreviewInfoCard } from './PreviewInfoCard';
+import { PreviewIdentifyFeedback, type IdentifyFeedbackState } from './PreviewIdentifyFeedback';
 import { findChildByPathString } from '../../utils/childTransformUtils';
+import { STEP_TYPES } from '../stepCard/constants';
 
 interface PreviewStepExecutorProps {
   steps: SimStep[];
@@ -10,10 +12,14 @@ interface PreviewStepExecutorProps {
   /** Optional exit handler. If not provided, no exit button will be shown. */
   onExit?: () => void;
   onSetCurrentPreviewStep?: (step: SimStep | null) => void;
-  /** Callback when object is clicked (for move-item steps) */
+  /** Callback when object is clicked (for move-item / identify steps) */
   onObjectClick?: (objectId: string) => void;
+  /** Callback when wrong object is clicked (for identify steps) */
+  onWrongObjectClick?: (objectId: string) => void;
   /** Register object click handler for external use */
   onRegisterObjectClickHandler?: (handler: (objectId: string) => void) => void;
+  /** Register wrong-object click handler for external use */
+  onRegisterWrongObjectClickHandler?: (handler: (objectId: string) => void) => void;
   /** Register step complete handler for external use */
   onRegisterStepCompleteHandler?: (handler: () => void) => void;
 }
@@ -22,8 +28,13 @@ type StepExecutionState = 'waiting' | 'executing' | 'completed';
 
 const STEP_TRANSITION_DELAY_MS = 300;
 const FINAL_STEP_COMPLETE_DELAY_MS = 300;
+const IDENTIFY_CORRECT_DELAY_MS = 750;
+const IDENTIFY_WRONG_CLEAR_DELAY_MS = 1100;
 const PROGRESS_TEXT = 'Progress';
-const DEFAULT_MOVE_ITEM_LABEL = 'Move Item';
+const DEFAULT_STEP_LABELS: Record<string, string> = {
+  'move-item': 'Move Item',
+  identify: 'Identify',
+};
 
 // Progress bar styling constants
 const PROGRESS_BAR_CONTAINER_CLASSES =
@@ -35,10 +46,16 @@ const PROGRESS_BAR_TRACK_CLASSES =
 const PROGRESS_BAR_FILL_CLASSES =
   'h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[width] duration-700 ease-out';
 
-function getMoveItemLabel(step: SimStep): string {
+function getStepLabel(step: SimStep): string {
   const title = step.title?.trim();
-  return title ? title : DEFAULT_MOVE_ITEM_LABEL;
+  return title || DEFAULT_STEP_LABELS[step.type ?? ''] || '';
 }
+
+const STEP_TYPE_ACCENT_CLASSES: Record<string, string> = {
+  blue: 'text-blue-600',
+  emerald: 'text-emerald-600',
+  purple: 'text-purple-600',
+};
 
 /**
  * Manages step-by-step execution during preview mode.
@@ -51,11 +68,14 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
   onExit,
   onSetCurrentPreviewStep,
   onObjectClick,
+  onWrongObjectClick,
   onRegisterObjectClickHandler,
+  onRegisterWrongObjectClickHandler,
   onRegisterStepCompleteHandler,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [executionState, setExecutionState] = useState<StepExecutionState>('waiting');
+  const [identifyFeedback, setIdentifyFeedback] = useState<IdentifyFeedbackState>(null);
 
   /**
    * Filters steps to only include valid ones with required type-specific data.
@@ -77,6 +97,18 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
         const hasEndTransform = !!step.endPosition || !!step.endRotation || !!step.endScale;
         if (!step.targetObjectId || !hasEndTransform) return false;
 
+        const targetObject = objects.find((obj) => obj.id === step.targetObjectId);
+        if (!targetObject) return false;
+
+        if (step.targetChildPath) {
+          return !!findChildByPathString(targetObject, step.targetChildPath);
+        }
+
+        return true;
+      }
+
+      if (step.type === 'identify') {
+        if (!step.targetObjectId) return false;
         const targetObject = objects.find((obj) => obj.id === step.targetObjectId);
         if (!targetObject) return false;
 
@@ -117,8 +149,22 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
    */
   useEffect(() => {
     setExecutionState('waiting');
+    setIdentifyFeedback(null);
     onSetCurrentPreviewStep?.(currentStep);
   }, [currentStepIndex, currentStep, onSetCurrentPreviewStep]);
+
+  useEffect(() => {
+    if (!identifyFeedback) return;
+    if (identifyFeedback === 'correct') return;
+
+    const clearTimeoutId = window.setTimeout(() => {
+      setIdentifyFeedback(null);
+    }, IDENTIFY_WRONG_CLEAR_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(clearTimeoutId);
+    };
+  }, [identifyFeedback]);
 
   /**
    * Handles step completion.
@@ -140,8 +186,8 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
     const nextStepIndex = currentStepIndex + 1;
     const nextStep = validSteps[nextStepIndex];
 
-    if (nextStep?.type === 'move-item') {
-      // Immediate transition for move-item steps to start camera movement right away
+    if (nextStep?.type === 'move-item' || nextStep?.type === 'identify') {
+      // Immediate transition for camera-driven steps to start positioning right away
       setCurrentStepIndex(nextStepIndex);
     } else {
       // Small delay for other transitions
@@ -161,12 +207,13 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
   }, [currentStep, handleStepComplete]);
 
   /**
-   * Handles object click in move-item step.
+   * Handles object click in move-item/identify steps.
    * Only processes clicks when the step is waiting and the clicked object matches the target.
    */
   const handleObjectClick = useCallback(
     (objectId: string) => {
       const isMoveItemStep = currentStep?.type === 'move-item';
+      const isIdentifyStep = currentStep?.type === 'identify';
       const isTargetObject = currentStep?.targetObjectId === objectId;
       const isWaiting = executionState === 'waiting';
 
@@ -174,8 +221,29 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
         setExecutionState('executing');
         onObjectClick?.(objectId);
       }
+
+      if (isIdentifyStep && isTargetObject && isWaiting) {
+        setIdentifyFeedback('correct');
+        setExecutionState('executing');
+        onObjectClick?.(objectId);
+        window.setTimeout(() => {
+          handleStepComplete();
+        }, IDENTIFY_CORRECT_DELAY_MS);
+      }
     },
-    [currentStep, executionState, onObjectClick]
+    [currentStep, executionState, onObjectClick, handleStepComplete]
+  );
+
+  const handleWrongObjectClick = useCallback(
+    (objectId: string) => {
+      const isIdentifyStep = currentStep?.type === 'identify';
+      const isWaiting = executionState === 'waiting';
+      if (!isIdentifyStep || !isWaiting) return;
+
+      setIdentifyFeedback('wrong');
+      onWrongObjectClick?.(objectId);
+    },
+    [currentStep, executionState, onWrongObjectClick]
   );
 
   /**
@@ -184,6 +252,13 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
   useEffect(() => {
     onRegisterObjectClickHandler?.(handleObjectClick);
   }, [handleObjectClick, onRegisterObjectClickHandler]);
+
+  /**
+   * Registers wrong-object click handler with parent component.
+   */
+  useEffect(() => {
+    onRegisterWrongObjectClickHandler?.(handleWrongObjectClick);
+  }, [handleWrongObjectClick, onRegisterWrongObjectClickHandler]);
 
   /**
    * Registers step complete handler with parent component.
@@ -240,10 +315,30 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
 
   return (
     <>
-      {/* Step name indicator - only show for move-item steps (info cards have their own context) */}
-      {currentStep?.type === 'move-item' && (
-        <div className="fixed left-1/2 top-4 z-40 -translate-x-1/2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur-sm">
-          {getMoveItemLabel(currentStep)}
+      {/* Step name indicator for interactive steps (info cards have their own overlay) */}
+      {(currentStep?.type === 'move-item' || currentStep?.type === 'identify') && (
+        <div className="fixed left-1/2 top-4 z-40 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-[16px] border border-white/50 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-800 shadow-xl backdrop-blur-xl">
+            {(() => {
+              const stepTypeConfig = STEP_TYPES.find((st) => st.type === currentStep.type);
+              if (!stepTypeConfig) return null;
+
+              const Icon = stepTypeConfig.icon;
+              const accentClass = STEP_TYPE_ACCENT_CLASSES[stepTypeConfig.color] ?? 'text-slate-600';
+              return (
+                <>
+                  <div
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${accentClass}`}
+                  >
+                    <Icon size={13} />
+                    <span>{stepTypeConfig.label}</span>
+                  </div>
+                  <div className="h-5 w-px bg-slate-300/70" />
+                </>
+              );
+            })()}
+            <span>{getStepLabel(currentStep)}</span>
+          </div>
         </div>
       )}
 
@@ -281,6 +376,8 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
       {currentStep?.type === 'info-card' && (
         <PreviewInfoCard step={currentStep} onContinue={handleInfoCardContinue} />
       )}
+
+      {currentStep?.type === 'identify' && <PreviewIdentifyFeedback state={identifyFeedback} />}
 
       {/* Move Item Step - PreviewMoveItemStep is rendered inside Canvas by MainCanvas */}
       {/* This component just coordinates the execution state */}

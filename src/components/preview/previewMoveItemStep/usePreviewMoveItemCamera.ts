@@ -40,6 +40,7 @@ export function usePreviewMoveItemCamera(args: {
   cameraControlsRef: React.RefObject<CameraControlsImpl>;
   isPositioningCameraRef?: React.MutableRefObject<boolean>;
   isAnimating: boolean;
+  distanceMultiplier?: number;
 }): { showOutline: boolean } {
   const { camera, scene, invalidate } = useThree();
   const {
@@ -50,6 +51,7 @@ export function usePreviewMoveItemCamera(args: {
     cameraControlsRef,
     isPositioningCameraRef,
     isAnimating,
+    distanceMultiplier = 1.0,
   } = args;
 
   const hasPositionedCamera = useRef(false);
@@ -207,9 +209,10 @@ export function usePreviewMoveItemCamera(args: {
           })();
 
           const basePitch = Math.atan(0.6);
+          const cameraDistance = base.distance * distanceMultiplier;
           const baseTierCandidates = generatePreviewCameraCandidatesWithPitchTiers({
             target: base.target,
-            distance: base.distance,
+            distance: cameraDistance,
             defaultAzimuth: base.defaultAzimuth,
             sampleCount: RAYCAST_SAMPLE_COUNT,
             pitchTiers: [{ pitch: basePitch, tierIndex: 0 }],
@@ -218,7 +221,7 @@ export function usePreviewMoveItemCamera(args: {
 
           const fallbackCandidates = generatePreviewCameraCandidatesWithPitchTiers({
             target: base.target,
-            distance: base.distance,
+            distance: cameraDistance,
             defaultAzimuth: base.defaultAzimuth,
             sampleCount: RAYCAST_SAMPLE_COUNT,
             pitchTiers: [

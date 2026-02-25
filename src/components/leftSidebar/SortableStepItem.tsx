@@ -117,7 +117,9 @@ export const SortableStepItem = memo<SortableStepItemProps>(
                     ${
                       stepTypeConfig.color === 'text-blue-600'
                         ? 'border-blue-200/60 bg-gradient-to-br from-blue-50/60 to-blue-100/30'
-                        : 'border-purple-200/60 bg-gradient-to-br from-purple-50/60 to-purple-100/30'
+                        : stepTypeConfig.color === 'text-emerald-600'
+                          ? 'border-emerald-200/60 bg-gradient-to-br from-emerald-50/60 to-emerald-100/30'
+                          : 'border-purple-200/60 bg-gradient-to-br from-purple-50/60 to-purple-100/30'
                     }
                   `}
                 >

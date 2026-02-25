@@ -5,6 +5,7 @@ import { useStepCardController } from '../../stepCard/StepCardController';
 import { StepTypeSection } from '../../stepCard/StepTypeSection';
 import { InfoCardSection } from '../../stepCard/InfoCardSection';
 import { MoveItemSection } from '../../stepCard/MoveItemSection';
+import { IdentifySection } from '../../stepCard/IdentifySection';
 import type { FocusMode, SceneObject, SimStep, StepType } from '../../../types';
 import { StepContextDisplay } from '../components/StepContextDisplay';
 import { RecordingPanel } from './RecordingPanel';
@@ -433,9 +434,14 @@ function StepSetupStep({
 
   const hasMoveItemEndTransform = Boolean(step.endPosition || step.endRotation || step.endScale);
   const hasMoveItemRequirements = Boolean(controller.effectiveTargetObjectId) && hasMoveItemEndTransform;
+  const hasIdentifyRequirements = Boolean(controller.effectiveTargetObjectId);
   const canAdvance =
     controller.selectedType !== null &&
-    (controller.selectedType !== 'move-item' || hasMoveItemRequirements);
+    (controller.selectedType === 'move-item'
+      ? hasMoveItemRequirements
+      : controller.selectedType === 'identify'
+        ? hasIdentifyRequirements
+        : true);
   const isRecording = controller.isRecordingPosition;
 
   const isBlankSelected = chooserSelection === 'blank';
@@ -483,6 +489,7 @@ function StepSetupStep({
           showTypeSelection={isChooserScreen}
           currentStepTypeConfig={controller.currentStepTypeConfig}
           isInfoCardSelected={chooserSelection === 'info-card'}
+          compact
           onChangeStepType={() => {
             controller.handleChangeStepType();
             onSetCurrentSubScreen('type');
@@ -564,6 +571,19 @@ function StepSetupStep({
           onRemoveTargetObject={controller.handleRemoveTargetObject}
           onFocusTargetObject={controller.handleFocusTargetObject}
           onToggleRecording={controller.handleToggleRecording}
+        />
+
+        <IdentifySection
+          isVisible={controller.isIdentifySelected && isConfigScreen}
+          compact
+          targetObject={controller.targetObject}
+          targetChildName={controller.targetChild?.name ?? null}
+          canUseSelectedObject={controller.canUseSelectedObject}
+          effectiveTargetObjectId={controller.effectiveTargetObjectId}
+          effectiveTargetChildPath={controller.effectiveTargetChildPath}
+          onUseSelectedObject={controller.handleUseSelectedObject}
+          onRemoveTargetObject={controller.handleRemoveTargetObject}
+          onFocusTargetObject={controller.handleFocusTargetObject}
         />
       </div>
 

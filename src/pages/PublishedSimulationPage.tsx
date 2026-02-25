@@ -35,6 +35,7 @@ export function PublishedSimulationPage(): JSX.Element {
   const [isStarting, setIsStarting] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const objectClickHandlerRef = useRef<((objectId: string) => void) | null>(null);
+  const wrongObjectClickHandlerRef = useRef<((objectId: string) => void) | null>(null);
   const stepCompleteHandlerRef = useRef<(() => void) | null>(null);
   const transitionTimeoutRef = useRef<number | null>(null);
 
@@ -201,6 +202,11 @@ export function PublishedSimulationPage(): JSX.Element {
                 objectClickHandlerRef.current(objectId);
               }
             }}
+            onPreviewWrongClick={(objectId) => {
+              if (wrongObjectClickHandlerRef.current) {
+                wrongObjectClickHandlerRef.current(objectId);
+              }
+            }}
             shouldAnimateMoveItem={shouldAnimateMoveItem}
             onPreviewTransformUpdate={(update, childPath?: string) => {
               if (currentPreviewStep?.targetObjectId) {
@@ -226,6 +232,9 @@ export function PublishedSimulationPage(): JSX.Element {
               }}
               onRegisterObjectClickHandler={(handler) => {
                 objectClickHandlerRef.current = handler;
+              }}
+              onRegisterWrongObjectClickHandler={(handler) => {
+                wrongObjectClickHandlerRef.current = handler;
               }}
               onRegisterStepCompleteHandler={(handler) => {
                 stepCompleteHandlerRef.current = handler;

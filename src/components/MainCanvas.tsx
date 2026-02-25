@@ -52,6 +52,8 @@ interface MainCanvasProps {
   previewStep?: SimStep | null;
   /** Callback when object is clicked in preview mode */
   onPreviewObjectClick?: (objectId: string) => void;
+  /** Callback when wrong object is clicked in identify steps */
+  onPreviewWrongClick?: (objectId: string) => void;
   /** Callback when preview move-item step updates object transform (during animation) */
   onPreviewTransformUpdate?: (
     update: {
@@ -103,11 +105,18 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   previewSettings = DEFAULT_SIMULATION_SETTINGS,
   previewStep = null,
   onPreviewObjectClick,
+  onPreviewWrongClick,
   onPreviewTransformUpdate,
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
 }) => {
   const [previewOutlineTarget, setPreviewOutlineTarget] = useState<PreviewOutlineTarget | null>(null);
+
+  useEffect(() => {
+    if (previewStep?.type !== 'move-item') {
+      setPreviewOutlineTarget(null);
+    }
+  }, [previewStep?.id, previewStep?.type]);
 
   // Track if we've notified about canvas being ready
   const hasNotifiedCanvasRef = useRef(false);
@@ -175,6 +184,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             previewSettings={previewSettings}
             previewStep={previewStep}
             onPreviewObjectClick={onPreviewObjectClick}
+            onPreviewWrongClick={onPreviewWrongClick}
             onPreviewTransformUpdate={onPreviewTransformUpdate}
             onPreviewStepComplete={onPreviewStepComplete}
             shouldAnimateMoveItem={shouldAnimateMoveItem}

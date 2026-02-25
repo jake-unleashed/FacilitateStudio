@@ -8,6 +8,7 @@ import { Selection } from '@react-three/postprocessing';
 
 import type { PreviewOutlineTarget } from '../../preview/types';
 import { PreviewMoveItemStepRenderer } from '../../preview/PreviewMoveItemStepRenderer';
+import { PreviewIdentifyStep } from '../../preview/PreviewIdentifyStep';
 import { DEFAULT_CAMERA_POSITION, GROUND_PLANE_EXTENT } from '../../../constants';
 import type { FocusMode, SceneObject, SimStep } from '../../../types';
 import type { SimulationSettings } from '../../../types/simulationSettings';
@@ -206,6 +207,16 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
           onTransformUpdate={props.onPreviewTransformUpdate}
           onComplete={props.onPreviewStepComplete}
           onPreviewOutlineTargetChange={props.onPreviewOutlineTargetChange}
+        />
+      )}
+
+      {props.previewMode && props.previewStep?.type === 'identify' && (
+        <PreviewIdentifyStep
+          step={props.previewStep}
+          objects={props.objects}
+          cameraControlsRef={props.controlsRef}
+          isPositioningCameraRef={props.isPositioningCameraRef}
+          onComplete={props.onPreviewStepComplete || (() => {})}
         />
       )}
 

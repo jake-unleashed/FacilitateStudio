@@ -94,7 +94,18 @@ export function useStepCardController({
       };
       return { ...baseStep, ...overrides };
     },
-    [step, stepName, selectedType, heading, bodyText, buttonText, cardColor, targetObjectId, targetChildPath, endPosition]
+    [
+      step,
+      stepName,
+      selectedType,
+      heading,
+      bodyText,
+      buttonText,
+      cardColor,
+      targetObjectId,
+      targetChildPath,
+      endPosition,
+    ]
   );
 
   const flushPendingUpdates = useCallback(() => {
@@ -291,6 +302,7 @@ export function useStepCardController({
 
   const isInfoCardSelected = selectedType === 'info-card';
   const isMoveItemSelected = selectedType === 'move-item';
+  const isIdentifySelected = selectedType === 'identify';
   const currentStepTypeConfig = STEP_TYPES.find((st) => st.type === selectedType);
   const currentTheme = COLOR_THEMES[cardColor];
 
@@ -318,6 +330,7 @@ export function useStepCardController({
 
     isInfoCardSelected,
     isMoveItemSelected,
+    isIdentifySelected,
     currentStepTypeConfig,
     currentTheme,
     effectiveTargetObjectId,

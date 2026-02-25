@@ -4,6 +4,7 @@ import { StepCardHeader } from './StepCardHeader';
 import { StepTypeSection } from './StepTypeSection';
 import { InfoCardSection } from './InfoCardSection';
 import { MoveItemSection } from './MoveItemSection';
+import { IdentifySection } from './IdentifySection';
 import { DeleteStepSection } from './DeleteStepSection';
 
 export interface StepCardViewProps {
@@ -68,6 +69,19 @@ export function StepCardView({ step, onMinimize, onDeleteVisible, controller }: 
         onRemoveTargetObject={controller.handleRemoveTargetObject}
         onFocusTargetObject={controller.handleFocusTargetObject}
         onToggleRecording={controller.handleToggleRecording}
+      />
+
+      <IdentifySection
+        isVisible={controller.isIdentifySelected && !controller.showTypeSelection}
+        compact={false}
+        targetObject={controller.targetObject}
+        targetChildName={controller.targetChild?.name ?? null}
+        canUseSelectedObject={controller.canUseSelectedObject}
+        effectiveTargetObjectId={controller.effectiveTargetObjectId}
+        effectiveTargetChildPath={controller.effectiveTargetChildPath}
+        onUseSelectedObject={controller.handleUseSelectedObject}
+        onRemoveTargetObject={controller.handleRemoveTargetObject}
+        onFocusTargetObject={controller.handleFocusTargetObject}
       />
 
       <DeleteStepSection
