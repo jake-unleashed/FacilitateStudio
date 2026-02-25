@@ -111,14 +111,14 @@ export function PositioningHandleCallout({
 
     const tick = () => {
       compute();
-      rafRef.current = window.requestAnimationFrame(tick);
+      rafRef.current = window.setTimeout(tick, 200);
     };
 
-    rafRef.current = window.requestAnimationFrame(tick);
+    tick();
 
     return () => {
       if (rafRef.current) {
-        window.cancelAnimationFrame(rafRef.current);
+        window.clearTimeout(rafRef.current);
         rafRef.current = null;
       }
     };

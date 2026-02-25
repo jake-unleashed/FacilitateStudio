@@ -10,6 +10,7 @@ import type { UploadProgress } from '../types/model';
 import { PopupProvider } from '../contexts/PopupContext';
 import { GlobalPopup } from './GlobalPopup';
 import { ReactElement } from 'react';
+import { ACCEPTED_FORMATS } from './assetUpload/constants';
 
 // Wrapper that provides PopupProvider and GlobalPopup for all tests
 function TestWrapper({ children }: { children: React.ReactNode }) {
@@ -58,7 +59,7 @@ describe('AssetUploadButton', () => {
     it('shows supported formats hint', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      expect(screen.getByText(/supported:.*obj.*fbx.*glb/i)).toBeInTheDocument();
+      expect(screen.getByText(/drag model and texture files, or a folder/i)).toBeInTheDocument();
     });
 
     it('renders with custom className', () => {
@@ -83,16 +84,16 @@ describe('AssetUploadButton', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]');
-      expect(input).toHaveAttribute('accept', '.obj,.fbx,.glb');
+      expect(input).toHaveAttribute('accept', ACCEPTED_FORMATS);
     });
 
     it('has proper accessibility attributes', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
       const input = document.querySelector('input[type="file"]');
-      expect(input).toHaveAttribute('aria-label', 'Upload 3D model file');
+      expect(input).toHaveAttribute('aria-label', 'Upload 3D model and texture files');
 
-      const uploadArea = screen.getByRole('button');
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       expect(uploadArea).toHaveAttribute('aria-label', 'Upload asset');
     });
   });
@@ -108,10 +109,7 @@ describe('AssetUploadButton', () => {
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]');
-      await userEvent.click(uploadArea!);
+      await userEvent.click(screen.getByRole('button', { name: 'Upload asset' }));
 
       expect(clickSpy).toHaveBeenCalled();
     });
@@ -135,8 +133,7 @@ describe('AssetUploadButton', () => {
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor"]');
-      await userEvent.click(uploadArea!);
+      await userEvent.click(screen.getByRole('button', { name: 'Upload asset' }));
 
       expect(clickSpy).not.toHaveBeenCalled();
     });
@@ -157,8 +154,7 @@ describe('AssetUploadButton', () => {
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const clickSpy = vi.spyOn(input, 'click');
 
-      const uploadArea = screen.getByText('Processing model...').closest('div[class*="cursor"]');
-      await userEvent.click(uploadArea!);
+      await userEvent.click(screen.getByRole('button', { name: 'Upload asset' }));
 
       expect(clickSpy).not.toHaveBeenCalled();
     });
@@ -179,7 +175,7 @@ describe('AssetUploadButton', () => {
       await userEvent.upload(input, file);
 
       await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledWith(file);
+        expect(mockOnUpload).toHaveBeenCalledWith(file, []);
       });
     });
 
@@ -193,7 +189,7 @@ describe('AssetUploadButton', () => {
       await userEvent.upload(input, file);
 
       await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledWith(file);
+        expect(mockOnUpload).toHaveBeenCalledWith(file, []);
       });
     });
 
@@ -207,7 +203,7 @@ describe('AssetUploadButton', () => {
       await userEvent.upload(input, file);
 
       await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledWith(file);
+        expect(mockOnUpload).toHaveBeenCalledWith(file, []);
       });
     });
 
@@ -226,7 +222,7 @@ describe('AssetUploadButton', () => {
 
       await waitFor(
         () => {
-          expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+          expect(screen.getByText(/no 3d model found/i)).toBeInTheDocument();
         },
         { timeout: 3000 }
       );
@@ -250,7 +246,7 @@ describe('AssetUploadButton', () => {
 
       await waitFor(
         () => {
-          expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+          expect(screen.getByText(/no 3d model found/i)).toBeInTheDocument();
         },
         { timeout: 3000 }
       );
@@ -324,30 +320,26 @@ describe('AssetUploadButton', () => {
     it('shows drop hint on drag enter', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
 
       fireEvent.dragEnter(uploadArea, {
         dataTransfer: { types: ['Files'] },
       });
 
-      expect(screen.getByText('Drop file here')).toBeInTheDocument();
+      expect(screen.getByText('Drop to upload')).toBeInTheDocument();
     });
 
     it('hides drop hint on drag leave', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
 
       // Enter
       fireEvent.dragEnter(uploadArea, {
         dataTransfer: { types: ['Files'] },
       });
 
-      expect(screen.getByText('Drop file here')).toBeInTheDocument();
+      expect(screen.getByText('Drop to upload')).toBeInTheDocument();
 
       // Leave
       fireEvent.dragLeave(uploadArea, {
@@ -361,9 +353,7 @@ describe('AssetUploadButton', () => {
       mockOnUpload.mockResolvedValue(undefined);
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       const file = createMockFile('model.obj');
 
       fireEvent.drop(uploadArea, {
@@ -374,16 +364,14 @@ describe('AssetUploadButton', () => {
       });
 
       await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledWith(file);
+        expect(mockOnUpload).toHaveBeenCalledWith(file, []);
       });
     });
 
     it('shows error for dropped invalid file', async () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       const file = createMockFile('model.stl');
 
       fireEvent.drop(uploadArea, {
@@ -394,7 +382,7 @@ describe('AssetUploadButton', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+        expect(screen.getByText(/no 3d model found/i)).toBeInTheDocument();
       });
 
       expect(mockOnUpload).not.toHaveBeenCalled();
@@ -403,7 +391,7 @@ describe('AssetUploadButton', () => {
     it('ignores drop when disabled', async () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       const file = createMockFile('model.obj');
 
       fireEvent.drop(uploadArea, {
@@ -429,7 +417,7 @@ describe('AssetUploadButton', () => {
         <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
       );
 
-      const uploadArea = screen.getByText('Processing model...').closest('div')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       const file = createMockFile('model2.obj');
 
       fireEvent.drop(uploadArea, {
@@ -445,9 +433,7 @@ describe('AssetUploadButton', () => {
     it('handles drag counter correctly with nested elements', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
 
       // Multiple drag enters (simulating nested elements)
       fireEvent.dragEnter(uploadArea, {
@@ -457,14 +443,14 @@ describe('AssetUploadButton', () => {
         dataTransfer: { types: ['Files'] },
       });
 
-      expect(screen.getByText('Drop file here')).toBeInTheDocument();
+      expect(screen.getByText('Drop to upload')).toBeInTheDocument();
 
       // Multiple drag leaves
       fireEvent.dragLeave(uploadArea, {
         dataTransfer: { types: ['Files'] },
       });
       // Should still show drop hint
-      expect(screen.getByText('Drop file here')).toBeInTheDocument();
+      expect(screen.getByText('Drop to upload')).toBeInTheDocument();
 
       fireEvent.dragLeave(uploadArea, {
         dataTransfer: { types: ['Files'] },
@@ -608,7 +594,7 @@ describe('AssetUploadButton', () => {
         <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
       );
 
-      expect(screen.queryByText(/supported:/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/drag model and texture files, or a folder/i)).not.toBeInTheDocument();
     });
   });
 
@@ -635,7 +621,7 @@ describe('AssetUploadButton', () => {
         () => {
           // Check for dialog role (popup is showing)
           expect(screen.getByRole('dialog')).toBeInTheDocument();
-          expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+          expect(screen.getByText(/no 3d model found/i)).toBeInTheDocument();
         },
         { timeout: 3000 }
       );
@@ -746,7 +732,7 @@ describe('AssetUploadButton', () => {
     it('applies disabled styling', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
-      const uploadArea = screen.getByText('Upload 3D Model').closest('div[class*="cursor"]');
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       expect(uploadArea).toHaveClass('cursor-not-allowed');
       expect(uploadArea).toHaveClass('opacity-60');
     });
@@ -761,7 +747,7 @@ describe('AssetUploadButton', () => {
     it('sets aria-disabled attribute', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
-      const uploadArea = screen.getByRole('button');
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
       expect(uploadArea).toHaveAttribute('aria-disabled', 'true');
     });
 

@@ -8,7 +8,16 @@
  * - Clear error/warning messages
  */
 
-import React, { useRef, useState, useCallback, useMemo, useEffect, DragEvent } from 'react';
+import React, {
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  DragEvent,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
 import { Upload, Loader2, CheckCircle2, AlertTriangle, FileBox } from 'lucide-react';
 import { UploadProgress, validateModelFile } from '../types/model';
 import { usePopup } from '../contexts/PopupContext';
@@ -35,16 +44,16 @@ interface AssetUploadButtonProps {
   uploadProgress?: UploadProgress;
 }
 
+export interface AssetUploadButtonHandle {
+  openFileDialog: () => void;
+}
+
 // =============================================================================
 // Component
 // =============================================================================
 
-export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
-  onUpload,
-  disabled = false,
-  className = '',
-  uploadProgress,
-}) => {
+export const AssetUploadButton = forwardRef<AssetUploadButtonHandle, AssetUploadButtonProps>(
+  ({ onUpload, disabled = false, className = '', uploadProgress }, ref) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -106,6 +115,14 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
     if (disabled || isUploading) return;
     fileInputRef.current?.click();
   }, [disabled, isUploading]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openFileDialog: handleClick,
+    }),
+    [handleClick]
+  );
 
   const processFiles = useCallback(
     async (files: File[]) => {
@@ -213,13 +230,13 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
       const reader = directoryEntry.createReader();
       const files: File[] = [];
 
-      while (true) {
+      let shouldReadMore = true;
+      while (shouldReadMore) {
         const entries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
           reader.readEntries(resolve, reject);
         });
-        if (entries.length === 0) {
-          break;
-        }
+        shouldReadMore = entries.length > 0;
+        if (!shouldReadMore) break;
 
         for (const childEntry of entries) {
           const childFiles = await collectFilesFromDirectoryEntry(childEntry);
@@ -480,5 +497,8 @@ export const AssetUploadButton: React.FC<AssetUploadButtonProps> = ({
       </div>
     </div>
   );
-};
+  }
+);
+
+AssetUploadButton.displayName = 'AssetUploadButton';
 

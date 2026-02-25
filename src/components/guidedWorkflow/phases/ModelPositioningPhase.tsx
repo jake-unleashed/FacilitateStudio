@@ -23,7 +23,8 @@ interface ModelPositioningPhaseProps {
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onSelectObject?: (id: string | null) => void;
   onUpdateObject: (obj: SceneObject) => void;
-  onScreenChange?: (screen: PositioningScreen) => void;
+  screen: PositioningScreen;
+  onScreenChange: (screen: PositioningScreen) => void;
 }
 
 /**
@@ -36,14 +37,13 @@ export function ModelPositioningPhase({
   onFocusObject,
   onSelectObject,
   onUpdateObject,
+  screen,
   onScreenChange,
 }: ModelPositioningPhaseProps): JSX.Element {
   const uploadedObjects = useMemo(
     () => objects.filter((object) => object.type === 'mesh'),
     [objects]
   );
-
-  const [screen, setScreen] = useState<PositioningScreen>('object-selection');
 
   const parsedSelection = useMemo(() => parseSelectionId(selectedObjectId), [selectedObjectId]);
   const selectedParentId = parsedSelection?.objectId ?? null;
@@ -68,11 +68,6 @@ export function ModelPositioningPhase({
   }, [screen]);
 
   useEffect(() => {
-    onScreenChange?.(screen);
-  }, [onScreenChange, screen]);
-
-  useEffect(() => {
-    // Re-show callout when switching back into Position mode or selecting a different object.
     if (screen === 'adjust-position') setIsPositionCalloutDismissed(false);
   }, [screen, selectedParentId]);
 
@@ -116,11 +111,6 @@ export function ModelPositioningPhase({
     onFocusObject?.(object, undefined, 'full');
   }, [onFocusObject, onSelectObject]);
 
-  const handleAdjustSelected = useCallback(() => {
-    if (!selectedObject) return;
-    setScreen('adjustment-type');
-  }, [selectedObject]);
-
   return (
     <div className="space-y-6">
       {screen === 'object-selection' ? (
@@ -128,26 +118,24 @@ export function ModelPositioningPhase({
           objects={uploadedObjects}
           selectedParentId={selectedParentId}
           onSelectObject={handleSelect}
-          selectedObjectName={selectedObject?.name ?? null}
-          onAdjustSelected={handleAdjustSelected}
         />
       ) : null}
 
       {screen === 'adjustment-type' ? (
         <AdjustmentTypeScreen
           selectedObjectName={selectedObject?.name ?? null}
-          onBack={() => setScreen('object-selection')}
-          onChooseDifferentModel={() => setScreen('object-selection')}
-          onChoosePosition={() => setScreen('adjust-position')}
-          onChooseRotation={() => setScreen('adjust-rotation')}
-          onChooseScale={() => setScreen('adjust-scale')}
+          onBack={() => onScreenChange('object-selection')}
+          onChooseDifferentModel={() => onScreenChange('object-selection')}
+          onChoosePosition={() => onScreenChange('adjust-position')}
+          onChooseRotation={() => onScreenChange('adjust-rotation')}
+          onChooseScale={() => onScreenChange('adjust-scale')}
         />
       ) : null}
 
       {screen === 'adjust-position' ? (
         <AdjustPositionScreen
-          onBack={() => setScreen('adjustment-type')}
-          onDone={() => setScreen('adjustment-type')}
+          onBack={() => onScreenChange('adjustment-type')}
+          onDone={() => onScreenChange('adjustment-type')}
           isCalloutOpen={Boolean(selectedObject) && !isPositionCalloutDismissed}
           onDismissCallout={() => setIsPositionCalloutDismissed(true)}
         />
@@ -156,8 +144,8 @@ export function ModelPositioningPhase({
       {screen === 'adjust-rotation' ? (
         <AdjustRotationScreen
           selectedObject={selectedObject}
-          onBack={() => setScreen('adjustment-type')}
-          onDone={() => setScreen('adjustment-type')}
+          onBack={() => onScreenChange('adjustment-type')}
+          onDone={() => onScreenChange('adjustment-type')}
           onRotationChange={handleRotationChange}
         />
       ) : null}
@@ -165,8 +153,8 @@ export function ModelPositioningPhase({
       {screen === 'adjust-scale' ? (
         <AdjustScaleScreen
           selectedObject={selectedObject}
-          onBack={() => setScreen('adjustment-type')}
-          onDone={() => setScreen('adjustment-type')}
+          onBack={() => onScreenChange('adjustment-type')}
+          onDone={() => onScreenChange('adjustment-type')}
           onScaleChange={handleScaleChange}
         />
       ) : null}

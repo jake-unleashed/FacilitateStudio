@@ -1,8 +1,8 @@
 # Feature: vercel-deploy
 
 **Branch**: `mvp`  
-**Duration**: 0m  
-**Period**: 19/02/2026, 11:03:02 am → 19/02/2026, 11:03:09 am
+**Duration**: 1m  
+**Period**: 24/02/2026, 10:04:58 am → 24/02/2026, 10:06:24 am
 
 ## Summary
 
@@ -10,12 +10,12 @@
 
 Total: 1 commits
 
-- `818ca33` Add settings callout and raise exit button z-index in preview mode (2 files, +115/-10)
+- `87f2648` feat: multi-file texture upload and starter asset discovery (32 files, +313/-59)
 
 ## Shipped
 
-- Pushed to `origin` at 19/02/2026, 11:03:09 am
-  Range: `f422296..818ca33`
+- Pushed to `origin` at 24/02/2026, 10:06:24 am
+  Range: `c94be74..87f2648`
 
 ---
-*Generated from worklog events on 19/02/2026, 11:22:32 am*
+*Generated from worklog events on 25/02/2026, 12:36:34 pm*

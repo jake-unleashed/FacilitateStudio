@@ -1,7 +1,7 @@
 /**
  * AssetLibraryPanel Component
  *
- * Unified library view showing both starter models and recent uploads.
+ * Unified library view showing both starter models and recent models.
  * Features collapsible sections and automatic thumbnail generation.
  */
 
@@ -15,7 +15,7 @@ import { HelpIcon } from './HelpIcon';
 interface AssetLibraryPanelProps {
   /** Starter assets (seeded from app) */
   starterAssets: AssetMetadata[];
-  /** Recent user uploads */
+  /** Recent user models */
   recentAssets: AssetMetadata[];
   /** Called when an asset is clicked to add to scene */
   onAddAsset: (asset: AssetMetadata) => void;
@@ -47,11 +47,11 @@ function setStarterSectionOpen(open: boolean): void {
 }
 
 /**
- * AssetLibraryPanel - Unified view of starter models and recent uploads.
+ * AssetLibraryPanel - Unified view of starter models and recent models.
  *
  * Features:
  * - Collapsible "Starter models" section (state persisted to localStorage)
- * - Recent uploads section (always visible)
+ * - Recent models section (always visible)
  * - Lazy thumbnail generation for visible assets
  */
 export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({
@@ -118,12 +118,12 @@ export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({
         </div>
       )}
 
-      {/* Recent Uploads Section */}
+      {/* Recent Section */}
       {recentAssets.length > 0 && (
         <div>
           <div className="mb-3 flex items-center gap-1.5">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
-              Recent uploads
+              Recent
             </h3>
             <HelpIcon content="Click any model to add it to your project." />
           </div>
@@ -131,7 +131,7 @@ export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({
             assets={recentAssets}
             onAddAsset={onAddAsset}
             onRemoveAsset={onRemoveRecent}
-            emptyMessage="No recent uploads"
+            emptyMessage="No recent models"
           />
         </div>
       )}

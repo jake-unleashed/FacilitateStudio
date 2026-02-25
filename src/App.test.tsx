@@ -260,7 +260,8 @@ describe('App', () => {
     renderApp();
     await chooseStartFromScratch();
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Add New 3D Model'));
+    expect(screen.getByRole('button', { name: /upload 3d model/i })).toBeInTheDocument();
   });
 
   it('does not show right sidebar when no object is selected', async () => {

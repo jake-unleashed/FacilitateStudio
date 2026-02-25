@@ -1,4 +1,5 @@
 import type { AssetMetadata, UploadProgress } from '../../types/model';
+import type { GenerationTask } from '../../types/modelGeneration';
 import type { ChildMesh, FocusMode, SceneObject, SidebarSection, SimStep } from '../../types';
 
 export interface LeftSidebarProps {
@@ -24,6 +25,10 @@ export interface LeftSidebarProps {
   starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onRemoveAsset?: (assetId: string) => void;
+  generations?: GenerationTask[];
+  onGenerateFromImage?: (imageFile: File) => Promise<void>;
+  onCancelGeneration?: (generationId: string) => void;
+  onRetryGeneration?: (generationId: string) => void;
 }
 
 export interface LeftSidebarHandle {

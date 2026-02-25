@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, type SetStateAction } from 'react';
 import {
   EditorState,
   UndoRedoCommand,
@@ -49,6 +49,19 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
   useEffect(() => {
     currentStateRef.current = currentState;
   }, [currentState]);
+
+  /**
+   * External state setter that also keeps the ref in sync.
+   * Important: callers may set editor state directly (e.g. project load), and
+   * we still want subsequent commands to execute against the latest state.
+   */
+  const setCurrentStateSafe = useCallback((next: SetStateAction<EditorState>) => {
+    setCurrentState((prev) => {
+      const resolved = typeof next === 'function' ? (next as (s: EditorState) => EditorState)(prev) : next;
+      currentStateRef.current = resolved;
+      return resolved;
+    });
+  }, []);
 
   /**
    * Executes a command and adds it to the undo stack.
@@ -361,7 +374,7 @@ export function useUndoRedo(initialState: EditorState, options: UndoRedoOptions 
   return {
     // Current state
     currentState,
-    setCurrentState,
+    setCurrentState: setCurrentStateSafe,
     /**
      * Get the latest editor state synchronously (ref-backed).
      * Useful for actions that must not race React state sync (e.g. save-before-navigation).

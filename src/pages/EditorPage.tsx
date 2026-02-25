@@ -27,6 +27,7 @@ import {
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
+import { useModelGeneration } from '../hooks/useModelGeneration';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { logger } from '../utils/logger';
 import { toSimulationSettings } from '../types/simulationSettings';
@@ -53,6 +54,7 @@ import {
   findChildByPathString,
 } from '../utils/childTransformUtils';
 import { AssetMetadata, UploadProgress } from '../types/model';
+import type { GenerationTask } from '../types/modelGeneration';
 import {
   createUpdateObjectCommandHelper,
   createDeleteObjectCommandHelper,
@@ -252,12 +254,14 @@ function EditorPageContent() {
 
   // Model upload hook - handles storage, preprocessing, and caching
   const {
+    userId,
     uploadProgress,
     recentAssets,
     starterAssets,
     uploadFile,
     addRecentAssetToScene,
     removeAsset,
+    refreshRecentAssets,
     lastError: uploadLastError,
     clearError: clearUploadError,
   } = useModelUpload();
@@ -269,6 +273,52 @@ function EditorPageContent() {
     clearProjectsError,
     popupApi: { showPopup },
   });
+
+  const addSceneObjectAndFocus = useCallback(
+    (sceneObject: SceneObject, label: string) => {
+      const index = objects.length;
+      const command = createCreateObjectCommandHelper(sceneObject, index, label);
+      executeCommand(command);
+
+      setTimeout(() => {
+        const guidedPhase =
+          typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
+        if (guidedPhase !== 'model-upload') {
+          handleSelectObject(sceneObject.id);
+        } else {
+          setSelectedObjectId(null);
+        }
+        setTimeout(() => {
+          if (handleFocusObject) {
+            handleFocusObject(sceneObject);
+          }
+        }, 50);
+      }, 100);
+    },
+    [executeCommand, handleFocusObject, handleSelectObject, objects.length]
+  );
+
+  const { generations, startGeneration, cancelGeneration, retryGeneration } = useModelGeneration({
+    getExistingObjects: () => objects,
+    userId,
+    refreshRecentAssets,
+    onError: (message) => {
+      showPopup({
+        type: 'error',
+        title: 'Model generation failed',
+        message,
+      });
+    },
+    onComplete: (result) => {
+      addSceneObjectAndFocus(result.sceneObject, `Generate and add ${result.sceneObject.name}`);
+    },
+  });
+
+  // Keep failed generations visible so users can understand what happened / retry.
+  const visibleGenerations = useMemo(
+    () => generations.filter((task) => task.stage !== 'complete' && task.stage !== 'cancelled'),
+    [generations]
+  );
 
   // WebGL canvas ref for thumbnail capture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -551,33 +601,9 @@ function EditorPageContent() {
         // Error is handled by the hook and shown in the UI
         return;
       }
-
-      // Add to scene via undo/redo
-      const index = objects.length;
-      const command = createCreateObjectCommandHelper(
-        result.sceneObject,
-        index,
-        `Upload and add ${result.sceneObject.name}`
-      );
-      executeCommand(command);
-
-      // Focus on the new object
-      setTimeout(() => {
-        const guidedPhase =
-          typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
-        if (guidedPhase !== 'model-upload') {
-          handleSelectObject(result.sceneObject.id);
-        } else {
-          setSelectedObjectId(null);
-        }
-        setTimeout(() => {
-          if (handleFocusObject) {
-            handleFocusObject(result.sceneObject);
-          }
-        }, 50);
-      }, 100);
+      addSceneObjectAndFocus(result.sceneObject, `Upload and add ${result.sceneObject.name}`);
     },
-    [objects, uploadFile, executeCommand, handleSelectObject, handleFocusObject]
+    [addSceneObjectAndFocus, objects, uploadFile]
   );
 
   // Handle adding recent asset to scene
@@ -588,33 +614,9 @@ function EditorPageContent() {
         logger.error('[EditorPage] Failed to add recent asset:', asset.id);
         return;
       }
-
-      // Add to scene via undo/redo
-      const index = objects.length;
-      const command = createCreateObjectCommandHelper(
-        result.sceneObject,
-        index,
-        `Add ${result.sceneObject.name}`
-      );
-      executeCommand(command);
-
-      // Focus on the new object
-      setTimeout(() => {
-        const guidedPhase =
-          typeof document !== 'undefined' ? document.body.dataset.guidedPhase : undefined;
-        if (guidedPhase !== 'model-upload') {
-          handleSelectObject(result.sceneObject.id);
-        } else {
-          setSelectedObjectId(null);
-        }
-        setTimeout(() => {
-          if (handleFocusObject) {
-            handleFocusObject(result.sceneObject);
-          }
-        }, 50);
-      }, 100);
+      addSceneObjectAndFocus(result.sceneObject, `Add ${result.sceneObject.name}`);
     },
-    [objects, addRecentAssetToScene, executeCommand, handleSelectObject, handleFocusObject]
+    [addRecentAssetToScene, addSceneObjectAndFocus, objects]
   );
 
   // Handle removing asset from recent assets
@@ -1152,6 +1154,10 @@ function EditorPageContent() {
           recentAssets={recentAssets}
           starterAssets={starterAssets}
           onAddRecentAsset={handleAddRecentAsset}
+          onGenerateFromImage={startGeneration}
+          generations={visibleGenerations}
+          onCancelGeneration={cancelGeneration}
+          onRetryGeneration={(generationId) => void retryGeneration(generationId)}
           onDeleteObject={handleDeleteObject}
           onFocusObject={handleFocusObject}
           onSelectObject={handleSelectObject}
@@ -1218,6 +1224,10 @@ function EditorPageContent() {
                 starterAssets={starterAssets}
                 onAddRecentAsset={handleAddRecentAsset}
                 onRemoveAsset={handleRemoveAsset}
+                generations={visibleGenerations}
+                onGenerateFromImage={startGeneration}
+                onCancelGeneration={cancelGeneration}
+                onRetryGeneration={(generationId) => void retryGeneration(generationId)}
               />
             ),
             rightSidebar: selectedObjectForSidebar ? (
@@ -1291,6 +1301,10 @@ interface GuidedWorkflowEntryProps {
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];
   onAddRecentAsset?: (asset: AssetMetadata) => void;
+  onGenerateFromImage?: (imageFile: File) => Promise<void>;
+  generations?: GenerationTask[];
+  onCancelGeneration?: (generationId: string) => void;
+  onRetryGeneration?: (generationId: string) => void;
   onDeleteObject?: (objectId: string) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
   onSelectObject: (id: string | null) => void;
@@ -1401,6 +1415,10 @@ function GuidedWorkflowEntry({
   recentAssets,
   starterAssets,
   onAddRecentAsset,
+  onGenerateFromImage,
+  generations,
+  onCancelGeneration,
+  onRetryGeneration,
   onDeleteObject,
   onFocusObject,
   onSelectObject,
@@ -1473,6 +1491,10 @@ function GuidedWorkflowEntry({
             recentAssets={recentAssets}
             starterAssets={starterAssets}
             onAddRecentAsset={onAddRecentAsset}
+            onGenerateFromImage={onGenerateFromImage}
+            generations={generations}
+            onCancelGeneration={onCancelGeneration}
+            onRetryGeneration={onRetryGeneration}
             onDeleteObject={onDeleteObject}
             onFocusObject={onFocusObject}
             onPreviewClick={onPreviewClick}

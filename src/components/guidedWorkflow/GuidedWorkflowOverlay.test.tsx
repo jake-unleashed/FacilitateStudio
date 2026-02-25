@@ -66,7 +66,7 @@ describe('GuidedWorkflowOverlay phase transitions', () => {
     });
 
     // Model upload phase content should be visible (model already uploaded)
-    expect(screen.getByText(/more 3d models to add/i)).toBeInTheDocument();
+    expect(screen.getByText(/your 3d models/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /skip setup/i })).toBeInTheDocument();
   });
 
@@ -86,14 +86,14 @@ describe('GuidedWorkflowOverlay phase transitions', () => {
     });
 
     // Verify model-upload content is present
-    expect(screen.getByText(/more 3d models to add/i)).toBeInTheDocument();
+    expect(screen.getByText(/your 3d models/i)).toBeInTheDocument();
 
     // Click Continue to trigger phase change to model-positioning
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     // During the exit animation (before timeout fires), the OLD content
     // should still be displayed (displayedPhase hasn't changed yet)
-    expect(screen.getByText(/more 3d models to add/i)).toBeInTheDocument();
+    expect(screen.getByText(/your 3d models/i)).toBeInTheDocument();
   });
 
   it('shows new phase content after transition completes', () => {
@@ -120,7 +120,8 @@ describe('GuidedWorkflowOverlay phase transitions', () => {
     });
 
     // Model upload content should be gone, model positioning content should appear
-    expect(screen.queryByText(/more 3d models to add/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/your 3d models/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/do any models need adjusting\?/i)).toBeInTheDocument();
   });
 
   it('disables skip button during phase transition', () => {
@@ -186,7 +187,8 @@ describe('GuidedWorkflowOverlay phase transitions', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     // With reduced motion, content should switch immediately (no timeout needed)
-    expect(screen.queryByText(/more 3d models to add/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/your 3d models/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/do any models need adjusting\?/i)).toBeInTheDocument();
 
     // Skip button should NOT be disabled (no transition in progress)
     expect(screen.getByRole('button', { name: /skip setup/i })).toBeEnabled();

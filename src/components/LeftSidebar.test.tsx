@@ -183,6 +183,7 @@ describe('LeftSidebar', () => {
 
     it('shows Upload 3D Model section', () => {
       renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
+      fireEvent.click(screen.getByText('Add New 3D Model'));
       expect(screen.getByText('Upload 3D Model')).toBeInTheDocument();
     });
 
@@ -202,20 +203,21 @@ describe('LeftSidebar', () => {
 
     it('shows Request 3D Model section with correct text', () => {
       renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
-      expect(screen.getByText('Nothing to upload?')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Add New 3D Model'));
       expect(screen.getByText('Request a 3D Model')).toBeInTheDocument();
     });
 
     it('Request a 3D Model button is clickable', () => {
       renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
-      const requestButton = screen.getByText('Request a 3D Model');
-      expect(requestButton.tagName).toBe('BUTTON');
+      fireEvent.click(screen.getByText('Add New 3D Model'));
+      const requestButton = screen.getByRole('button', { name: /request a 3d model/i });
       expect(requestButton).not.toBeDisabled();
     });
 
     it('clicking Request a 3D Model shows popup', () => {
       renderWithProvider(<LeftSidebar {...defaultProps} activeTab="add" />);
-      const requestButton = screen.getByText('Request a 3D Model');
+      fireEvent.click(screen.getByText('Add New 3D Model'));
+      const requestButton = screen.getByRole('button', { name: /request a 3d model/i });
       fireEvent.click(requestButton);
       // Popup should appear with message about contacting Facilitate team
       expect(screen.getByText(/contact the Facilitate team/i)).toBeInTheDocument();

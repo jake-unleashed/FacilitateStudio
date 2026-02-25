@@ -121,7 +121,7 @@ describe('AssetLibraryPanel', () => {
         />
       );
 
-      expect(screen.getByText('Recent uploads')).toBeInTheDocument();
+      expect(screen.getByText('Recent')).toBeInTheDocument();
       expect(screen.getByText('uploaded.glb')).toBeInTheDocument();
     });
   });

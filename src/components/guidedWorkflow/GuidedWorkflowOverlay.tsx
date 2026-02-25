@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '../Button';
 import { useGuidedWorkflow } from '../../hooks/useGuidedWorkflow';
-import type { FocusMode, SceneObject, SimStep } from '../../types';
+import { parseSelectionId, type FocusMode, type SceneObject, type SimStep } from '../../types';
 import type { AssetMetadata, UploadProgress } from '../../types/model';
+import type { GenerationTask, GenerationUiStage } from '../../types/modelGeneration';
 import type { LatestRecordingEndTransformRefValue } from '../../hooks/editor/useRecordingEndTransform';
 import { BrandLogo } from '../topBar/BrandLogo';
 import { StepCreationPhase } from './phases/StepCreationPhase';
@@ -10,6 +12,13 @@ import { ModelUploadPhase } from './phases/ModelUploadPhase';
 import { ModelPositioningPhase, type PositioningScreen } from './phases/ModelPositioningPhase';
 import { StepConfigurationPhase } from './phases/StepConfigurationPhase';
 import { FinishPhase } from './phases/FinishPhase';
+
+const IN_PROGRESS_STAGES: ReadonlySet<GenerationUiStage> = new Set([
+  'uploading',
+  'generating',
+  'downloading',
+  'processing',
+]);
 
 export interface GuidedWorkflowOverlayProps {
   steps: SimStep[];
@@ -38,6 +47,10 @@ export interface GuidedWorkflowOverlayProps {
   onAddRecentAsset?: (asset: AssetMetadata) => void;
   onDeleteObject?: (objectId: string) => void;
   onFocusObject?: (object: SceneObject, childPath?: string, focusMode?: FocusMode) => void;
+  generations?: GenerationTask[];
+  onGenerateFromImage?: (imageFile: File) => Promise<void>;
+  onCancelGeneration?: (generationId: string) => void;
+  onRetryGeneration?: (generationId: string) => void;
   onPreviewClick?: () => void;
   onPublishClick?: () => void;
 }
@@ -66,6 +79,10 @@ export function GuidedWorkflowOverlay({
   onAddRecentAsset,
   onDeleteObject,
   onFocusObject,
+  generations,
+  onGenerateFromImage,
+  onCancelGeneration,
+  onRetryGeneration,
   onPreviewClick,
   onPublishClick,
 }: GuidedWorkflowOverlayProps) {
@@ -162,21 +179,28 @@ export function GuidedWorkflowOverlay({
     () => objects.some((object) => object.type === 'mesh'),
     [objects]
   );
+  const hasVisibleGenerations = (generations?.length ?? 0) > 0;
+  const activeGenerationCount = useMemo(
+    () => (generations ?? []).filter((g) => IN_PROGRESS_STAGES.has(g.stage)).length,
+    [generations]
+  );
+  const hasActiveGenerations = activeGenerationCount > 0;
+
   const canContinue = useMemo(() => {
     switch (displayedPhase) {
       case 'step-creation':
         return steps.length > 0;
       case 'model-upload':
-        return hasUploadedModel;
+        return hasUploadedModel && !hasActiveGenerations;
       case 'model-positioning':
         return hasUploadedModel;
       default:
         return true;
     }
-  }, [displayedPhase, steps.length, hasUploadedModel]);
+  }, [displayedPhase, steps.length, hasUploadedModel, hasActiveGenerations]);
   const isCentered =
     displayedPhase === 'step-creation' ||
-    (displayedPhase === 'model-upload' && !hasUploadedModel) ||
+    (displayedPhase === 'model-upload' && !hasUploadedModel && !hasVisibleGenerations) ||
     displayedPhase === 'finish';
   const isStepCreation = displayedPhase === 'step-creation';
   const isModelUpload = displayedPhase === 'model-upload';
@@ -193,6 +217,13 @@ export function GuidedWorkflowOverlay({
     (!isModelPositioning || positioningScreen === 'object-selection');
   const continueLabel =
     isModelPositioning && positioningScreen === 'object-selection' ? 'Looks good, continue' : 'Continue';
+
+  const positioningSelectedObjectName = useMemo(() => {
+    if (!isModelPositioning || positioningScreen !== 'object-selection') return null;
+    const parsed = parseSelectionId(selectedObjectId ?? null);
+    if (!parsed) return null;
+    return objects.find((o) => o.id === parsed.objectId)?.name ?? null;
+  }, [isModelPositioning, positioningScreen, selectedObjectId, objects]);
 
   const skipPlacementClass = 'bottom-6 right-6';
 
@@ -250,13 +281,11 @@ export function GuidedWorkflowOverlay({
                 ? isModelUpload && isSubmenuOpen
                   ? 'min-h-0 max-h-[calc(100vh-200px)] space-y-4 overflow-y-auto pr-4 custom-scrollbar'
                   : 'space-y-4'
-                : isModelPositioning
+                : isStepConfiguration
                   ? 'space-y-4 p-6'
-                  : isStepConfiguration
-                    ? 'space-y-4 p-6'
-                  : isFinish
-                    ? 'space-y-4 p-6'
-                    : 'max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto p-6 pr-4 custom-scrollbar'
+                : isFinish
+                  ? 'space-y-4 p-6'
+                  : 'max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto p-6 pr-4 custom-scrollbar'
             }
           >
             {isStepCreation ? (
@@ -281,6 +310,10 @@ export function GuidedWorkflowOverlay({
                 onDeleteObject={onDeleteObject}
                 onFocusObject={onFocusObject}
                 onSubmenuChange={handleSubmenuChange}
+                generations={generations}
+                onGenerateFromImage={onGenerateFromImage}
+                onCancelGeneration={onCancelGeneration}
+                onRetryGeneration={onRetryGeneration}
               />
             ) : isModelPositioning ? (
               <ModelPositioningPhase
@@ -289,6 +322,7 @@ export function GuidedWorkflowOverlay({
                 onSelectObject={onSelectObject}
                 onUpdateObject={onUpdateObject}
                 onFocusObject={onFocusObject}
+                screen={positioningScreen}
                 onScreenChange={setPositioningScreen}
               />
             ) : isStepConfiguration ? (
@@ -312,25 +346,57 @@ export function GuidedWorkflowOverlay({
           </div>
 
           {shouldShowOverlayNav && (
-            <div className="flex items-center justify-between border-t border-white/10 px-6 py-4">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={actions.previousPhase}
-                className="rounded-[20px]"
-                disabled={isFirstPhase || isTransitioning}
-              >
-                Back
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                onClick={actions.nextPhase}
-                className="rounded-[20px]"
-                disabled={isLastPhase || !canContinue || isTransitioning}
-              >
-                {continueLabel}
-              </Button>
+            <div>
+              {isModelUpload && hasActiveGenerations ? (
+                <div className="flex items-center justify-center gap-2 px-6 pt-3 pb-1">
+                  <Loader2 size={13} className="animate-spin text-amber-600" />
+                  <p className="text-center text-xs font-medium text-amber-700">
+                    {activeGenerationCount === 1
+                      ? 'A model is still generating. Wait for it to finish to continue.'
+                      : 'Models are still generating. Wait for them to finish to continue.'}
+                  </p>
+                </div>
+              ) : null}
+
+              {isModelPositioning && positioningScreen === 'object-selection' ? (
+                <div className="px-6 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setPositioningScreen('adjustment-type')}
+                    disabled={!positioningSelectedObjectName}
+                    className={`w-full rounded-[20px] px-5 py-3 text-sm transition-all duration-300 focus:outline-none focus:ring-4 ${
+                      positioningSelectedObjectName
+                        ? 'bg-blue-600 font-semibold text-white shadow-md hover:bg-blue-700 hover:shadow-lg focus:ring-blue-500/20'
+                        : 'border border-white/40 bg-white/50 font-medium text-slate-400 shadow-sm focus:ring-blue-500/10'
+                    } disabled:cursor-not-allowed disabled:opacity-80`}
+                  >
+                    {positioningSelectedObjectName
+                      ? `Adjust ${positioningSelectedObjectName} ->`
+                      : 'Select a model to adjust'}
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between border-t border-white/10 px-6 py-4">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={actions.previousPhase}
+                  className="rounded-[20px]"
+                  disabled={isFirstPhase || isTransitioning}
+                >
+                  Back
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={actions.nextPhase}
+                  className="rounded-[20px]"
+                  disabled={isLastPhase || !canContinue || isTransitioning}
+                >
+                  {continueLabel}
+                </Button>
+              </div>
             </div>
           )}
         </div>

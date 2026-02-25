@@ -28,12 +28,12 @@ import {
   deleteAsset,
   blobToArrayBuffer,
 } from '../utils/modelAssetStore';
-import { loadAndPreprocessModelFromArrayBuffer, extractChildMeshes } from '../utils/modelLoaders';
-import { cachePreprocessedModel, getOrLoadModel } from '../utils/modelCache';
+import { extractChildMeshes } from '../utils/modelLoaders';
+import { getOrLoadModel } from '../utils/modelCache';
 import { ChildMesh } from '../types';
 import { calculateOptimalPosition, generateUniqueName } from './modelUpload/positioning';
 import { createSceneObject } from './modelUpload/sceneObject';
-import { serializeMetrics } from './modelUpload/metrics';
+import { processModelBuffer } from './modelUpload/processBuffer';
 import { useModelUploadInit } from './modelUpload/useModelUploadInit';
 import { useAutoResetProgress } from './modelUpload/useAutoResetProgress';
 import { getStarterAssetIds } from '../utils/starterAssets/seedStarterAssets';
@@ -59,6 +59,8 @@ interface UseModelUploadOptions {
 }
 
 interface UseModelUploadReturn {
+  /** Authenticated user ID (undefined when signed out) */
+  userId?: string;
   /** Current upload progress for UI feedback */
   uploadProgress: UploadProgress;
   /** List of recent assets for the library */
@@ -232,23 +234,16 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         try {
           // Use ArrayBuffer for proper embedded texture support in GLB/FBX
           const arrayBuffer = await blobToArrayBuffer(assetData.blob);
-          const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
-            arrayBuffer,
+          const processed = await processModelBuffer({
+            assetId,
+            assetName,
             fileType,
-            undefined,
-            assetData.textures
-          );
-          // Include originalScale from preprocessing to track the normalization factor
-          metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
-
-          // Extract child meshes from the model hierarchy
-          children = extractChildMeshes(preprocessed.model);
-
-          // Cache the model
-          cachePreprocessedModel(assetId, preprocessed.model, metrics);
-
-          // Persist metrics AND children to asset metadata for reuse
-          await updateAssetMetadata(assetId, { metrics, children });
+            arrayBuffer,
+            textures: assetData.textures,
+            existingObjects,
+          });
+          metrics = processed.metrics;
+          children = processed.children;
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to process model';
           setError(assetName, `Invalid model: ${msg}`);
@@ -340,7 +335,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         if (userId && !starterAssetIds.has(metadata.id)) {
           void syncAssetToCloud(metadata.id, { userId }).catch((cloudError) => {
             console.warn('[useModelUpload] Cloud upload failed; keeping local copy:', cloudError);
-            setLastError('Model saved locally, but cloud sync failed. We will retry on next upload.');
+            setLastError('Model saved locally, but cloud sync failed. It will sync automatically on next launch.');
           });
         }
 
@@ -440,6 +435,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
     uploadProgress.stage !== 'error';
 
   return {
+    userId,
     uploadProgress,
     recentAssets: userRecentAssets,
     starterAssets,

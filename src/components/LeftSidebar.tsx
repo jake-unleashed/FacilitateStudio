@@ -45,6 +45,10 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   starterAssets = [],
   onAddRecentAsset,
   onRemoveAsset,
+  generations = [],
+  onGenerateFromImage,
+  onCancelGeneration,
+  onRetryGeneration,
 }, ref) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -322,6 +326,10 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
               onAddRecentAsset={onAddRecentAsset}
               onRemoveAsset={onRemoveAsset}
               onRequestModel={handleRequestModel}
+              generations={generations}
+              onGenerateFromImage={onGenerateFromImage}
+              onCancelGeneration={onCancelGeneration}
+              onRetryGeneration={onRetryGeneration}
             />
           )}
 

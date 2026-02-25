@@ -6,6 +6,7 @@ import {
   hasLegacyAssets,
   migrateLegacyAssets,
 } from '../../utils/modelAssetStore';
+import { reconcilePendingSync } from '../../utils/assetSyncReconciler';
 import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
 
 export function useModelUploadInit({
@@ -49,6 +50,12 @@ export function useModelUploadInit({
         setRecentAssets(await (userId ? getRecentAssets(20, { userId }) : getRecentAssets(20)));
       } catch (error) {
         console.error('[useModelUpload] Failed to load recent assets:', error);
+      }
+
+      if (userId) {
+        reconcilePendingSync(userId).catch((error) => {
+          console.warn('[useModelUploadInit] Background sync reconciliation failed:', error);
+        });
       }
     };
 

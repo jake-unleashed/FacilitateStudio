@@ -4,16 +4,12 @@ export interface ObjectSelectionScreenProps {
   objects: SceneObject[];
   selectedParentId: string | null;
   onSelectObject: (object: SceneObject) => void;
-  selectedObjectName: string | null;
-  onAdjustSelected: () => void;
 }
 
 export function ObjectSelectionScreen({
   objects,
   selectedParentId,
   onSelectObject,
-  selectedObjectName,
-  onAdjustSelected,
 }: ObjectSelectionScreenProps): JSX.Element {
   return (
     <>
@@ -61,17 +57,6 @@ export function ObjectSelectionScreen({
           })}
         </div>
       )}
-
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onAdjustSelected}
-          disabled={!selectedObjectName}
-          className="rounded-[20px] border border-white/40 bg-white/70 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:bg-white/90 hover:text-slate-800 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {selectedObjectName ? `Adjust ${selectedObjectName}` : 'Select a model to adjust'}
-        </button>
-      </div>
     </>
   );
 }
