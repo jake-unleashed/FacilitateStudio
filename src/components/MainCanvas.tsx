@@ -8,6 +8,7 @@ import { DEFAULT_SIMULATION_SETTINGS, type SimulationSettings } from '../types/s
 import type { PreviewOutlineTarget } from './preview/types';
 import { PerformanceMonitorScene, type PerformanceStats } from './PerformanceMonitor';
 import { SceneContent } from './scene/SceneContent';
+import { hasCachedBackgroundTexture } from '../utils/backgroundTextureCache';
 
 // Check if we're in development mode (Vite provides this)
 const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
@@ -67,16 +68,21 @@ interface MainCanvasProps {
   onPreviewStepComplete?: () => void;
   /** Whether move-item animation should start (triggered after clicking target) */
   shouldAnimateMoveItem?: boolean;
+  /** Optional panoramic background URL for 360 scene rendering. */
+  backgroundImageUrl?: string;
 }
 
 function FirstFrameNotifier({
   onFirstFrame,
   hasNotifiedFirstFrameRef,
+  isReadyToNotify,
 }: {
   onFirstFrame: () => void;
   hasNotifiedFirstFrameRef: React.MutableRefObject<boolean>;
+  isReadyToNotify: boolean;
 }): null {
   useFrame(() => {
+    if (!isReadyToNotify) return;
     if (hasNotifiedFirstFrameRef.current) return;
     hasNotifiedFirstFrameRef.current = true;
     onFirstFrame();
@@ -109,14 +115,33 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onPreviewTransformUpdate,
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
+  backgroundImageUrl,
 }) => {
   const [previewOutlineTarget, setPreviewOutlineTarget] = useState<PreviewOutlineTarget | null>(null);
+  const [isPanoramicReady, setIsPanoramicReady] = useState<boolean>(
+    () => !backgroundImageUrl || hasCachedBackgroundTexture(backgroundImageUrl)
+  );
 
   useEffect(() => {
     if (previewStep?.type !== 'move-item') {
       setPreviewOutlineTarget(null);
     }
   }, [previewStep?.id, previewStep?.type]);
+
+  const prevBgUrlRef = useRef(backgroundImageUrl);
+  useEffect(() => {
+    if (prevBgUrlRef.current === backgroundImageUrl) return;
+    prevBgUrlRef.current = backgroundImageUrl;
+    if (!backgroundImageUrl) {
+      setIsPanoramicReady(true);
+      return;
+    }
+    setIsPanoramicReady(hasCachedBackgroundTexture(backgroundImageUrl));
+  }, [backgroundImageUrl]);
+
+  const handleBackgroundReadyChange = useCallback((ready: boolean) => {
+    setIsPanoramicReady(ready);
+  }, []);
 
   // Track if we've notified about canvas being ready
   const hasNotifiedCanvasRef = useRef(false);
@@ -190,12 +215,15 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             shouldAnimateMoveItem={shouldAnimateMoveItem}
             previewOutlineTarget={previewOutlineTarget}
             onPreviewOutlineTargetChange={setPreviewOutlineTarget}
+            backgroundImageUrl={backgroundImageUrl}
+            onBackgroundReadyChange={handleBackgroundReadyChange}
           />
 
           {onFirstFrame && (
             <FirstFrameNotifier
               onFirstFrame={onFirstFrame}
               hasNotifiedFirstFrameRef={hasNotifiedFirstFrameRef}
+              isReadyToNotify={!backgroundImageUrl || isPanoramicReady}
             />
           )}
           {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}

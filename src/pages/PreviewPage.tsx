@@ -13,6 +13,8 @@ import { DEFAULT_SIMULATION_SETTINGS, toSimulationSettings, type SimulationSetti
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import CameraControlsImpl from 'camera-controls';
 import { logger } from '../utils/logger';
+import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
+import { getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
 
 /**
  * PreviewPage - Full-screen preview mode for experiencing the training simulation.
@@ -36,6 +38,7 @@ export function PreviewPage() {
   const [previewSettings, setPreviewSettings] = useState<SimulationSettings>(
     DEFAULT_SIMULATION_SETTINGS
   );
+  const [hasSceneReady, setHasSceneReady] = useState(false);
   const objectClickHandlerRef = useRef<((objectId: string) => void) | null>(null);
   const wrongObjectClickHandlerRef = useRef<((objectId: string) => void) | null>(null);
   const stepCompleteHandlerRef = useRef<(() => void) | null>(null);
@@ -80,6 +83,7 @@ export function PreviewPage() {
           }
 
           setProject(loadedProject);
+          preloadBackgroundTexture(getSceneBackgroundUrl(loadedProject.sceneSettings));
           setPreviewSettings(toSimulationSettings(loadedProject.simulationSettings));
           // Initialize preview objects with start positions
           setPreviewObjects(loadedProject.objects.map((obj) => ({ ...obj })));
@@ -197,12 +201,12 @@ export function PreviewPage() {
     }
   }, [flushSave, navigate, projectId]);
 
-  // Show loading state
+  const handleFirstFrame = useCallback(() => setHasSceneReady(true), []);
+
   if (!isInitialized || !project) {
     return <LoadingScreen message="Preparing preview..." />;
   }
 
-  // Show completion screen
   if (isComplete) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -227,19 +231,18 @@ export function PreviewPage() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black">
-      {/* 3D Canvas */}
       <MainCanvas
         objects={previewObjects}
         selectedObjectId={null}
-        onSelectObject={() => {}} // No selection in preview
-        onUpdateObject={() => {}} // No updates in preview
+        onSelectObject={() => {}}
+        onUpdateObject={() => {}}
         onCameraControlsReady={handleCameraControlsReady}
+        onFirstFrame={handleFirstFrame}
         showPerformanceMonitor={false}
         previewMode={true}
         previewSettings={previewSettings}
         previewStep={currentPreviewStep}
         onPreviewObjectClick={(objectId) => {
-          // Forward click to PreviewStepExecutor
           if (objectClickHandlerRef.current) {
             objectClickHandlerRef.current(objectId);
           }
@@ -256,11 +259,11 @@ export function PreviewPage() {
           }
         }}
         onPreviewStepComplete={() => {
-          // Forward step completion to PreviewStepExecutor
           if (stepCompleteHandlerRef.current) {
             stepCompleteHandlerRef.current();
           }
         }}
+        backgroundImageUrl={getSceneBackgroundUrl(project.sceneSettings)}
       />
 
       <PreviewSettingsPanel
@@ -268,7 +271,6 @@ export function PreviewPage() {
         onSettingsChange={(nextSettings) => setPreviewSettings(toSimulationSettings(nextSettings))}
       />
 
-      {/* Step Executor Overlay */}
       <PreviewStepExecutor
         steps={project.steps}
         objects={previewObjects}
@@ -278,7 +280,6 @@ export function PreviewPage() {
         }}
         onSetCurrentPreviewStep={setCurrentPreviewStep}
         onObjectClick={() => {
-          // Trigger animation via state when object is clicked
           setShouldAnimateMoveItem(true);
         }}
         onRegisterObjectClickHandler={(handler) => {
@@ -291,6 +292,12 @@ export function PreviewPage() {
           stepCompleteHandlerRef.current = handler;
         }}
       />
+
+      {!hasSceneReady && (
+        <div className="absolute inset-0 z-50">
+          <LoadingScreen message="Preparing preview..." />
+        </div>
+      )}
     </div>
   );
 }

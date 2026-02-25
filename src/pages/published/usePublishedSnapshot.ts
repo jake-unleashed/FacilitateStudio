@@ -3,16 +3,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchPublishedSnapshotByToken } from '../../services/publishService';
 import { PopupOptions } from '../../contexts/PopupContext';
 import { SceneObject, SimStep } from '../../types';
+import { toSceneSettings, type SceneSettings } from '../../types/sceneSettings';
 import type { SimulationSettings } from '../../types/simulationSettings';
 import { toSimulationSettings } from '../../types/simulationSettings';
 import { clearAssetResolver, setAssetResolver } from '../../utils/modelCache';
 import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
+import { preloadBackgroundTexture } from '../../utils/backgroundTextureCache';
 import { logger } from '../../utils/logger';
+import { getPublishedSceneBackgroundUrl } from '../../utils/sceneBackgroundUrl';
 
 interface PublishedProject {
   objects: SceneObject[];
   steps: SimStep[];
   name: string;
+  sceneSettings: SceneSettings;
   simulationSettings: SimulationSettings;
 }
 
@@ -78,10 +82,24 @@ export function usePublishedSnapshot(
           return { url: entry.url, fileType: entry.fileType };
         });
 
+        const backgroundUrl = getPublishedSceneBackgroundUrl(snapshot.sceneSettings);
+        preloadBackgroundTexture(backgroundUrl);
+
+        const normalizedSceneSettings = toSceneSettings({
+          ...snapshot.sceneSettings,
+          backgroundImage: snapshot.sceneSettings?.backgroundImage
+            ? {
+                ...snapshot.sceneSettings.backgroundImage,
+                signedUrl: backgroundUrl,
+              }
+            : undefined,
+        });
+
         setProject({
           objects: snapshot.objects,
           steps: snapshot.steps,
           name: snapshot.name,
+          sceneSettings: normalizedSceneSettings,
           simulationSettings: toSimulationSettings(snapshot.simulationSettings),
         });
         setPreviewObjects(snapshot.objects.map((obj) => ({ ...obj })));

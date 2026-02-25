@@ -5,6 +5,7 @@ import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { usePopup } from '../contexts/PopupContext';
 import { SimStep } from '../types';
 import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
+import { getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
 import CameraControlsImpl from 'camera-controls';
 import { PublishedCenterCard } from './published/PublishedCenterCard';
 import { PublishedTrainingLanding } from './published/PublishedTrainingLanding';
@@ -218,6 +219,7 @@ export function PublishedSimulationPage(): JSX.Element {
                 stepCompleteHandlerRef.current();
               }
             }}
+            backgroundImageUrl={getSceneBackgroundUrl(project.sceneSettings)}
           />
 
           {hasStarted ? (

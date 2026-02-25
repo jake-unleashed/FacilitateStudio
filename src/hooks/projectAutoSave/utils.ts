@@ -1,4 +1,6 @@
 import type { SceneObject, SimStep } from '../../types';
+import type { SceneSettings } from '../../types/sceneSettings';
+import { toSceneSettings } from '../../types/sceneSettings';
 import type { SimulationSettings } from '../../types/simulationSettings';
 import { toSimulationSettings } from '../../types/simulationSettings';
 
@@ -6,6 +8,7 @@ export interface SaveDataSnapshot {
   name: string;
   objects: SceneObject[];
   steps: SimStep[];
+  sceneSettings?: SceneSettings;
   simulationSettings?: SimulationSettings;
 }
 
@@ -21,6 +24,7 @@ export interface SerializedSnapshot {
   stepsLen: number;
   objectsJson: string;
   stepsJson: string;
+  sceneSettingsJson: string;
   simulationSettingsJson: string;
 }
 
@@ -46,6 +50,7 @@ export function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 export function serializeSnapshot(data: SaveDataSnapshot): SerializedSnapshot {
+  const sceneSettings = toSceneSettings(data.sceneSettings);
   const simulationSettings = toSimulationSettings(data.simulationSettings);
   return {
     name: data.name,
@@ -53,6 +58,7 @@ export function serializeSnapshot(data: SaveDataSnapshot): SerializedSnapshot {
     stepsLen: data.steps.length,
     objectsJson: JSON.stringify(data.objects),
     stepsJson: JSON.stringify(data.steps),
+    sceneSettingsJson: JSON.stringify(sceneSettings),
     simulationSettingsJson: JSON.stringify(simulationSettings),
   };
 }
@@ -64,6 +70,7 @@ export function hasSerializedChanged(current: SerializedSnapshot, saved: Seriali
   if (current.stepsLen !== saved.stepsLen) return true;
   if (current.objectsJson !== saved.objectsJson) return true;
   if (current.stepsJson !== saved.stepsJson) return true;
+  if (current.sceneSettingsJson !== saved.sceneSettingsJson) return true;
   if (current.simulationSettingsJson !== saved.simulationSettingsJson) return true;
   return false;
 }

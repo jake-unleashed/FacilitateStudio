@@ -5,6 +5,7 @@ import {
   Plus,
   ListOrdered,
   Box,
+  Globe2,
   ChevronsLeft,
 } from 'lucide-react';
 import { usePopup } from '../contexts/PopupContext';
@@ -15,6 +16,7 @@ import { NavItem } from './leftSidebar/NavItem';
 import { AddPanel } from './leftSidebar/AddPanel';
 import { StepsPanel } from './leftSidebar/StepsPanel';
 import { ObjectsPanel } from './leftSidebar/ObjectsPanel';
+import { ScenePanel } from './leftSidebar/ScenePanel';
 import { HelpIcon } from './HelpIcon';
 
 export type { LeftSidebarHandle } from './leftSidebar/types';
@@ -49,6 +51,10 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   onGenerateFromImage,
   onCancelGeneration,
   onRetryGeneration,
+  backgroundImage,
+  onUploadBackground,
+  onRemoveBackground,
+  isUploadingBackground,
 }, ref) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -135,6 +141,10 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
 
   const handleStepsClick = useCallback(() => {
     setActiveTab(activeTab === 'steps' ? null : 'steps');
+  }, [activeTab, setActiveTab]);
+
+  const handleScenesClick = useCallback(() => {
+    setActiveTab(activeTab === 'scenes' ? null : 'scenes');
   }, [activeTab, setActiveTab]);
 
   const handleClosePanel = useCallback(() => {
@@ -274,6 +284,14 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
           onClick={handleStepsClick}
           compact={!!activeTab}
         />
+        <NavItem
+          id="scenes"
+          icon={Globe2}
+          label="Scene"
+          isActive={activeTab === 'scenes'}
+          onClick={handleScenesClick}
+          compact={!!activeTab}
+        />
       </div>
 
       {/* Floating Content Panel - Tier 1 Rounding (32px) */}
@@ -292,6 +310,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
               {activeTab === 'add' && 'Add New'}
               {activeTab === 'steps' && 'Steps'}
               {activeTab === 'objects' && 'Scene Objects'}
+              {activeTab === 'scenes' && 'Scene'}
             </h2>
             {activeTab === 'steps' && (
               <HelpIcon content="Your training steps in order. Drag to rearrange them." />
@@ -301,6 +320,9 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
             )}
             {activeTab === 'add' && (
               <HelpIcon content="Add objects to build your training." />
+            )}
+            {activeTab === 'scenes' && (
+              <HelpIcon content="Customize scene-level visuals like 360 backgrounds." />
             )}
           </div>
           <button
@@ -366,6 +388,15 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
                 onSwitchToAddPanel={handleSwitchToAddPanel}
               />
             </div>
+          )}
+
+          {activeTab === 'scenes' && onUploadBackground && onRemoveBackground && (
+            <ScenePanel
+              backgroundImage={backgroundImage}
+              onUploadBackground={onUploadBackground}
+              onRemoveBackground={onRemoveBackground}
+              isUploading={isUploadingBackground}
+            />
           )}
         </div>
       </div>

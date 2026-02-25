@@ -28,8 +28,12 @@ import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { useModelGeneration } from '../hooks/useModelGeneration';
+import { useBackgroundUpload } from '../hooks/useBackgroundUpload';
 import { captureThumbnail } from '../utils/captureThumbnail';
+import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
 import { logger } from '../utils/logger';
+import { getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
+import { DEFAULT_SCENE_SETTINGS, toSceneSettings } from '../types/sceneSettings';
 import { toSimulationSettings } from '../types/simulationSettings';
 import { PopupProvider, usePopup } from '../contexts/PopupContext';
 import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
@@ -104,6 +108,7 @@ function EditorPageContent() {
   const [objects, setObjects] = useState<SceneObject[]>(INITIAL_OBJECTS);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
+  const [sceneSettings, setSceneSettings] = useState(DEFAULT_SCENE_SETTINGS);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
   // Recording state for move-item step end position
   // recordingPositionForStepId is owned by useRecordingEndTransform (below)
@@ -182,6 +187,12 @@ function EditorPageContent() {
     },
   });
 
+  useEffect(() => {
+    if (!currentProject) return;
+    setSceneSettings(toSceneSettings(currentProject.sceneSettings));
+    preloadBackgroundTexture(getSceneBackgroundUrl(currentProject.sceneSettings));
+  }, [currentProject]);
+
   const {
     recordingPositionForStepId,
     latestRecordingEndPositionRef,
@@ -239,6 +250,7 @@ function EditorPageContent() {
     useCameraFocus();
 
   const {
+    hasFirstFrame,
     setHasFirstFrame,
     isEntryFadeVisible,
     isEntryFadeFading,
@@ -266,6 +278,14 @@ function EditorPageContent() {
     clearError: clearUploadError,
   } = useModelUpload();
 
+  const {
+    uploadBackground,
+    removeBackground,
+    isUploading: isUploadingBackground,
+    lastError: backgroundUploadError,
+    clearError: clearBackgroundUploadError,
+  } = useBackgroundUpload();
+
   useErrorPopups({
     uploadLastError,
     clearUploadError,
@@ -273,6 +293,16 @@ function EditorPageContent() {
     clearProjectsError,
     popupApi: { showPopup },
   });
+
+  useEffect(() => {
+    if (!backgroundUploadError) return;
+    showPopup({
+      type: 'error',
+      title: 'Background Upload Failed',
+      message: backgroundUploadError,
+    });
+    clearBackgroundUploadError();
+  }, [backgroundUploadError, clearBackgroundUploadError, showPopup]);
 
   const addSceneObjectAndFocus = useCallback(
     (sceneObject: SceneObject, label: string) => {
@@ -344,6 +374,7 @@ function EditorPageContent() {
     name: simulationTitle,
     objects,
     steps,
+    sceneSettings,
     simulationSettings: toSimulationSettings(currentProject?.simulationSettings),
     saveProject,
     captureThumbnail: handleCaptureThumbnail,
@@ -388,8 +419,9 @@ function EditorPageContent() {
       name: simulationTitle,
       objects,
       steps,
+      sceneSettings,
     };
-  }, [currentProject, objects, simulationTitle, steps]);
+  }, [currentProject, objects, sceneSettings, simulationTitle, steps]);
 
   const hasReadySteps = useMemo(() => hasUsableSteps(steps), [steps]);
 
@@ -631,6 +663,36 @@ function EditorPageContent() {
     },
     [removeAsset, showPopup]
   );
+
+  const handleUploadBackground = useCallback(
+    async (file: File) => {
+      if (!currentProject?.id) {
+        showPopup({
+          type: 'error',
+          title: 'Background Upload Failed',
+          message: 'Save your project before adding a 360 background image.',
+        });
+        return;
+      }
+
+      const uploadedBackground = await uploadBackground(file, currentProject.id);
+      setSceneSettings((prev) => ({
+        ...prev,
+        backgroundImage: uploadedBackground,
+      }));
+    },
+    [currentProject?.id, showPopup, uploadBackground]
+  );
+
+  const handleRemoveBackground = useCallback(async () => {
+    setSceneSettings((prev) => {
+      void removeBackground(prev.backgroundImage?.storageKey);
+      return {
+        ...prev,
+        backgroundImage: undefined,
+      };
+    });
+  }, [removeBackground]);
 
   const handlePopulateTestSteps = useCallback(() => {
     beginBatch();
@@ -1127,7 +1189,14 @@ function EditorPageContent() {
           recordingPositionForStepId={recordingPositionForStepId}
           steps={steps}
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
+          backgroundImageUrl={getSceneBackgroundUrl(sceneSettings)}
         />
+
+        {!hasFirstFrame && !isEntryFadeVisible && (
+          <div className="absolute inset-0 z-50">
+            <LoadingScreen message="Opening your studio..." />
+          </div>
+        )}
 
         <EntryFadeOverlay
           isEntryFadeVisible={isEntryFadeVisible}
@@ -1228,6 +1297,10 @@ function EditorPageContent() {
                 onGenerateFromImage={startGeneration}
                 onCancelGeneration={cancelGeneration}
                 onRetryGeneration={(generationId) => void retryGeneration(generationId)}
+                backgroundImage={sceneSettings.backgroundImage}
+                onUploadBackground={handleUploadBackground}
+                onRemoveBackground={handleRemoveBackground}
+                isUploadingBackground={isUploadingBackground}
               />
             ),
             rightSidebar: selectedObjectForSidebar ? (

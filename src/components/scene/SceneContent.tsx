@@ -52,6 +52,8 @@ export interface SceneContentProps {
   shouldAnimateMoveItem?: boolean;
   previewOutlineTarget?: PreviewOutlineTarget | null;
   onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
+  backgroundImageUrl?: string;
+  onBackgroundReadyChange?: (ready: boolean) => void;
 }
 
 export function SceneContent({
@@ -77,6 +79,8 @@ export function SceneContent({
   shouldAnimateMoveItem = false,
   previewOutlineTarget = null,
   onPreviewOutlineTargetChange,
+  backgroundImageUrl,
+  onBackgroundReadyChange,
 }: SceneContentProps): JSX.Element {
   const controlsRef = useRef<CameraControlsImpl>(null!);
   const isPositioningCameraRef = useRef(false);
@@ -383,6 +387,8 @@ export function SceneContent({
       shouldAnimateMoveItem={shouldAnimateMoveItem}
       previewOutlineParentId={previewOutlineParentId}
       previewOutlineChildPath={previewOutlineChildPath}
+      backgroundImageUrl={backgroundImageUrl}
+      onBackgroundReadyChange={onBackgroundReadyChange}
       onPreviewTransformUpdate={onPreviewTransformUpdate}
       onPreviewStepComplete={onPreviewStepComplete}
       onPreviewOutlineTargetChange={onPreviewOutlineTargetChange}

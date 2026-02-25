@@ -3,12 +3,15 @@ import type { ChildMesh, SceneObject, SimStep } from '../types';
 import type { Project } from '../types/project';
 import type { ModelFileType, ModelMetrics } from '../types/model';
 import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '../types/publish';
+import { toSceneSettings, type SceneSettings } from '../types/sceneSettings';
 import type { SimulationSettings } from '../types/simulationSettings';
 import { toSimulationSettings } from '../types/simulationSettings';
+import { extractBackgroundImageStoragePath } from '../utils/backgroundImageUpload';
 import { syncAssetToCloud } from '../utils/modelAssetStore';
 import { hasUsableSteps } from '../utils/stepValidation';
 import { NotFoundError, StorageError, ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { getPublishedSceneBackgroundUrl, getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
 
 const USER_ASSETS_BUCKET = 'user-assets';
 const PUBLISHED_ASSETS_BUCKET = 'published-assets';
@@ -174,11 +177,66 @@ async function copyAssetToPublishedBucket(args: {
   };
 }
 
-function toPublishedSnapshot(project: Project, assetManifest: Record<string, AssetManifestEntry>): PublishedSnapshot {
+async function copyBackgroundImageToPublishedBucket(args: {
+  project: Project;
+  projectId: string;
+  userId: string;
+}): Promise<SceneSettings | undefined> {
+  const sceneSettings = toSceneSettings(args.project.sceneSettings);
+  const storageKeyOrRef = sceneSettings.backgroundImage?.storageKey;
+  if (!storageKeyOrRef) return undefined;
+
+  const storagePath = extractBackgroundImageStoragePath(storageKeyOrRef) ?? storageKeyOrRef;
+  const filename = storagePath.split('/').pop() ?? 'background.jpg';
+  const publishedStoragePath = `${args.userId}/${args.projectId}/background/${sanitizeFilename(filename)}`;
+
+  const { data: sourceBlob, error: sourceError } = await supabase.storage
+    .from(USER_ASSETS_BUCKET)
+    .download(storagePath);
+  if (sourceError || !sourceBlob) {
+    throw new StorageError(
+      `Failed to download source background image "${storagePath}": ${sourceError?.message ?? 'Unknown error'}`
+    );
+  }
+
+  const mimeType = sourceBlob.type || 'image/jpeg';
+  const { error: uploadError } = await supabase.storage
+    .from(PUBLISHED_ASSETS_BUCKET)
+    .upload(publishedStoragePath, sourceBlob, {
+      upsert: true,
+      contentType: mimeType,
+    });
+  if (uploadError) {
+    throw new StorageError(
+      `Failed to upload published background image "${publishedStoragePath}": ${uploadError.message}`
+    );
+  }
+
+  const { data: publicData } = supabase.storage.from(PUBLISHED_ASSETS_BUCKET).getPublicUrl(publishedStoragePath);
+  return {
+    backgroundImage: {
+      ...sceneSettings.backgroundImage!,
+      signedUrl: publicData.publicUrl,
+    },
+  };
+}
+
+function toPublishedSnapshot(
+  project: Project,
+  assetManifest: Record<string, AssetManifestEntry>,
+  sceneSettings?: SceneSettings
+): PublishedSnapshot {
+  const backgroundImageUrl = getSceneBackgroundUrl(sceneSettings);
   return {
     name: project.name,
     objects: project.objects,
     steps: project.steps,
+    sceneSettings: sceneSettings
+      ? {
+          ...sceneSettings,
+          backgroundImageUrl,
+        }
+      : undefined,
     simulationSettings: toSimulationSettings(project.simulationSettings),
     assetManifest,
   };
@@ -248,6 +306,7 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
   const name = value.name;
   const objects = value.objects;
   const steps = value.steps;
+  const sceneSettings = value.sceneSettings;
   const simulationSettings = value.simulationSettings;
   const assetManifest = value.assetManifest;
 
@@ -269,12 +328,31 @@ function parsePublishedSnapshot(value: unknown): PublishedSnapshot {
   }
   const validatedAssetManifest = assetManifest as Record<string, AssetManifestEntry>;
 
+  let parsedSceneSettings: PublishedSnapshot['sceneSettings'] | undefined;
+  if (isRecord(sceneSettings)) {
+    const normalized = toSceneSettings(sceneSettings as Partial<SceneSettings>);
+    const maybeBackgroundUrl = getPublishedSceneBackgroundUrl(
+      sceneSettings as PublishedSnapshot['sceneSettings']
+    );
+    parsedSceneSettings = {
+      ...normalized,
+      backgroundImageUrl: maybeBackgroundUrl,
+      backgroundImage: normalized.backgroundImage
+        ? {
+            ...normalized.backgroundImage,
+            signedUrl: normalized.backgroundImage.signedUrl ?? maybeBackgroundUrl,
+          }
+        : undefined,
+    };
+  }
+
   // Best-effort structural validation: we validate top-level shape here, and rely on downstream
   // code to be tolerant of scene/object details while the published flow is still MVP.
   return {
     name,
     objects,
     steps,
+    sceneSettings: parsedSceneSettings,
     simulationSettings: toSimulationSettings(
       isRecord(simulationSettings) ? (simulationSettings as Partial<SimulationSettings>) : undefined
     ),
@@ -351,7 +429,12 @@ export async function publishProject(project: Project, userId: string): Promise<
     }
   }
 
-  const snapshot = toPublishedSnapshot(project, assetManifest);
+  const publishedSceneSettings = await copyBackgroundImageToPublishedBucket({
+    project,
+    projectId,
+    userId,
+  });
+  const snapshot = toPublishedSnapshot(project, assetManifest, publishedSceneSettings);
 
   const { data: existing, error: existingError } = await supabase
     .from('published_projects')

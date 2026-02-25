@@ -1,13 +1,16 @@
 import { supabase } from '../lib/supabase';
 import type { Project } from '../types/project';
+import { toSceneSettings } from '../types/sceneSettings';
 import { toSimulationSettings } from '../types/simulationSettings';
 import type { AsyncProjectPersistence } from './projectPersistence';
+import { resolveBackgroundImageUrl } from '../utils/backgroundImageUpload';
 import { resolveThumbnailUrl } from '../utils/thumbnailUpload';
 import { StorageError, ValidationError } from '../utils/errors';
 
 interface ProjectDataRow {
   objects?: Project['objects'];
   steps?: Project['steps'];
+  sceneSettings?: Project['sceneSettings'];
   simulationSettings?: Project['simulationSettings'];
 }
 
@@ -24,11 +27,30 @@ interface ProjectRow {
 
 async function mapProjectRowToProject(row: ProjectRow): Promise<Project> {
   let resolvedThumbnail: string | undefined;
+  let resolvedSceneSettings = toSceneSettings(row.data?.sceneSettings);
   try {
     resolvedThumbnail = await resolveThumbnailUrl(row.thumbnail_url);
   } catch {
     // Don't let a single failed thumbnail break the entire project list.
     resolvedThumbnail = undefined;
+  }
+  try {
+    const storageKey = resolvedSceneSettings.backgroundImage?.storageKey;
+    if (storageKey) {
+      const signedUrl = await resolveBackgroundImageUrl(storageKey);
+      if (signedUrl) {
+        resolvedSceneSettings = {
+          backgroundImage: {
+            ...resolvedSceneSettings.backgroundImage!,
+            signedUrl,
+          },
+        };
+      } else {
+        resolvedSceneSettings = toSceneSettings(undefined);
+      }
+    }
+  } catch {
+    resolvedSceneSettings = toSceneSettings(undefined);
   }
   return {
     id: row.id,
@@ -38,6 +60,7 @@ async function mapProjectRowToProject(row: ProjectRow): Promise<Project> {
     thumbnail: resolvedThumbnail,
     objects: row.data?.objects ?? [],
     steps: row.data?.steps ?? [],
+    sceneSettings: resolvedSceneSettings,
     simulationSettings: toSimulationSettings(row.data?.simulationSettings),
   };
 }
@@ -126,6 +149,7 @@ export class SupabaseProjectPersistence implements AsyncProjectPersistence {
         data: {
           objects: project.objects,
           steps: project.steps,
+          sceneSettings: toSceneSettings(project.sceneSettings),
           simulationSettings: toSimulationSettings(project.simulationSettings),
         },
         thumbnail_url: project.thumbnail ?? null,

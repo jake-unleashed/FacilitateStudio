@@ -13,6 +13,7 @@ import {
   toThumbnailStorageRef,
   uploadThumbnailToStorage,
 } from '../utils/thumbnailUpload';
+import { DEFAULT_SCENE_SETTINGS, toSceneSettings } from '../types/sceneSettings';
 import { DEFAULT_SIMULATION_SETTINGS, toSimulationSettings } from '../types/simulationSettings';
 import { logger } from '../utils/logger';
 import { StorageError } from '../utils/errors';
@@ -29,6 +30,7 @@ function delay(ms: number): Promise<void> {
 function withSimulationSettings(project: Project): Project {
   return {
     ...project,
+    sceneSettings: toSceneSettings(project.sceneSettings),
     simulationSettings: toSimulationSettings(project.simulationSettings),
   };
 }
@@ -274,6 +276,7 @@ export function useProjects(): UseProjectsResult {
       const now = new Date().toISOString();
       const updated: Project = {
         ...project,
+        sceneSettings: toSceneSettings(project.sceneSettings),
         simulationSettings: toSimulationSettings(project.simulationSettings),
         updatedAt: now,
         createdAt: project.createdAt || now,
@@ -492,6 +495,7 @@ export function useProjects(): UseProjectsResult {
       updatedAt: now,
       objects: [],
       steps: [],
+      sceneSettings: DEFAULT_SCENE_SETTINGS,
       simulationSettings: DEFAULT_SIMULATION_SETTINGS,
     };
     return newProject;

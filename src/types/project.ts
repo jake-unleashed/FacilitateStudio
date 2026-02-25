@@ -1,4 +1,5 @@
 import { SceneObject, SimStep } from '../types';
+import type { SceneSettings } from './sceneSettings';
 import type { SimulationSettings } from './simulationSettings';
 
 /**
@@ -25,6 +26,8 @@ export interface Project {
   objects: SceneObject[];
   /** Simulation steps */
   steps: SimStep[];
+  /** Scene-level visual settings used across editor/preview/published modes */
+  sceneSettings?: SceneSettings;
   /** Trainee interaction settings used in preview and published modes */
   simulationSettings?: SimulationSettings;
 }

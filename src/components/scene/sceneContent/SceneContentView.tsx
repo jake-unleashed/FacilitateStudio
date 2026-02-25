@@ -28,6 +28,7 @@ import {
 } from '../SelectionOutline';
 import { TransformGizmo } from '../transformGizmo';
 import { GridWithNoDepth } from '../GridWithNoDepth';
+import { PanoramicBackground } from '../PanoramicBackground';
 
 // Check if we're in development mode (Vite provides this)
 const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
@@ -122,6 +123,8 @@ export interface SceneContentViewProps {
   shouldAnimateMoveItem: boolean;
   previewOutlineParentId: string | null;
   previewOutlineChildPath: string | null;
+  backgroundImageUrl?: string;
+  onBackgroundReadyChange?: (ready: boolean) => void;
   onPreviewTransformUpdate?: (
     update: {
       position: { x: number; y: number; z: number };
@@ -185,6 +188,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const isPreviewCameraInteractionEnabled = previewAllowOrbit || previewAllowZoom;
   const canUsePreviewOrbit = previewAllowOrbit && !isPreviewInteractionLocked;
   const canUsePreviewZoom = previewAllowZoom && !isPreviewInteractionLocked;
+  const hasPanoramicBackground = typeof props.backgroundImageUrl === 'string' && props.backgroundImageUrl.length > 0;
 
   return (
     <>
@@ -223,31 +227,39 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
       <Suspense fallback={null}>
         <Environment preset="city" />
       </Suspense>
+      {hasPanoramicBackground && (
+        <PanoramicBackground
+          imageUrl={props.backgroundImageUrl!}
+          onReadyChange={props.onBackgroundReadyChange}
+        />
+      )}
 
       <PerspectiveCamera makeDefault position={DEFAULT_CAMERA_POSITION} fov={35} />
 
       <FixedContactShadows
-        opacity={0.18}
+        opacity={hasPanoramicBackground ? 0.6 : 0.18}
         scale={GROUND_PLANE_EXTENT * 2}
-        blur={1.2}
+        blur={hasPanoramicBackground ? 0.7 : 1.2}
         far={1.5}
         resolution={1024}
         smooth={true}
         color="#1e293b"
       />
 
-      <GridWithNoDepth
-        args={[GROUND_PLANE_EXTENT * 2, GROUND_PLANE_EXTENT * 2]}
-        cellSize={1}
-        sectionSize={5}
-        fadeDistance={GROUND_PLANE_EXTENT}
-        fadeStrength={GRID_FADE_STRENGTH}
-        sectionColor="#94a3b8"
-        cellColor="#cbd5e1"
-        sectionThickness={0.8}
-        cellThickness={0.4}
-        side={THREE.DoubleSide}
-      />
+      {!(props.previewMode && hasPanoramicBackground) && (
+        <GridWithNoDepth
+          args={[GROUND_PLANE_EXTENT * 2, GROUND_PLANE_EXTENT * 2]}
+          cellSize={1}
+          sectionSize={5}
+          fadeDistance={GROUND_PLANE_EXTENT}
+          fadeStrength={GRID_FADE_STRENGTH}
+          sectionColor="#94a3b8"
+          cellColor="#cbd5e1"
+          sectionThickness={0.8}
+          cellThickness={0.4}
+          side={THREE.DoubleSide}
+        />
+      )}
 
       <ChildSelectionProvider>
         <Selection>

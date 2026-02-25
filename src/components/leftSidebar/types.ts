@@ -1,5 +1,6 @@
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import type { GenerationTask } from '../../types/modelGeneration';
+import type { SceneBackgroundImage } from '../../types/sceneSettings';
 import type { ChildMesh, FocusMode, SceneObject, SidebarSection, SimStep } from '../../types';
 
 export interface LeftSidebarProps {
@@ -29,6 +30,10 @@ export interface LeftSidebarProps {
   onGenerateFromImage?: (imageFile: File) => Promise<void>;
   onCancelGeneration?: (generationId: string) => void;
   onRetryGeneration?: (generationId: string) => void;
+  backgroundImage?: SceneBackgroundImage;
+  onUploadBackground?: (file: File) => Promise<void>;
+  onRemoveBackground?: () => Promise<void>;
+  isUploadingBackground?: boolean;
 }
 
 export interface LeftSidebarHandle {
