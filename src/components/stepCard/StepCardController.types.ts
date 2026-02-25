@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { SceneObject, SimStep, StepType } from '../../types';
+import type { InfoCardDisplayMode, SceneObject, SimStep, StepType } from '../../types';
 import type { STEP_TYPES } from './constants';
 import type { COLOR_THEMES } from './constants';
 import type { findChildByPathString } from '../../utils/childTransformUtils';
@@ -26,6 +26,7 @@ export interface StepCardController {
   bodyText: string;
   buttonText: string;
   cardColor: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  infoCardDisplayMode: InfoCardDisplayMode;
   targetObjectId: string;
   targetChildPath: string;
   endPosition: SimStep['endPosition'];
@@ -63,6 +64,7 @@ export interface StepCardController {
   handleChangeStepType: () => void;
   handleClearStepType: () => void;
   handleSetCardColor: (color: 'blue' | 'green' | 'yellow' | 'red' | 'gray') => void;
+  handleSetInfoCardDisplayMode: (mode: InfoCardDisplayMode) => void;
   handleUseSelectedObject: () => void;
   handleToggleRecording: () => void;
   handleRemoveTargetObject: () => void;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SimStep, StepType } from '../../types';
+import type { InfoCardDisplayMode, SimStep, StepType } from '../../types';
 import { COLOR_THEMES, STEP_TYPES } from './constants';
 import { useDeleteConfirm } from './useDeleteConfirm';
 import { useStepCardAutoSave } from './useStepCardAutoSave';
@@ -27,6 +27,9 @@ export function useStepCardController({
   const [buttonText, setButtonText] = useState(step.buttonText || '');
   const [cardColor, setCardColor] = useState<'blue' | 'green' | 'yellow' | 'red' | 'gray'>(
     step.cardColor || 'blue'
+  );
+  const [infoCardDisplayMode, setInfoCardDisplayMode] = useState<InfoCardDisplayMode>(
+    step.infoCardDisplayMode || 'overlay'
   );
   const [targetObjectId, setTargetObjectId] = useState(step.targetObjectId || '');
   const [targetChildPath, setTargetChildPath] = useState(step.targetChildPath || '');
@@ -56,6 +59,7 @@ export function useStepCardController({
     if (editingFieldRef.current !== 'buttonText') setButtonText(step.buttonText || '');
 
     setCardColor(step.cardColor || 'blue');
+    setInfoCardDisplayMode(step.infoCardDisplayMode || 'overlay');
     setTargetObjectId(step.targetObjectId || '');
     setTargetChildPath(step.targetChildPath || '');
 
@@ -72,6 +76,7 @@ export function useStepCardController({
     step.bodyText,
     step.buttonText,
     step.cardColor,
+    step.infoCardDisplayMode,
     step.targetObjectId,
     step.targetChildPath,
     step.endPosition,
@@ -87,6 +92,7 @@ export function useStepCardController({
         bodyText: bodyText || undefined,
         buttonText: buttonText || undefined,
         cardColor,
+        infoCardDisplayMode,
         targetObjectId: targetObjectId || undefined,
         targetChildPath: targetChildPath || undefined,
         startPosition: step.startPosition || undefined,
@@ -102,6 +108,7 @@ export function useStepCardController({
       bodyText,
       buttonText,
       cardColor,
+      infoCardDisplayMode,
       targetObjectId,
       targetChildPath,
       endPosition,
@@ -128,6 +135,7 @@ export function useStepCardController({
       latestBodyText !== (step.bodyText || '') ||
       latestButtonText !== (step.buttonText || '') ||
       cardColor !== (step.cardColor || 'blue') ||
+      infoCardDisplayMode !== (step.infoCardDisplayMode || 'overlay') ||
       targetObjectId !== (step.targetObjectId || '') ||
       targetChildPath !== (step.targetChildPath || '') ||
       JSON.stringify(endPosition) !== JSON.stringify(step.endPosition);
@@ -153,6 +161,7 @@ export function useStepCardController({
     buttonText,
     selectedType,
     cardColor,
+    infoCardDisplayMode,
     targetObjectId,
     targetChildPath,
     endPosition,
@@ -170,6 +179,7 @@ export function useStepCardController({
     bodyText,
     buttonText,
     cardColor,
+    infoCardDisplayMode,
     targetObjectId,
     targetChildPath,
     endPosition,
@@ -252,18 +262,17 @@ export function useStepCardController({
   const handleSetCardColor = useCallback(
     (color: 'blue' | 'green' | 'yellow' | 'red' | 'gray') => {
       setCardColor(color);
-      onUpdate(
-        createUpdatedStep({
-          cardColor: color,
-          title: stepName,
-          type: selectedType,
-          heading: heading || undefined,
-          bodyText: bodyText || undefined,
-          buttonText: buttonText || undefined,
-        })
-      );
+      onUpdate(createUpdatedStep({ cardColor: color }));
     },
-    [createUpdatedStep, onUpdate, stepName, selectedType, heading, bodyText, buttonText]
+    [createUpdatedStep, onUpdate]
+  );
+
+  const handleSetInfoCardDisplayMode = useCallback(
+    (mode: InfoCardDisplayMode) => {
+      setInfoCardDisplayMode(mode);
+      onUpdate(createUpdatedStep({ infoCardDisplayMode: mode }));
+    },
+    [createUpdatedStep, onUpdate]
   );
 
   const {
@@ -316,6 +325,7 @@ export function useStepCardController({
     bodyText,
     buttonText,
     cardColor,
+    infoCardDisplayMode,
     targetObjectId,
     targetChildPath,
     endPosition,
@@ -347,6 +357,7 @@ export function useStepCardController({
     handleChangeStepType,
     handleClearStepType,
     handleSetCardColor,
+    handleSetInfoCardDisplayMode,
     handleUseSelectedObject,
     handleToggleRecording,
     handleRemoveTargetObject,

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { SimStep } from '../../types';
+import type { InfoCardDisplayMode, SimStep } from '../../types';
 import { useDebounce } from './useDebounce';
 import { AUTO_SAVE_DELAY } from './constants';
 
@@ -13,6 +13,7 @@ export interface StepCardAutoSaveArgs {
   bodyText: string;
   buttonText: string;
   cardColor: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  infoCardDisplayMode: InfoCardDisplayMode;
   targetObjectId: string;
   targetChildPath: string;
   endPosition: SimStep['endPosition'];
@@ -30,6 +31,7 @@ export function useStepCardAutoSave({
   bodyText,
   buttonText,
   cardColor,
+  infoCardDisplayMode,
   targetObjectId,
   targetChildPath,
   endPosition,
@@ -59,6 +61,7 @@ export function useStepCardAutoSave({
       debouncedBodyText !== (step.bodyText || '') ||
       debouncedButtonText !== (step.buttonText || '') ||
       cardColor !== (step.cardColor || 'blue') ||
+      infoCardDisplayMode !== (step.infoCardDisplayMode || 'overlay') ||
       targetObjectId !== (step.targetObjectId || '') ||
       targetChildPath !== (step.targetChildPath || '') ||
       JSON.stringify(debouncedEndPosition) !== JSON.stringify(step.endPosition);
@@ -94,6 +97,7 @@ export function useStepCardAutoSave({
     bodyText,
     buttonText,
     cardColor,
+    infoCardDisplayMode,
     targetObjectId,
     targetChildPath,
     debouncedEndPosition,

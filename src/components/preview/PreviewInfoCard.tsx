@@ -1,141 +1,91 @@
-import React from 'react';
-import { SimStep } from '../../types';
+import React, { useId } from 'react';
+import type { InfoCardDisplayMode, SimStep } from '../../types';
+import { COLOR_THEMES } from '../stepCard/constants';
 
 interface PreviewInfoCardProps {
   step: SimStep;
+  displayMode: InfoCardDisplayMode;
   onContinue: () => void;
 }
 
-// Color theme configurations matching StepCard
-const COLOR_THEMES: Record<
-  'blue' | 'green' | 'yellow' | 'red' | 'gray',
-  {
-    headingBg: string;
-    headingText: string;
-  }
-> = {
-  blue: {
-    headingBg: 'bg-blue-600',
-    headingText: 'text-white',
-  },
-  green: {
-    headingBg: 'bg-emerald-600',
-    headingText: 'text-white',
-  },
-  yellow: {
-    headingBg: 'bg-amber-500',
-    headingText: 'text-white',
-  },
-  red: {
-    headingBg: 'bg-rose-600',
-    headingText: 'text-white',
-  },
-  gray: {
-    headingBg: 'bg-slate-600',
-    headingText: 'text-white',
-  },
-};
-
 /**
- * Full-screen info card overlay for preview mode.
- * Displays the step's heading, body text, and continue button.
+ * Info card for preview mode.
+ * Supports full-screen overlay and side panel variants.
+ * Animations are defined in index.css (info-card-*).
  */
-export const PreviewInfoCard: React.FC<PreviewInfoCardProps> = ({ step, onContinue }) => {
+export const PreviewInfoCard: React.FC<PreviewInfoCardProps> = ({ step, displayMode, onContinue }) => {
   const cardColor = step.cardColor || 'blue';
   const theme = COLOR_THEMES[cardColor];
   const heading = step.heading || '';
   const bodyText = step.bodyText || '';
   const buttonText = step.buttonText || 'Continue';
+  const isSidePanel = displayMode === 'side-panel';
+  const headingId = useId();
+  const bodyId = useId();
 
-  // Handle keyboard (Enter to continue, Escape to exit handled by parent)
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      onContinue();
-    }
-  };
-
-  return (
-    <div
-      className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm duration-300"
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-      style={{
-        animation: 'fadeIn 0.3s ease-out',
-      }}
-    >
-      {/* Info Card - with smooth slide-up and scale animation */}
-      <div
-        className="relative w-full max-w-md overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 shadow-2xl backdrop-blur-sm"
-        style={{
-          animation: 'slideUpAndScale 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-          animationFillMode: 'both',
-        }}
-      >
-        {/* Heading Section - Colored */}
-        <div
-          className={`${theme.headingBg} rounded-t-[20px] px-6 py-4`}
-          style={{
-            animation: 'fadeIn 0.3s ease-out 0.1s',
-            animationFillMode: 'both',
-          }}
-        >
-          <h2 className={`text-lg font-medium leading-tight ${theme.headingText}`}>
-            {heading || 'Information'}
-          </h2>
-        </div>
-
-        {/* Body Text Section */}
-        <div
-          className="px-6 py-5"
-          style={{
-            animation: 'fadeIn 0.3s ease-out 0.2s',
-            animationFillMode: 'both',
-          }}
-        >
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-            {bodyText || 'No content provided.'}
-          </p>
-        </div>
-
-        {/* Button Section */}
-        <div
-          className="flex justify-center border-t border-white/30 px-6 py-4"
-          style={{
-            animation: 'fadeIn 0.3s ease-out 0.3s',
-            animationFillMode: 'both',
-          }}
-        >
-          <button
-            onClick={onContinue}
-            className="rounded-[12px] bg-slate-700 px-6 py-2.5 text-sm font-medium text-white transition-all hover:scale-105 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 active:scale-95"
-          >
-            {buttonText}
-          </button>
-        </div>
+  const cardContent = (headingRadius: string, autoFocusButton: boolean) => (
+    <>
+      <div className={`${theme.headingBg} ${headingRadius} px-6 py-4 info-card-stagger-heading`}>
+        <h2 id={headingId} className={`text-lg font-medium leading-tight ${theme.headingText}`}>
+          {heading || 'Information'}
+        </h2>
       </div>
 
-      {/* CSS animations */}
-      <style>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 custom-scrollbar info-card-stagger-body">
+        <p id={bodyId} className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+          {bodyText || 'No content provided.'}
+        </p>
+      </div>
 
-        @keyframes slideUpAndScale {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-      `}</style>
+      <div className="flex justify-center border-t border-white/30 px-6 py-4 info-card-stagger-button">
+        <button
+          onClick={onContinue}
+          autoFocus={autoFocusButton}
+          className="rounded-[12px] bg-slate-700 px-6 py-2.5 text-sm font-medium text-white transition-all hover:scale-105 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 active:scale-95"
+        >
+          {buttonText}
+        </button>
+      </div>
+    </>
+  );
+
+  const overlayWrapper = (extraClasses = '') => (
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm info-card-anim-fade-in ${extraClasses}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={headingId}
+      aria-describedby={bodyId}
+    >
+      <div
+        className="relative flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col overflow-hidden rounded-[20px] border border-slate-300/60 bg-white/95 shadow-2xl backdrop-blur-sm info-card-anim-slide-up"
+      >
+        {cardContent('rounded-t-[20px]', true)}
+      </div>
     </div>
+  );
+
+  if (!isSidePanel) {
+    return overlayWrapper();
+  }
+
+  return (
+    <>
+      {/* Small screens: fall back to centered overlay */}
+      {overlayWrapper('sm:hidden')}
+
+      {/* sm+ screens: right-side glass panel, scene stays interactive */}
+      <div className="pointer-events-none fixed inset-0 z-50 hidden sm:block">
+        <div
+          className="pointer-events-auto absolute right-6 top-1/2 flex max-h-[calc(100vh-3rem)] w-80 -translate-y-1/2 flex-col overflow-hidden rounded-[32px] border border-white/40 bg-white/80 shadow-glass backdrop-blur-xl info-card-anim-slide-in-right"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby={headingId}
+          aria-describedby={bodyId}
+        >
+          {cardContent('rounded-t-[32px]', false)}
+        </div>
+      </div>
+    </>
   );
 };

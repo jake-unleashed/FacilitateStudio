@@ -548,6 +548,7 @@ function StepSetupStep({
           bodyText={controller.bodyText}
           buttonText={controller.buttonText}
           cardColor={controller.cardColor}
+          infoCardDisplayMode={controller.infoCardDisplayMode}
           currentTheme={controller.currentTheme}
           headingTextareaRef={controller.headingTextareaRef}
           bodyTextTextareaRef={controller.bodyTextTextareaRef}
@@ -555,6 +556,7 @@ function StepSetupStep({
           onStartEdit={controller.handleStartEdit}
           onFieldBlur={(field, value) => controller.handleFieldBlur(field, value)}
           onSetCardColor={controller.handleSetCardColor}
+          onSetInfoCardDisplayMode={controller.handleSetInfoCardDisplayMode}
         />
 
         <MoveItemSection

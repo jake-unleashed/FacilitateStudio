@@ -94,6 +94,8 @@ export interface SimStep {
   buttonText?: string;
   /** For info-card steps: card color theme */
   cardColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  /** For info-card steps: display mode */
+  infoCardDisplayMode?: InfoCardDisplayMode;
   /** For move-item steps: ID of the object to move */
   targetObjectId?: string;
   /** For move-item steps: child path of the target (if moving a child mesh, not the parent) */
@@ -128,6 +130,9 @@ export type SidebarSection = 'add' | 'steps' | 'scenes' | 'objects';
 
 /** Step type for simulation steps */
 export type StepType = 'info-card' | 'move-item' | 'identify';
+
+/** Display mode for info-card steps */
+export type InfoCardDisplayMode = 'overlay' | 'side-panel';
 
 /**
  * Parsed selection ID for objects and their children.

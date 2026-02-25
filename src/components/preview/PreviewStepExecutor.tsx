@@ -125,6 +125,11 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
 
   const currentStep = validSteps[currentStepIndex] || null;
   const isLastStep = currentStepIndex >= validSteps.length - 1;
+  const currentInfoCardDisplayMode = currentStep?.infoCardDisplayMode || 'overlay';
+  const shouldShowStepIndicator =
+    currentStep?.type === 'move-item' ||
+    currentStep?.type === 'identify' ||
+    (currentStep?.type === 'info-card' && currentInfoCardDisplayMode === 'side-panel');
 
   /**
    * Calculates progress percentage.
@@ -315,8 +320,8 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
 
   return (
     <>
-      {/* Step name indicator for interactive steps (info cards have their own overlay) */}
-      {(currentStep?.type === 'move-item' || currentStep?.type === 'identify') && (
+      {/* Step name indicator for interactive steps and side-panel info cards */}
+      {shouldShowStepIndicator && (
         <div className="fixed left-1/2 top-4 z-40 -translate-x-1/2">
           <div className="flex items-center gap-3 rounded-[16px] border border-white/50 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-800 shadow-xl backdrop-blur-xl">
             {(() => {
@@ -374,7 +379,11 @@ export const PreviewStepExecutor: React.FC<PreviewStepExecutorProps> = ({
 
       {/* Info Card Step */}
       {currentStep?.type === 'info-card' && (
-        <PreviewInfoCard step={currentStep} onContinue={handleInfoCardContinue} />
+        <PreviewInfoCard
+          step={currentStep}
+          displayMode={currentInfoCardDisplayMode}
+          onContinue={handleInfoCardContinue}
+        />
       )}
 
       {currentStep?.type === 'identify' && <PreviewIdentifyFeedback state={identifyFeedback} />}

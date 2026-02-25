@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
-import { Pencil } from 'lucide-react';
-import type { SimStep } from '../../types';
+import { Maximize2, PanelRight, Pencil } from 'lucide-react';
+import type { InfoCardDisplayMode, SimStep } from '../../types';
 import { COLOR_THEMES } from './constants';
 import { HelpIcon } from '../HelpIcon';
 
@@ -16,6 +16,7 @@ export interface InfoCardSectionProps {
   bodyText: string;
   buttonText: string;
   cardColor: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  infoCardDisplayMode: InfoCardDisplayMode;
   currentTheme: (typeof COLOR_THEMES)[keyof typeof COLOR_THEMES];
 
   headingTextareaRef: RefObject<HTMLTextAreaElement>;
@@ -25,6 +26,7 @@ export interface InfoCardSectionProps {
   onStartEdit: (field: 'heading' | 'bodyText' | 'buttonText') => void;
   onFieldBlur: (field: 'heading' | 'bodyText' | 'buttonText', value: string) => void;
   onSetCardColor: (color: 'blue' | 'green' | 'yellow' | 'red' | 'gray') => void;
+  onSetInfoCardDisplayMode: (mode: InfoCardDisplayMode) => void;
 }
 
 export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null {
@@ -36,6 +38,7 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
     bodyText,
     buttonText,
     cardColor,
+    infoCardDisplayMode,
     currentTheme,
     headingTextareaRef,
     bodyTextTextareaRef,
@@ -43,11 +46,49 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
     onStartEdit,
     onFieldBlur,
     onSetCardColor,
+    onSetInfoCardDisplayMode,
   } = props;
   if (!isVisible) return null;
 
   return (
     <div className={`border-t border-white/30 ${compact ? 'pt-3' : 'pt-4'}`}>
+      <div className={`${compact ? 'mb-3' : 'mb-4'}`}>
+        <div className="flex items-center gap-2 pl-1">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Display Mode</h3>
+          <HelpIcon content="Overlay: shows a centered card with a darkened backdrop. Side Panel: shows the card on the right side so the scene stays visible behind it." />
+        </div>
+        <div className="mt-2 rounded-[20px] border border-white/20 bg-slate-100/50 p-1">
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              onClick={() => onSetInfoCardDisplayMode('overlay')}
+              className={`flex items-center justify-center gap-2 rounded-[12px] px-3 py-2 text-xs font-semibold transition-all ${
+                infoCardDisplayMode === 'overlay'
+                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                  : 'text-slate-400 hover:bg-white/50'
+              }`}
+              title="Centered overlay with backdrop"
+              aria-label="Use overlay display mode"
+            >
+              <Maximize2 size={14} aria-hidden="true" />
+              <span>Overlay</span>
+            </button>
+            <button
+              onClick={() => onSetInfoCardDisplayMode('side-panel')}
+              className={`flex items-center justify-center gap-2 rounded-[12px] px-3 py-2 text-xs font-semibold transition-all ${
+                infoCardDisplayMode === 'side-panel'
+                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                  : 'text-slate-400 hover:bg-white/50'
+              }`}
+              title="Side panel, scene stays visible"
+              aria-label="Use side panel display mode"
+            >
+              <PanelRight size={14} aria-hidden="true" />
+              <span>Side Panel</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className={`flex items-center gap-2 ${compact ? 'mb-2' : 'mb-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Preview</span>
         <HelpIcon content="Preview of how this card will appear. Click the edit icons to change the content." />
@@ -184,17 +225,7 @@ export function InfoCardSection(props: InfoCardSectionProps): JSX.Element | null
       <div className={`flex items-center justify-center ${compact ? 'mt-3 gap-2' : 'mt-4 gap-2.5'}`}>
         {(['blue', 'green', 'yellow', 'red', 'gray'] as const).map((color) => {
           const isSelected = cardColor === color;
-          // we rely on controller to compute actual theme, but we still need circle color
-          const circleClass =
-            color === 'blue'
-              ? 'bg-blue-600'
-              : color === 'green'
-                ? 'bg-emerald-600'
-                : color === 'yellow'
-                  ? 'bg-amber-500'
-                  : color === 'red'
-                    ? 'bg-rose-600'
-                    : 'bg-slate-600';
+          const circleClass = COLOR_THEMES[color].circleColor;
 
           return (
             <button
