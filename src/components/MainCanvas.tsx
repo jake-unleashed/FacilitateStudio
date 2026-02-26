@@ -70,6 +70,8 @@ interface MainCanvasProps {
   shouldAnimateMoveItem?: boolean;
   /** Optional panoramic background URL for 360 scene rendering. */
   backgroundImageUrl?: string;
+  /** Fires whenever the panoramic background texture transitions between loading and ready states. */
+  onBackgroundReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
 }
 
 function FirstFrameNotifier({
@@ -116,6 +118,7 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   onPreviewStepComplete,
   shouldAnimateMoveItem = false,
   backgroundImageUrl,
+  onBackgroundReadyChange,
 }) => {
   const [previewOutlineTarget, setPreviewOutlineTarget] = useState<PreviewOutlineTarget | null>(null);
   const [isPanoramicReady, setIsPanoramicReady] = useState<boolean>(
@@ -139,9 +142,10 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
     setIsPanoramicReady(hasCachedBackgroundTexture(backgroundImageUrl));
   }, [backgroundImageUrl]);
 
-  const handleBackgroundReadyChange = useCallback((ready: boolean) => {
+  const handleBackgroundReadyChange = useCallback((ready: boolean, imageUrl?: string, errorMessage?: string) => {
     setIsPanoramicReady(ready);
-  }, []);
+    onBackgroundReadyChange?.(ready, imageUrl, errorMessage);
+  }, [onBackgroundReadyChange]);
 
   // Track if we've notified about canvas being ready
   const hasNotifiedCanvasRef = useRef(false);

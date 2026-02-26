@@ -3,7 +3,7 @@ export interface SceneBackgroundImage {
   storageKey: string;
   /** Original file name selected by the user. */
   filename: string;
-  /** Original file size in bytes. */
+  /** Stored background image file size in bytes. */
   fileSize: number;
   /** Optional resolved URL used at runtime for rendering. */
   signedUrl?: string;

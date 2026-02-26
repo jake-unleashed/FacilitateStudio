@@ -28,7 +28,7 @@ import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { useModelGeneration } from '../hooks/useModelGeneration';
-import { useBackgroundUpload } from '../hooks/useBackgroundUpload';
+import { useBackgroundImageFlow } from '../hooks/useBackgroundImageFlow';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
 import { logger } from '../utils/logger';
@@ -279,12 +279,17 @@ function EditorPageContent() {
   } = useModelUpload();
 
   const {
-    uploadBackground,
+    uploadBackgroundAndPrepare,
     removeBackground,
-    isUploading: isUploadingBackground,
-    lastError: backgroundUploadError,
+    phase: backgroundImageFlowPhase,
+    isUploadingBackground,
+    isBackgroundTextureLoading,
+    backgroundUploadStatusText,
+    backgroundUploadError,
     clearError: clearBackgroundUploadError,
-  } = useBackgroundUpload();
+    handleBackgroundReadyChange,
+    syncBackgroundImageUrl,
+  } = useBackgroundImageFlow();
 
   useErrorPopups({
     uploadLastError,
@@ -303,6 +308,10 @@ function EditorPageContent() {
     });
     clearBackgroundUploadError();
   }, [backgroundUploadError, clearBackgroundUploadError, showPopup]);
+
+  useEffect(() => {
+    syncBackgroundImageUrl(getSceneBackgroundUrl(sceneSettings));
+  }, [sceneSettings, syncBackgroundImageUrl]);
 
   const addSceneObjectAndFocus = useCallback(
     (sceneObject: SceneObject, label: string) => {
@@ -675,13 +684,13 @@ function EditorPageContent() {
         return;
       }
 
-      const uploadedBackground = await uploadBackground(file, currentProject.id);
+      const uploadedBackground = await uploadBackgroundAndPrepare(file, currentProject.id);
       setSceneSettings((prev) => ({
         ...prev,
         backgroundImage: uploadedBackground,
       }));
     },
-    [currentProject?.id, showPopup, uploadBackground]
+    [currentProject?.id, showPopup, uploadBackgroundAndPrepare]
   );
 
   const handleRemoveBackground = useCallback(async () => {
@@ -1190,6 +1199,7 @@ function EditorPageContent() {
           steps={steps}
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
           backgroundImageUrl={getSceneBackgroundUrl(sceneSettings)}
+          onBackgroundReadyChange={handleBackgroundReadyChange}
         />
 
         {!hasFirstFrame && !isEntryFadeVisible && (
@@ -1301,6 +1311,9 @@ function EditorPageContent() {
                 onUploadBackground={handleUploadBackground}
                 onRemoveBackground={handleRemoveBackground}
                 isUploadingBackground={isUploadingBackground}
+                backgroundUploadStatusText={backgroundUploadStatusText}
+                isBackgroundTextureLoading={isBackgroundTextureLoading}
+                backgroundImageFlowPhase={backgroundImageFlowPhase}
               />
             ),
             rightSidebar: selectedObjectForSidebar ? (

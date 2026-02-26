@@ -124,7 +124,7 @@ export interface SceneContentViewProps {
   previewOutlineParentId: string | null;
   previewOutlineChildPath: string | null;
   backgroundImageUrl?: string;
-  onBackgroundReadyChange?: (ready: boolean) => void;
+  onBackgroundReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
   onPreviewTransformUpdate?: (
     update: {
       position: { x: number; y: number; z: number };

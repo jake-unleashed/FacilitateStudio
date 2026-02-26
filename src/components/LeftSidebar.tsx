@@ -55,6 +55,9 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   onUploadBackground,
   onRemoveBackground,
   isUploadingBackground,
+  backgroundUploadStatusText,
+  isBackgroundTextureLoading,
+  backgroundImageFlowPhase,
 }, ref) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -396,6 +399,9 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
               onUploadBackground={onUploadBackground}
               onRemoveBackground={onRemoveBackground}
               isUploading={isUploadingBackground}
+              statusText={backgroundUploadStatusText}
+              isTextureLoading={isBackgroundTextureLoading}
+              phase={backgroundImageFlowPhase}
             />
           )}
         </div>

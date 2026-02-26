@@ -53,7 +53,7 @@ export interface SceneContentProps {
   previewOutlineTarget?: PreviewOutlineTarget | null;
   onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
   backgroundImageUrl?: string;
-  onBackgroundReadyChange?: (ready: boolean) => void;
+  onBackgroundReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
 }
 
 export function SceneContent({

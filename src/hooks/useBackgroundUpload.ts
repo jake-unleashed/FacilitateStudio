@@ -8,10 +8,13 @@ import {
   toBackgroundImageStorageRef,
   uploadBackgroundImageToStorage,
 } from '../utils/backgroundImageUpload';
+import { optimizeBackgroundImage } from '../utils/backgroundImageOptimize';
 
 interface UseBackgroundUploadResult {
   userId?: string;
+  stage: 'idle' | 'optimizing' | 'uploading';
   isUploading: boolean;
+  statusText: string | null;
   lastError: string | null;
   uploadBackground: (file: File, projectId: string) => Promise<SceneBackgroundImage>;
   removeBackground: (storageKeyOrRef: string | null | undefined) => Promise<void>;
@@ -23,14 +26,16 @@ function validateBackgroundImage(file: File): string | null {
     return 'Use a JPG, PNG, or WebP image for the 360 background.';
   }
   if (file.size > MAX_BACKGROUND_IMAGE_SIZE_BYTES) {
-    return 'Background image must be 25MB or smaller.';
+    return 'Background image must be 100MB or smaller.';
   }
   return null;
 }
 
 export function useBackgroundUpload(): UseBackgroundUploadResult {
   const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [stage, setStage] = useState<'idle' | 'optimizing' | 'uploading'>('idle');
   const [isUploading, setIsUploading] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,6 +60,8 @@ export function useBackgroundUpload(): UseBackgroundUploadResult {
 
   const clearError = useCallback(() => {
     setLastError(null);
+    setStatusText(null);
+    setStage('idle');
   }, []);
 
   const uploadBackground = useCallback(
@@ -76,19 +83,28 @@ export function useBackgroundUpload(): UseBackgroundUploadResult {
       }
 
       setIsUploading(true);
+      setStage('optimizing');
+      setStatusText('Optimizing image...');
       setLastError(null);
+
+      // Yield two animation frames so the browser paints the loading indicator
+      // before heavy image processing (decode + JPEG encode) begins. Without this,
+      // React's state update is committed to the DOM but the browser never gets a
+      // paint cycle until after the synchronous work completes.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
       try {
-        const result = await uploadBackgroundImageToStorage(file, userId, projectId);
-        if (!result) {
-          const errorMessage = 'Failed to upload background image. Please try again.';
-          setLastError(errorMessage);
-          throw new Error(errorMessage);
-        }
+        const uploadFile = await optimizeBackgroundImage(file);
+        setStage('uploading');
+        setStatusText('Uploading...');
+        const result = await uploadBackgroundImageToStorage(uploadFile, userId, projectId);
 
         return {
           storageKey: toBackgroundImageStorageRef(result.storagePath),
           filename: file.name,
-          fileSize: file.size,
+          fileSize: uploadFile.size,
           signedUrl: result.signedUrl,
         };
       } catch (error) {
@@ -97,6 +113,8 @@ export function useBackgroundUpload(): UseBackgroundUploadResult {
         throw error;
       } finally {
         setIsUploading(false);
+        setStatusText(null);
+        setStage('idle');
       }
     },
     [userId]
@@ -112,7 +130,9 @@ export function useBackgroundUpload(): UseBackgroundUploadResult {
 
   return {
     userId,
+    stage,
     isUploading,
+    statusText,
     lastError,
     uploadBackground,
     removeBackground,

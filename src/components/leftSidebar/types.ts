@@ -1,6 +1,7 @@
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import type { GenerationTask } from '../../types/modelGeneration';
 import type { SceneBackgroundImage } from '../../types/sceneSettings';
+import type { BackgroundImageFlowPhase } from '../../hooks/useBackgroundImageFlow';
 import type { ChildMesh, FocusMode, SceneObject, SidebarSection, SimStep } from '../../types';
 
 export interface LeftSidebarProps {
@@ -34,6 +35,10 @@ export interface LeftSidebarProps {
   onUploadBackground?: (file: File) => Promise<void>;
   onRemoveBackground?: () => Promise<void>;
   isUploadingBackground?: boolean;
+  backgroundUploadStatusText?: string | null;
+  /** True while the panoramic texture is downloading/uploading to the GPU after a fresh upload. */
+  isBackgroundTextureLoading?: boolean;
+  backgroundImageFlowPhase?: BackgroundImageFlowPhase;
 }
 
 export interface LeftSidebarHandle {

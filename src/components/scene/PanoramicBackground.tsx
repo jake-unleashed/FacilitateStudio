@@ -5,7 +5,7 @@ import { getCachedBackgroundTexture, loadBackgroundTexture } from '../../utils/b
 
 interface PanoramicBackgroundProps {
   imageUrl: string;
-  onReadyChange?: (ready: boolean) => void;
+  onReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
 }
 
 const SPHERE_RADIUS = GROUND_PLANE_EXTENT;
@@ -35,22 +35,24 @@ export function PanoramicBackground({ imageUrl, onReadyChange }: PanoramicBackgr
     const cachedTexture = getCachedBackgroundTexture(imageUrl);
     if (cachedTexture) {
       setTexture(cachedTexture);
-      onReadyChange?.(true);
+      onReadyChange?.(true, imageUrl);
       return;
     }
 
     let cancelled = false;
-    onReadyChange?.(false);
+    onReadyChange?.(false, imageUrl);
 
     loadBackgroundTexture(imageUrl)
       .then((loaded) => {
         if (cancelled) return;
         setTexture(loaded);
-        onReadyChange?.(true);
+        onReadyChange?.(true, imageUrl);
       })
       .catch(() => {
         if (cancelled) return;
-        onReadyChange?.(true);
+        // We treat failed loads as "done" so the app remains usable, but surface
+        // an error message upstream so the UI can inform the user.
+        onReadyChange?.(true, imageUrl, 'Failed to load the 360 background image. Please try replacing it.');
       });
 
     return () => {
