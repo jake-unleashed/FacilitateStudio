@@ -12,10 +12,31 @@ export interface ScaleSectionProps {
   onBatchStart?: () => void;
   /** Called when slider interaction ends (for undo/redo batching) */
   onBatchEnd?: () => void;
+  /** Optional minimum value for the scale slider. */
+  min?: number;
+  /** Optional maximum value for the scale slider. */
+  max?: number;
+  /** Optional slider step for scale adjustments. */
+  step?: number;
+  /** Optional override text for the low-end label. */
+  minLabel?: string;
+  /** Optional override text for the high-end label. */
+  maxLabel?: string;
 }
 
 export const ScaleSection = memo<ScaleSectionProps>(
-  ({ currentScale, onScaleChange, onScaleCommit, onBatchStart, onBatchEnd }) => {
+  ({
+    currentScale,
+    onScaleChange,
+    onScaleCommit,
+    onBatchStart,
+    onBatchEnd,
+    min = 0.1,
+    max = 3.0,
+    step = 0.1,
+    minLabel,
+    maxLabel,
+  }) => {
     const [isDragging, setIsDragging] = useState(false);
 
     const handleChange = useCallback(
@@ -66,9 +87,9 @@ export const ScaleSection = memo<ScaleSectionProps>(
 
         <input
           type="range"
-          min="0.1"
-          max="3.0"
-          step="0.1"
+          min={min}
+          max={max}
+          step={step}
           value={currentScale}
           onChange={handleChange}
           onMouseDown={handleMouseDown}
@@ -79,8 +100,8 @@ export const ScaleSection = memo<ScaleSectionProps>(
           data-testid="scale-slider"
         />
         <div className="mt-1 flex justify-between text-xs font-medium text-slate-400">
-          <span>0.1x</span>
-          <span>3.0x</span>
+          <span>{minLabel ?? `${min.toFixed(1)}x`}</span>
+          <span>{maxLabel ?? `${max.toFixed(1)}x`}</span>
         </div>
       </div>
     );

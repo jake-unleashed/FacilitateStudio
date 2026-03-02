@@ -18,6 +18,8 @@ export interface PublishedSnapshot {
   sceneSettings?: SceneSettings & {
     /** Public URL in the `published-assets` bucket for the 360 background image. */
     backgroundImageUrl?: string;
+    /** Backward/forward compatible direct URL for generated world environment SPZ. */
+    worldEnvironmentUrl?: string;
   };
   simulationSettings?: SimulationSettings;
   assetManifest: Record<string, AssetManifestEntry>;

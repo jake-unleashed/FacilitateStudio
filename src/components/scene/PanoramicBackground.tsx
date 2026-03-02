@@ -12,6 +12,9 @@ const SPHERE_RADIUS = GROUND_PLANE_EXTENT;
 const SPHERE_WIDTH_SEGMENTS = 64;
 const SPHERE_HEIGHT_SEGMENTS = 32;
 
+/** Lifts the sphere above y=0 so objects on the ground sit in the lower-center of the panorama. */
+const SPHERE_Y_OFFSET = 1.5;
+
 const GROUND_DISC_RADIUS = SPHERE_RADIUS * 0.85;
 const GROUND_DISC_SEGMENTS = 64;
 const GROUND_DISC_OPACITY = 0.3;
@@ -134,7 +137,7 @@ gl_FragColor.a *= edgeFade;`
   return (
     <group>
       {/* eslint-disable react/no-unknown-property */}
-      <mesh ref={sphereRef} renderOrder={-2} material={sphereMaterial}>
+      <mesh ref={sphereRef} renderOrder={-2} material={sphereMaterial} position={[0, SPHERE_Y_OFFSET, 0]}>
         <sphereGeometry args={[SPHERE_RADIUS, SPHERE_WIDTH_SEGMENTS, SPHERE_HEIGHT_SEGMENTS]} />
       </mesh>
       <mesh

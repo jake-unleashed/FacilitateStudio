@@ -29,6 +29,7 @@ import {
 import { TransformGizmo } from '../transformGizmo';
 import { GridWithNoDepth } from '../GridWithNoDepth';
 import { PanoramicBackground } from '../PanoramicBackground';
+import { WorldEnvironmentRenderer } from '../WorldEnvironmentRenderer';
 
 // Check if we're in development mode (Vite provides this)
 const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
@@ -125,6 +126,17 @@ export interface SceneContentViewProps {
   previewOutlineChildPath: string | null;
   backgroundImageUrl?: string;
   onBackgroundReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
+  worldEnvironmentUrl?: string;
+  worldEnvironmentTransform?: {
+    positionX?: number;
+    positionY?: number;
+    positionZ?: number;
+    rotationX?: number;
+    rotationY?: number;
+    rotationZ?: number;
+    scale?: number;
+  };
+  onWorldEnvironmentReadyChange?: (ready: boolean, worldUrl?: string, errorMessage?: string) => void;
   onPreviewTransformUpdate?: (
     update: {
       position: { x: number; y: number; z: number };
@@ -187,6 +199,7 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
   const canUsePreviewOrbit = previewAllowOrbit && !isPreviewInteractionLocked;
   const canUsePreviewZoom = previewAllowZoom && !isPreviewInteractionLocked;
   const hasPanoramicBackground = typeof props.backgroundImageUrl === 'string' && props.backgroundImageUrl.length > 0;
+  const hasWorldEnvironment = typeof props.worldEnvironmentUrl === 'string' && props.worldEnvironmentUrl.length > 0;
 
   return (
     <>
@@ -225,26 +238,43 @@ export const SceneContentView: React.FC<SceneContentViewProps> = (props) => {
       <Suspense fallback={null}>
         <Environment preset="city" />
       </Suspense>
-      {hasPanoramicBackground && (
+      {!hasWorldEnvironment && hasPanoramicBackground && (
         <PanoramicBackground
           imageUrl={props.backgroundImageUrl!}
           onReadyChange={props.onBackgroundReadyChange}
+        />
+      )}
+      {hasWorldEnvironment && (
+        <WorldEnvironmentRenderer
+          spzUrl={props.worldEnvironmentUrl!}
+          positionOverride={{
+            x: props.worldEnvironmentTransform?.positionX,
+            y: props.worldEnvironmentTransform?.positionY,
+            z: props.worldEnvironmentTransform?.positionZ,
+          }}
+          rotationOverride={{
+            x: props.worldEnvironmentTransform?.rotationX,
+            y: props.worldEnvironmentTransform?.rotationY,
+            z: props.worldEnvironmentTransform?.rotationZ,
+          }}
+          scaleOverride={props.worldEnvironmentTransform?.scale}
+          onReadyChange={props.onWorldEnvironmentReadyChange}
         />
       )}
 
       <PerspectiveCamera makeDefault position={DEFAULT_CAMERA_POSITION} fov={35} />
 
       <FixedContactShadows
-        opacity={hasPanoramicBackground ? 0.6 : 0.18}
+        opacity={hasPanoramicBackground || hasWorldEnvironment ? 0.6 : 0.18}
         scale={GROUND_PLANE_EXTENT * 2}
-        blur={hasPanoramicBackground ? 0.7 : 1.2}
+        blur={hasPanoramicBackground || hasWorldEnvironment ? 0.7 : 1.2}
         far={1.5}
         resolution={1024}
         smooth={true}
         color="#1e293b"
       />
 
-      {!(props.previewMode && hasPanoramicBackground) && (
+      {!(props.previewMode && (hasPanoramicBackground || hasWorldEnvironment)) && (
         <GridWithNoDepth
           args={[GROUND_PLANE_EXTENT * 2, GROUND_PLANE_EXTENT * 2]}
           cellSize={1}

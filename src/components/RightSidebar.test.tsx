@@ -149,7 +149,7 @@ describe('RightSidebar', () => {
       render(<RightSidebar {...defaultProps} />);
       const slider = screen.getByTestId('scale-slider');
       expect(slider).toHaveAttribute('min', '0.1');
-      expect(slider).toHaveAttribute('max', '3.0');
+      expect(slider).toHaveAttribute('max', '3');
       expect(slider).toHaveAttribute('step', '0.1');
     });
 

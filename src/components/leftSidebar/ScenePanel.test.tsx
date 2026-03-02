@@ -11,11 +11,18 @@ const mockBackgroundImage: SceneBackgroundImage = {
 };
 
 describe('ScenePanel', () => {
-  it('shows upload format hint without hardcoded MB cap text', () => {
+  it('shows only 360 upload by default when world environment is disabled', () => {
     render(<ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} />);
 
-    expect(screen.getByText('JPG, PNG, WebP')).toBeInTheDocument();
-    expect(screen.queryByText(/25MB/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Upload 360 Image')).toBeInTheDocument();
+    expect(screen.queryByText('Generate 3D Environment')).not.toBeInTheDocument();
+  });
+
+  it('shows both environment entry options when world environment is enabled', () => {
+    render(<ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} worldEnvironmentEnabled />);
+
+    expect(screen.getByText('Upload 360 Image')).toBeInTheDocument();
+    expect(screen.getByText('Generate 3D Environment')).toBeInTheDocument();
   });
 
   it('shows statusText when uploading', () => {
@@ -23,6 +30,7 @@ describe('ScenePanel', () => {
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
+        backgroundImage={mockBackgroundImage}
         isUploading
         statusText="Optimizing image..."
       />
@@ -47,9 +55,16 @@ describe('ScenePanel', () => {
   });
 
   it('falls back to default uploading text when statusText is missing', () => {
-    render(<ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} isUploading />);
+    render(
+      <ScenePanel
+        onUploadBackground={vi.fn()}
+        onRemoveBackground={vi.fn()}
+        backgroundImage={mockBackgroundImage}
+        isUploading
+      />
+    );
 
-    expect(screen.getByText('Uploading 360 image...')).toBeInTheDocument();
+    expect(screen.getByText('Uploading...')).toBeInTheDocument();
   });
 
   it('calls onUploadBackground when user picks a file', () => {

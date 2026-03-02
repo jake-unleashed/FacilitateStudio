@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Bug, Box, ChevronDown, Cpu, Monitor, Play } from 'lucide-react';
+import { Activity, Bug, Box, ChevronDown, Cpu, Globe2, Monitor, Play } from 'lucide-react';
 import { Button } from './Button';
 import type { PerformanceStats } from './PerformanceMonitor';
 
@@ -10,6 +10,10 @@ interface DebugMenuProps {
   /** Whether performance monitoring is enabled in this build/runtime (typically dev-only). */
   performanceEnabled?: boolean;
   performanceStats?: PerformanceStats | null;
+  /** Whether the experimental World Labs 3D environment feature is enabled. */
+  worldEnvironmentEnabled?: boolean;
+  /** Toggle the experimental World Labs 3D environment feature on/off. */
+  onToggleWorldEnvironment?: (enabled: boolean) => void;
 }
 
 export const DebugMenu: React.FC<DebugMenuProps> = ({
@@ -18,6 +22,8 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
   hasSelectedObject,
   performanceEnabled = false,
   performanceStats = null,
+  worldEnvironmentEnabled = false,
+  onToggleWorldEnvironment,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const prevHasSelectedObjectRef = useRef(hasSelectedObject);
@@ -100,6 +106,41 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
                     <Play size={14} className="text-green-500" />
                     <span className="text-slate-700">Populate Test Steps</span>
                   </Button>
+                </>
+              )}
+
+              {onToggleWorldEnvironment && (
+                <>
+                  <p className="mt-2 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Experiments
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onToggleWorldEnvironment(!worldEnvironmentEnabled)}
+                    aria-label={`${worldEnvironmentEnabled ? 'Disable' : 'Enable'} 3D Environments feature`}
+                    aria-pressed={worldEnvironmentEnabled}
+                    className={`flex items-center justify-between gap-2 rounded-[16px] border px-4 py-2.5 text-left transition-all ${
+                      worldEnvironmentEnabled
+                        ? 'border-indigo-200 bg-indigo-50/80 text-indigo-700'
+                        : 'border-white/50 bg-white/60 text-slate-700 hover:bg-white/80'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Globe2 size={14} className={worldEnvironmentEnabled ? 'text-indigo-500' : 'text-slate-400'} />
+                      <span className="text-xs font-medium">3D Environments</span>
+                    </span>
+                    <span
+                      className={`inline-block h-4 w-7 rounded-full transition-colors ${
+                        worldEnvironmentEnabled ? 'bg-indigo-500' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 block h-3 w-3 rounded-full bg-white shadow transition-transform ${
+                          worldEnvironmentEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </span>
+                  </button>
                 </>
               )}
 

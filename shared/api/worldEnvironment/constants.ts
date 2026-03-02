@@ -1,0 +1,6 @@
+export const WORLD_LABS_API_BASE_URL = 'https://api.worldlabs.ai';
+export const WORLD_LABS_DEFAULT_MODEL = 'Marble 0.1-plus';
+
+export const MAX_WORLD_ENVIRONMENT_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
+export const DEFAULT_WORLD_ENVIRONMENT_USER_LIMIT_PER_MINUTE = 5;
+export const DEFAULT_WORLD_ENVIRONMENT_IP_LIMIT_PER_MINUTE = 10;

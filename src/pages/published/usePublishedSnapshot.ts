@@ -10,7 +10,7 @@ import { clearAssetResolver, setAssetResolver } from '../../utils/modelCache';
 import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
 import { preloadBackgroundTexture } from '../../utils/backgroundTextureCache';
 import { logger } from '../../utils/logger';
-import { getPublishedSceneBackgroundUrl } from '../../utils/sceneBackgroundUrl';
+import { getPublishedSceneBackgroundUrl, getPublishedSceneWorldEnvironmentUrl } from '../../utils/sceneBackgroundUrl';
 
 interface PublishedProject {
   objects: SceneObject[];
@@ -83,6 +83,7 @@ export function usePublishedSnapshot(
         });
 
         const backgroundUrl = getPublishedSceneBackgroundUrl(snapshot.sceneSettings);
+        const worldEnvironmentUrl = getPublishedSceneWorldEnvironmentUrl(snapshot.sceneSettings);
         preloadBackgroundTexture(backgroundUrl);
 
         const normalizedSceneSettings = toSceneSettings({
@@ -91,6 +92,12 @@ export function usePublishedSnapshot(
             ? {
                 ...snapshot.sceneSettings.backgroundImage,
                 signedUrl: backgroundUrl,
+              }
+            : undefined,
+          worldEnvironment: snapshot.sceneSettings?.worldEnvironment
+            ? {
+                ...snapshot.sceneSettings.worldEnvironment,
+                spzUrl: worldEnvironmentUrl ?? snapshot.sceneSettings.worldEnvironment.spzUrl,
               }
             : undefined,
         });

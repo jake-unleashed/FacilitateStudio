@@ -34,6 +34,17 @@ import { validateModelGenerationServerEnv } from '../shared/api/modelGeneration/
 import { estimateTargetPolycount } from '../shared/api/modelGeneration/estimatePolycount.js';
 import { parseGenerationRequestBody } from '../shared/api/modelGeneration/helpers.js';
 import { createGenerationProvider } from '../shared/api/modelGeneration/providerFactory.js';
+import {
+  DEFAULT_WORLD_ENVIRONMENT_IP_LIMIT_PER_MINUTE,
+  DEFAULT_WORLD_ENVIRONMENT_USER_LIMIT_PER_MINUTE,
+  MAX_WORLD_ENVIRONMENT_REQUEST_BODY_BYTES,
+} from '../shared/api/worldEnvironment/constants.js';
+import { validateWorldEnvironmentServerEnv } from '../shared/api/worldEnvironment/env.js';
+import {
+  createWorldEnvironmentGeneration,
+  getWorldEnvironmentStatus,
+  parseWorldEnvironmentCreateRequestBody,
+} from '../shared/api/worldEnvironment/helpers.js';
 
 // Load local environment variables for development.
 // - `.env.local` is gitignored and is where secrets should live.
@@ -91,6 +102,22 @@ app.use('/api/ai/extract-steps', (req: Request, res: Response, next: NextFunctio
   next();
 });
 app.use('/api/ai/generate-model', (req: Request, res: Response, next: NextFunction) => {
+  const corsHeaders = buildCorsHeaders(
+    req.get('origin') ?? null,
+    process.env.AI_GENERATE_ALLOWED_ORIGINS ?? process.env.AI_EXTRACT_ALLOWED_ORIGINS
+  );
+  if (corsHeaders) {
+    Object.entries(corsHeaders).forEach(([name, value]) => {
+      res.setHeader(name, value);
+    });
+  }
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
+app.use('/api/ai/world-environment', (req: Request, res: Response, next: NextFunction) => {
   const corsHeaders = buildCorsHeaders(
     req.get('origin') ?? null,
     process.env.AI_GENERATE_ALLOWED_ORIGINS ?? process.env.AI_EXTRACT_ALLOWED_ORIGINS
@@ -475,6 +502,143 @@ app.get('/api/ai/generate-model/download', async (req: Request, res: Response) =
           ? `Failed to download generated model. (${message})`
           : 'Failed to download generated model.',
     });
+  }
+});
+
+app.post('/api/ai/world-environment', async (req: Request, res: Response) => {
+  const requestId = randomUUID();
+  const token = parseBearerToken(req.get('authorization'));
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const envValidation = validateWorldEnvironmentServerEnv(process.env as Record<string, string | undefined>, {
+    allowViteSupabaseUrlFallback: true,
+  });
+  if (!envValidation.ok) {
+    captureServerException(new Error(envValidation.message), {
+      requestId,
+      stage: 'world_environment_env_validation',
+    });
+    return res.status(500).json({ error: 'Server misconfiguration' });
+  }
+
+  const supabaseAdmin = createClient(
+    envValidation.values.supabaseUrl,
+    envValidation.values.supabaseServiceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+  if (authError || !authData.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const userId = authData.user.id;
+
+  const now = Date.now();
+  const userLimit = parseLimit(
+    process.env.AI_WORLD_ENV_RATE_LIMIT_PER_USER,
+    DEFAULT_WORLD_ENVIRONMENT_USER_LIMIT_PER_MINUTE
+  );
+  const ipLimit = parseLimit(
+    process.env.AI_WORLD_ENV_RATE_LIMIT_PER_IP,
+    DEFAULT_WORLD_ENVIRONMENT_IP_LIMIT_PER_MINUTE
+  );
+
+  const userLimitResult = await rateLimiter.check(`world-env:user:${userId}`, userLimit, now);
+  if (!userLimitResult.allowed) {
+    return res
+      .status(429)
+      .setHeader('Retry-After', String(userLimitResult.retryAfterSeconds))
+      .json({ error: 'Rate limit exceeded. Please try again shortly.' });
+  }
+
+  const clientIp = getClientIp(req);
+  const ipLimitResult = await rateLimiter.check(`world-env:ip:${clientIp}`, ipLimit, now);
+  if (!ipLimitResult.allowed) {
+    return res
+      .status(429)
+      .setHeader('Retry-After', String(ipLimitResult.retryAfterSeconds))
+      .json({ error: 'Rate limit exceeded. Please try again shortly.' });
+  }
+
+  const contentLength = Number(req.get('content-length') ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_WORLD_ENVIRONMENT_REQUEST_BODY_BYTES) {
+    return res.status(413).json({ error: 'Request body too large' });
+  }
+
+  const parsedRequest = parseWorldEnvironmentCreateRequestBody(req.body);
+  if (!parsedRequest.ok) {
+    return res.status(parsedRequest.status).json({ error: parsedRequest.error });
+  }
+
+  try {
+    const created = await createWorldEnvironmentGeneration({
+      apiKey: envValidation.values.worldLabsApiKey,
+      imageDataUrl: parsedRequest.imageDataUrl,
+      imageName: parsedRequest.imageName,
+    });
+    return res.status(200).json({ operationId: created.operationId });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[dev-api] world environment create failed:', error);
+    captureServerException(error, {
+      requestId,
+      userId,
+      stage: 'world_environment_create',
+    });
+    return res.status(502).json({ error: 'Failed to start world environment generation.' });
+  }
+});
+
+app.get('/api/ai/world-environment/status', async (req: Request, res: Response) => {
+  const operationId = req.query.operationId;
+  if (typeof operationId !== 'string' || !operationId) {
+    return res.status(400).json({ error: 'operationId is required' });
+  }
+
+  const token = parseBearerToken(req.get('authorization'));
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const envValidation = validateWorldEnvironmentServerEnv(process.env as Record<string, string | undefined>, {
+    allowViteSupabaseUrlFallback: true,
+  });
+  if (!envValidation.ok) {
+    return res.status(500).json({ error: 'Server misconfiguration' });
+  }
+
+  const supabaseAdmin = createClient(
+    envValidation.values.supabaseUrl,
+    envValidation.values.supabaseServiceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+  if (authError || !authData.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const status = await getWorldEnvironmentStatus({
+      apiKey: envValidation.values.worldLabsApiKey,
+      operationId,
+    });
+    return res.status(200).json(status);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[dev-api] world environment status failed:', error);
+    captureServerException(error, { stage: 'world_environment_status', operationId });
+    return res.status(502).json({ error: 'Failed to fetch world generation status.' });
   }
 });
 

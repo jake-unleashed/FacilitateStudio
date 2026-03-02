@@ -14,7 +14,7 @@ import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/chil
 import CameraControlsImpl from 'camera-controls';
 import { logger } from '../utils/logger';
 import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
-import { getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
+import { getSceneBackgroundUrl, getSceneWorldEnvironmentUrl } from '../utils/sceneBackgroundUrl';
 
 /**
  * PreviewPage - Full-screen preview mode for experiencing the training simulation.
@@ -264,6 +264,8 @@ export function PreviewPage() {
           }
         }}
         backgroundImageUrl={getSceneBackgroundUrl(project.sceneSettings)}
+        worldEnvironmentUrl={getSceneWorldEnvironmentUrl(project.sceneSettings)}
+        worldEnvironmentTransform={project.sceneSettings?.worldEnvironment}
       />
 
       <PreviewSettingsPanel

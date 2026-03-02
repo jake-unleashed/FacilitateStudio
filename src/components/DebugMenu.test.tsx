@@ -228,6 +228,67 @@ describe('DebugMenu', () => {
     });
   });
 
+  describe('world environment experiment toggle', () => {
+    it('does not show Experiments section when onToggleWorldEnvironment is not provided', () => {
+      render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.queryByText('Experiments')).not.toBeInTheDocument();
+    });
+
+    it('shows Experiments section when onToggleWorldEnvironment is provided', () => {
+      render(<DebugMenu {...defaultProps} onToggleWorldEnvironment={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.getByText('Experiments')).toBeInTheDocument();
+    });
+
+    it('shows 3D Environments toggle button in Experiments section', () => {
+      render(<DebugMenu {...defaultProps} onToggleWorldEnvironment={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.getByText('3D Environments')).toBeInTheDocument();
+    });
+
+    it('calls onToggleWorldEnvironment with true when toggled on', () => {
+      const onToggle = vi.fn();
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleWorldEnvironment={onToggle}
+          worldEnvironmentEnabled={false}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      fireEvent.click(screen.getByRole('button', { name: /Enable 3D Environments/i }));
+      expect(onToggle).toHaveBeenCalledWith(true);
+    });
+
+    it('calls onToggleWorldEnvironment with false when toggled off', () => {
+      const onToggle = vi.fn();
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleWorldEnvironment={onToggle}
+          worldEnvironmentEnabled={true}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      fireEvent.click(screen.getByRole('button', { name: /Disable 3D Environments/i }));
+      expect(onToggle).toHaveBeenCalledWith(false);
+    });
+
+    it('toggle reflects aria-pressed state correctly', () => {
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleWorldEnvironment={vi.fn()}
+          worldEnvironmentEnabled={true}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      const toggle = screen.getByRole('button', { name: /3D Environments/i });
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
   describe('z-index layering', () => {
     it('has z-index higher than other UI panels to appear on top', () => {
       const { container } = render(<DebugMenu {...defaultProps} />);

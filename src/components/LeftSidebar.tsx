@@ -58,6 +58,16 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   backgroundUploadStatusText,
   isBackgroundTextureLoading,
   backgroundImageFlowPhase,
+  worldEnvironment,
+  onGenerateWorldEnvironment,
+  onRemoveWorldEnvironment,
+  onCancelWorldEnvironment,
+  onWorldEnvironmentTransformChange,
+  worldEnvironmentStatusText,
+  worldEnvironmentFlowPhase,
+  isWorldEnvironmentWorking,
+  worldEnvironmentPendingFilename,
+  worldEnvironmentEnabled,
 }, ref) => {
   // State for tracking which step is open
   const [openedStepId, setOpenedStepId] = useState<string | null>(null);
@@ -393,15 +403,27 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
             </div>
           )}
 
-          {activeTab === 'scenes' && onUploadBackground && onRemoveBackground && (
+          {activeTab === 'scenes' &&
+            onUploadBackground &&
+            onRemoveBackground && (
             <ScenePanel
               backgroundImage={backgroundImage}
+              worldEnvironment={worldEnvironment}
               onUploadBackground={onUploadBackground}
               onRemoveBackground={onRemoveBackground}
+              onGenerateWorldEnvironment={onGenerateWorldEnvironment}
+              onRemoveWorldEnvironment={onRemoveWorldEnvironment}
+              onCancelWorldEnvironment={onCancelWorldEnvironment}
+              onWorldEnvironmentTransformChange={onWorldEnvironmentTransformChange}
               isUploading={isUploadingBackground}
               statusText={backgroundUploadStatusText}
               isTextureLoading={isBackgroundTextureLoading}
               phase={backgroundImageFlowPhase}
+              worldEnvironmentStatusText={worldEnvironmentStatusText}
+              worldEnvironmentPhase={worldEnvironmentFlowPhase}
+              isWorldEnvironmentWorking={isWorldEnvironmentWorking}
+              worldEnvironmentPendingFilename={worldEnvironmentPendingFilename}
+              worldEnvironmentEnabled={worldEnvironmentEnabled}
             />
           )}
         </div>

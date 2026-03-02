@@ -29,11 +29,13 @@ import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
 import { useModelGeneration } from '../hooks/useModelGeneration';
 import { useBackgroundImageFlow } from '../hooks/useBackgroundImageFlow';
+import { useWorldEnvironmentFlow } from '../hooks/useWorldEnvironmentFlow';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
 import { logger } from '../utils/logger';
-import { getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
+import { getSceneBackgroundUrl, getSceneWorldEnvironmentUrl } from '../utils/sceneBackgroundUrl';
 import { DEFAULT_SCENE_SETTINGS, toSceneSettings } from '../types/sceneSettings';
+import type { SceneWorldEnvironment } from '../types/sceneSettings';
 import { toSimulationSettings } from '../types/simulationSettings';
 import { PopupProvider, usePopup } from '../contexts/PopupContext';
 import { GuidedWorkflowProvider } from '../contexts/GuidedWorkflowContext';
@@ -109,6 +111,8 @@ function EditorPageContent() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [steps, setSteps] = useState<SimStep[]>(INITIAL_STEPS);
   const [sceneSettings, setSceneSettings] = useState(DEFAULT_SCENE_SETTINGS);
+  const [worldEnvironmentPendingFilename, setWorldEnvironmentPendingFilename] = useState<string | null>(null);
+  const [worldEnvironmentEnabled, setWorldEnvironmentEnabled] = useState(false);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
   // Recording state for move-item step end position
   // recordingPositionForStepId is owned by useRecordingEndTransform (below)
@@ -290,6 +294,18 @@ function EditorPageContent() {
     handleBackgroundReadyChange,
     syncBackgroundImageUrl,
   } = useBackgroundImageFlow();
+  const {
+    currentEnvironment,
+    phase: worldEnvironmentFlowPhase,
+    statusText: worldEnvironmentStatusText,
+    error: worldEnvironmentError,
+    isWorking: isWorldEnvironmentWorking,
+    generateEnvironment,
+    resumePolling,
+    cancelGeneration: cancelWorldEnvironmentGeneration,
+    markEnvironmentReady: markWorldEnvironmentReady,
+    clearError: clearWorldEnvironmentError,
+  } = useWorldEnvironmentFlow();
 
   useErrorPopups({
     uploadLastError,
@@ -308,6 +324,42 @@ function EditorPageContent() {
     });
     clearBackgroundUploadError();
   }, [backgroundUploadError, clearBackgroundUploadError, showPopup]);
+
+  useEffect(() => {
+    if (!worldEnvironmentError) return;
+    showPopup({
+      type: 'error',
+      title: '3D Environment Generation Failed',
+      message: worldEnvironmentError,
+    });
+    clearWorldEnvironmentError();
+  }, [clearWorldEnvironmentError, showPopup, worldEnvironmentError]);
+
+  useEffect(() => {
+    if (!currentEnvironment) return;
+    setWorldEnvironmentPendingFilename(null);
+    setSceneSettings((prev) => ({
+      ...prev,
+      backgroundImage: undefined,
+      worldEnvironment: currentEnvironment,
+    }));
+  }, [currentEnvironment]);
+
+  const resumedWorldOperationIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Avoid competing poll loops: this effect is only for reload resume.
+    if (worldEnvironmentFlowPhase === 'uploading' || worldEnvironmentFlowPhase === 'generating') {
+      return;
+    }
+    const worldEnvironment = sceneSettings.worldEnvironment;
+    if (!worldEnvironment || worldEnvironment.status !== 'generating') {
+      resumedWorldOperationIdRef.current = null;
+      return;
+    }
+    if (resumedWorldOperationIdRef.current === worldEnvironment.operationId) return;
+    resumedWorldOperationIdRef.current = worldEnvironment.operationId;
+    void resumePolling(worldEnvironment);
+  }, [resumePolling, sceneSettings.worldEnvironment, worldEnvironmentFlowPhase]);
 
   useEffect(() => {
     syncBackgroundImageUrl(getSceneBackgroundUrl(sceneSettings));
@@ -688,6 +740,7 @@ function EditorPageContent() {
       setSceneSettings((prev) => ({
         ...prev,
         backgroundImage: uploadedBackground,
+        worldEnvironment: undefined,
       }));
     },
     [currentProject?.id, showPopup, uploadBackgroundAndPrepare]
@@ -702,6 +755,68 @@ function EditorPageContent() {
       };
     });
   }, [removeBackground]);
+
+  const handleGenerateWorldEnvironment = useCallback(
+    async (file: File) => {
+      if (!currentProject?.id) {
+        showPopup({
+          type: 'error',
+          title: '3D Environment Generation Failed',
+          message: 'Save your project before generating a 3D environment.',
+        });
+        return;
+      }
+      setWorldEnvironmentPendingFilename(file.name);
+      try {
+        await generateEnvironment(file);
+      } catch (error) {
+        setWorldEnvironmentPendingFilename(null);
+        throw error;
+      }
+    },
+    [currentProject?.id, generateEnvironment, showPopup]
+  );
+
+  const handleRemoveWorldEnvironment = useCallback(async () => {
+    cancelWorldEnvironmentGeneration();
+    setWorldEnvironmentPendingFilename(null);
+    setSceneSettings((prev) => ({
+      ...prev,
+      worldEnvironment: undefined,
+    }));
+  }, [cancelWorldEnvironmentGeneration]);
+
+  const handleCancelWorldEnvironment = useCallback(() => {
+    cancelWorldEnvironmentGeneration();
+    setWorldEnvironmentPendingFilename(null);
+    setSceneSettings((prev) => ({
+      ...prev,
+      worldEnvironment: undefined,
+    }));
+  }, [cancelWorldEnvironmentGeneration]);
+
+  const handleWorldEnvironmentTransformChange = useCallback(
+    (
+      updates: Partial<
+        Pick<
+          SceneWorldEnvironment,
+          'positionX' | 'positionY' | 'positionZ' | 'rotationX' | 'rotationY' | 'rotationZ' | 'scale'
+        >
+      >
+    ) => {
+      setSceneSettings((prev) => {
+        if (!prev.worldEnvironment) return prev;
+        return {
+          ...prev,
+          worldEnvironment: {
+            ...prev.worldEnvironment,
+            ...updates,
+          },
+        };
+      });
+    },
+    []
+  );
 
   const handlePopulateTestSteps = useCallback(() => {
     beginBatch();
@@ -1200,6 +1315,11 @@ function EditorPageContent() {
           latestRecordingEndPositionRef={latestRecordingEndPositionRef}
           backgroundImageUrl={getSceneBackgroundUrl(sceneSettings)}
           onBackgroundReadyChange={handleBackgroundReadyChange}
+          worldEnvironmentUrl={getSceneWorldEnvironmentUrl(sceneSettings)}
+          worldEnvironmentTransform={sceneSettings.worldEnvironment}
+          onWorldEnvironmentReadyChange={(ready, _worldUrl, errorMessage) => {
+            markWorldEnvironmentReady(ready, errorMessage);
+          }}
         />
 
         {!hasFirstFrame && !isEntryFadeVisible && (
@@ -1314,6 +1434,16 @@ function EditorPageContent() {
                 backgroundUploadStatusText={backgroundUploadStatusText}
                 isBackgroundTextureLoading={isBackgroundTextureLoading}
                 backgroundImageFlowPhase={backgroundImageFlowPhase}
+                worldEnvironment={sceneSettings.worldEnvironment}
+                onGenerateWorldEnvironment={handleGenerateWorldEnvironment}
+                onRemoveWorldEnvironment={handleRemoveWorldEnvironment}
+                onCancelWorldEnvironment={handleCancelWorldEnvironment}
+                onWorldEnvironmentTransformChange={handleWorldEnvironmentTransformChange}
+                worldEnvironmentStatusText={worldEnvironmentStatusText}
+                worldEnvironmentFlowPhase={worldEnvironmentFlowPhase}
+                isWorldEnvironmentWorking={isWorldEnvironmentWorking}
+                worldEnvironmentPendingFilename={worldEnvironmentPendingFilename}
+                worldEnvironmentEnabled={worldEnvironmentEnabled}
               />
             ),
             rightSidebar: selectedObjectForSidebar ? (
@@ -1337,6 +1467,8 @@ function EditorPageContent() {
                 hasSelectedObject={hasSelectedObject}
                 performanceEnabled={import.meta.env.DEV ?? process.env.NODE_ENV === 'development'}
                 performanceStats={performanceStats}
+                worldEnvironmentEnabled={worldEnvironmentEnabled}
+                onToggleWorldEnvironment={setWorldEnvironmentEnabled}
               />
             ),
             publishModal: currentProject ? (

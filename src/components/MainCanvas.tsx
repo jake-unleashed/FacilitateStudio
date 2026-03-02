@@ -72,6 +72,20 @@ interface MainCanvasProps {
   backgroundImageUrl?: string;
   /** Fires whenever the panoramic background texture transitions between loading and ready states. */
   onBackgroundReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
+  /** Optional World Labs SPZ world environment URL. */
+  worldEnvironmentUrl?: string;
+  /** Optional transform overrides for world environment placement. */
+  worldEnvironmentTransform?: {
+    positionX?: number;
+    positionY?: number;
+    positionZ?: number;
+    rotationX?: number;
+    rotationY?: number;
+    rotationZ?: number;
+    scale?: number;
+  };
+  /** Fires whenever the world environment transitions between loading and ready states. */
+  onWorldEnvironmentReadyChange?: (ready: boolean, worldUrl?: string, errorMessage?: string) => void;
 }
 
 function FirstFrameNotifier({
@@ -119,10 +133,16 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   shouldAnimateMoveItem = false,
   backgroundImageUrl,
   onBackgroundReadyChange,
+  worldEnvironmentUrl,
+  worldEnvironmentTransform,
+  onWorldEnvironmentReadyChange,
 }) => {
   const [previewOutlineTarget, setPreviewOutlineTarget] = useState<PreviewOutlineTarget | null>(null);
   const [isPanoramicReady, setIsPanoramicReady] = useState<boolean>(
     () => !backgroundImageUrl || hasCachedBackgroundTexture(backgroundImageUrl)
+  );
+  const [isWorldEnvironmentReady, setIsWorldEnvironmentReady] = useState<boolean>(
+    () => !worldEnvironmentUrl
   );
 
   useEffect(() => {
@@ -142,10 +162,25 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
     setIsPanoramicReady(hasCachedBackgroundTexture(backgroundImageUrl));
   }, [backgroundImageUrl]);
 
+  const prevWorldEnvironmentUrlRef = useRef(worldEnvironmentUrl);
+  useEffect(() => {
+    if (prevWorldEnvironmentUrlRef.current === worldEnvironmentUrl) return;
+    prevWorldEnvironmentUrlRef.current = worldEnvironmentUrl;
+    setIsWorldEnvironmentReady(!worldEnvironmentUrl);
+  }, [worldEnvironmentUrl]);
+
   const handleBackgroundReadyChange = useCallback((ready: boolean, imageUrl?: string, errorMessage?: string) => {
     setIsPanoramicReady(ready);
     onBackgroundReadyChange?.(ready, imageUrl, errorMessage);
   }, [onBackgroundReadyChange]);
+
+  const handleWorldEnvironmentReadyChange = useCallback(
+    (ready: boolean, worldUrl?: string, errorMessage?: string) => {
+      setIsWorldEnvironmentReady(ready);
+      onWorldEnvironmentReadyChange?.(ready, worldUrl, errorMessage);
+    },
+    [onWorldEnvironmentReadyChange]
+  );
 
   // Track if we've notified about canvas being ready
   const hasNotifiedCanvasRef = useRef(false);
@@ -221,13 +256,16 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
             onPreviewOutlineTargetChange={setPreviewOutlineTarget}
             backgroundImageUrl={backgroundImageUrl}
             onBackgroundReadyChange={handleBackgroundReadyChange}
+            worldEnvironmentUrl={worldEnvironmentUrl}
+            worldEnvironmentTransform={worldEnvironmentTransform}
+            onWorldEnvironmentReadyChange={handleWorldEnvironmentReadyChange}
           />
 
           {onFirstFrame && (
             <FirstFrameNotifier
               onFirstFrame={onFirstFrame}
               hasNotifiedFirstFrameRef={hasNotifiedFirstFrameRef}
-              isReadyToNotify={!backgroundImageUrl || isPanoramicReady}
+              isReadyToNotify={(!backgroundImageUrl || isPanoramicReady) && (!worldEnvironmentUrl || isWorldEnvironmentReady)}
             />
           )}
           {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}

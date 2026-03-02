@@ -1,7 +1,8 @@
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import type { GenerationTask } from '../../types/modelGeneration';
-import type { SceneBackgroundImage } from '../../types/sceneSettings';
+import type { SceneBackgroundImage, SceneWorldEnvironment } from '../../types/sceneSettings';
 import type { BackgroundImageFlowPhase } from '../../hooks/useBackgroundImageFlow';
+import type { WorldEnvironmentFlowPhase } from '../../types/worldEnvironment';
 import type { ChildMesh, FocusMode, SceneObject, SidebarSection, SimStep } from '../../types';
 
 export interface LeftSidebarProps {
@@ -39,6 +40,24 @@ export interface LeftSidebarProps {
   /** True while the panoramic texture is downloading/uploading to the GPU after a fresh upload. */
   isBackgroundTextureLoading?: boolean;
   backgroundImageFlowPhase?: BackgroundImageFlowPhase;
+  worldEnvironment?: SceneWorldEnvironment;
+  onGenerateWorldEnvironment?: (file: File) => Promise<void>;
+  onRemoveWorldEnvironment?: () => Promise<void>;
+  onCancelWorldEnvironment?: () => void;
+  onWorldEnvironmentTransformChange?: (
+    updates: Partial<
+      Pick<
+        SceneWorldEnvironment,
+        'positionX' | 'positionY' | 'positionZ' | 'rotationX' | 'rotationY' | 'rotationZ' | 'scale'
+      >
+    >
+  ) => void;
+  worldEnvironmentStatusText?: string | null;
+  worldEnvironmentFlowPhase?: WorldEnvironmentFlowPhase;
+  isWorldEnvironmentWorking?: boolean;
+  worldEnvironmentPendingFilename?: string | null;
+  /** When true, the experimental 3D environment generation feature is visible in the Scene panel. */
+  worldEnvironmentEnabled?: boolean;
 }
 
 export interface LeftSidebarHandle {

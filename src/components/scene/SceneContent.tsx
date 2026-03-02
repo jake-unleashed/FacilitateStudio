@@ -54,6 +54,17 @@ export interface SceneContentProps {
   onPreviewOutlineTargetChange?: (target: PreviewOutlineTarget | null) => void;
   backgroundImageUrl?: string;
   onBackgroundReadyChange?: (ready: boolean, imageUrl?: string, errorMessage?: string) => void;
+  worldEnvironmentUrl?: string;
+  worldEnvironmentTransform?: {
+    positionX?: number;
+    positionY?: number;
+    positionZ?: number;
+    rotationX?: number;
+    rotationY?: number;
+    rotationZ?: number;
+    scale?: number;
+  };
+  onWorldEnvironmentReadyChange?: (ready: boolean, worldUrl?: string, errorMessage?: string) => void;
 }
 
 export function SceneContent({
@@ -81,6 +92,9 @@ export function SceneContent({
   onPreviewOutlineTargetChange,
   backgroundImageUrl,
   onBackgroundReadyChange,
+  worldEnvironmentUrl,
+  worldEnvironmentTransform,
+  onWorldEnvironmentReadyChange,
 }: SceneContentProps): JSX.Element {
   const controlsRef = useRef<CameraControlsImpl>(null!);
   const isPositioningCameraRef = useRef(false);
@@ -389,6 +403,9 @@ export function SceneContent({
       previewOutlineChildPath={previewOutlineChildPath}
       backgroundImageUrl={backgroundImageUrl}
       onBackgroundReadyChange={onBackgroundReadyChange}
+      worldEnvironmentUrl={worldEnvironmentUrl}
+      worldEnvironmentTransform={worldEnvironmentTransform}
+      onWorldEnvironmentReadyChange={onWorldEnvironmentReadyChange}
       onPreviewTransformUpdate={onPreviewTransformUpdate}
       onPreviewStepComplete={onPreviewStepComplete}
       onPreviewOutlineTargetChange={onPreviewOutlineTargetChange}
