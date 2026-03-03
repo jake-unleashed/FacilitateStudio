@@ -73,6 +73,7 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
     ): Promise<SceneWorldEnvironment> => {
       let latestProgress = 0;
 
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         if (pollTokenRef.current !== pollToken) {
           throw new Error('Generation cancelled');

@@ -13,6 +13,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import {
   AssetMetadata,
+  ModelValidationOptions,
   ModelMetrics,
   ModelFileType,
   STORAGE_CONFIG,
@@ -129,9 +130,10 @@ export async function saveAsset(file: File): Promise<AssetMetadata> {
  */
 export async function saveAssetWithTextures(
   file: File,
-  textureFiles: File[] = []
+  textureFiles: File[] = [],
+  options?: ModelValidationOptions
 ): Promise<AssetMetadata> {
-  const validation = validateModelFile(file);
+  const validation = validateModelFile(file, options);
   if (!validation.valid) {
     throw new Error(validation.error ?? 'Invalid file');
   }

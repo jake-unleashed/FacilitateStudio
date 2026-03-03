@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Bug, Box, ChevronDown, Cpu, Globe2, Monitor, Play } from 'lucide-react';
+import { Activity, Bug, Box, ChevronDown, Cpu, Globe2, HardDrive, Monitor, Play } from 'lucide-react';
 import { Button } from './Button';
 import type { PerformanceStats } from './PerformanceMonitor';
 
@@ -14,6 +14,10 @@ interface DebugMenuProps {
   worldEnvironmentEnabled?: boolean;
   /** Toggle the experimental World Labs 3D environment feature on/off. */
   onToggleWorldEnvironment?: (enabled: boolean) => void;
+  /** Whether the extended 3D file size limit (500MB) is enabled. Internal testing only. */
+  extendedFileSizeLimit?: boolean;
+  /** Toggle the extended 3D file size limit on/off. */
+  onToggleExtendedFileSizeLimit?: (enabled: boolean) => void;
 }
 
 export const DebugMenu: React.FC<DebugMenuProps> = ({
@@ -24,6 +28,8 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
   performanceStats = null,
   worldEnvironmentEnabled = false,
   onToggleWorldEnvironment,
+  extendedFileSizeLimit = false,
+  onToggleExtendedFileSizeLimit,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const prevHasSelectedObjectRef = useRef(hasSelectedObject);
@@ -109,38 +115,74 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({
                 </>
               )}
 
-              {onToggleWorldEnvironment && (
+              {(onToggleWorldEnvironment || onToggleExtendedFileSizeLimit) && (
                 <>
                   <p className="mt-2 pl-1 text-xs font-bold uppercase tracking-widest text-slate-400">
                     Experiments
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => onToggleWorldEnvironment(!worldEnvironmentEnabled)}
-                    aria-label={`${worldEnvironmentEnabled ? 'Disable' : 'Enable'} 3D Environments feature`}
-                    aria-pressed={worldEnvironmentEnabled}
-                    className={`flex items-center justify-between gap-2 rounded-[16px] border px-4 py-2.5 text-left transition-all ${
-                      worldEnvironmentEnabled
-                        ? 'border-indigo-200 bg-indigo-50/80 text-indigo-700'
-                        : 'border-white/50 bg-white/60 text-slate-700 hover:bg-white/80'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Globe2 size={14} className={worldEnvironmentEnabled ? 'text-indigo-500' : 'text-slate-400'} />
-                      <span className="text-xs font-medium">3D Environments</span>
-                    </span>
-                    <span
-                      className={`inline-block h-4 w-7 rounded-full transition-colors ${
-                        worldEnvironmentEnabled ? 'bg-indigo-500' : 'bg-slate-300'
+                  {onToggleWorldEnvironment && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleWorldEnvironment(!worldEnvironmentEnabled)}
+                      aria-label={`${worldEnvironmentEnabled ? 'Disable' : 'Enable'} 3D Environments feature`}
+                      aria-pressed={worldEnvironmentEnabled}
+                      className={`flex items-center justify-between gap-2 rounded-[16px] border px-4 py-2.5 text-left transition-all ${
+                        worldEnvironmentEnabled
+                          ? 'border-indigo-200 bg-indigo-50/80 text-indigo-700'
+                          : 'border-white/50 bg-white/60 text-slate-700 hover:bg-white/80'
                       }`}
                     >
+                      <span className="flex items-center gap-2">
+                        <Globe2 size={14} className={worldEnvironmentEnabled ? 'text-indigo-500' : 'text-slate-400'} />
+                        <span className="text-xs font-medium">3D Environments</span>
+                      </span>
                       <span
-                        className={`mt-0.5 block h-3 w-3 rounded-full bg-white shadow transition-transform ${
-                          worldEnvironmentEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                        className={`inline-block h-4 w-7 rounded-full transition-colors ${
+                          worldEnvironmentEnabled ? 'bg-indigo-500' : 'bg-slate-300'
                         }`}
-                      />
-                    </span>
-                  </button>
+                      >
+                        <span
+                          className={`mt-0.5 block h-3 w-3 rounded-full bg-white shadow transition-transform ${
+                            worldEnvironmentEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  )}
+                  {onToggleExtendedFileSizeLimit && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleExtendedFileSizeLimit(!extendedFileSizeLimit)}
+                      aria-label={`${extendedFileSizeLimit ? 'Disable' : 'Enable'} extended 3D file size limit`}
+                      aria-pressed={extendedFileSizeLimit}
+                      className={`flex items-center justify-between gap-2 rounded-[16px] border px-4 py-2.5 text-left transition-all ${
+                        extendedFileSizeLimit
+                          ? 'border-amber-200 bg-amber-50/80 text-amber-700'
+                          : 'border-white/50 bg-white/60 text-slate-700 hover:bg-white/80'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <HardDrive size={14} className={extendedFileSizeLimit ? 'text-amber-500' : 'text-slate-400'} />
+                        <span className="flex flex-col">
+                          <span className="text-xs font-medium">Large File Uploads</span>
+                          <span className={`text-[10px] ${extendedFileSizeLimit ? 'text-amber-500' : 'text-slate-400'}`}>
+                            {extendedFileSizeLimit ? '500MB limit active' : '100MB → 500MB'}
+                          </span>
+                        </span>
+                      </span>
+                      <span
+                        className={`inline-block h-4 w-7 shrink-0 rounded-full transition-colors ${
+                          extendedFileSizeLimit ? 'bg-amber-500' : 'bg-slate-300'
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 block h-3 w-3 rounded-full bg-white shadow transition-transform ${
+                            extendedFileSizeLimit ? 'translate-x-3.5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  )}
                 </>
               )}
 

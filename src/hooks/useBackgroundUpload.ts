@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { SceneBackgroundImage } from '../types/sceneSettings';
-import { supabase } from '../lib/supabase';
 import {
-  isValidBackgroundImageFileType,
-  MAX_BACKGROUND_IMAGE_SIZE_BYTES,
   removeBackgroundImageFromStorage,
   toBackgroundImageStorageRef,
   uploadBackgroundImageToStorage,
+  validateBackgroundImageFile,
 } from '../utils/backgroundImageUpload';
 import { optimizeBackgroundImage } from '../utils/backgroundImageOptimize';
+import { useSupabaseUserId } from './useSupabaseUserId';
 
 interface UseBackgroundUploadResult {
   userId?: string;
@@ -21,42 +20,12 @@ interface UseBackgroundUploadResult {
   clearError: () => void;
 }
 
-function validateBackgroundImage(file: File): string | null {
-  if (!isValidBackgroundImageFileType(file.type)) {
-    return 'Use a JPG, PNG, or WebP image for the 360 background.';
-  }
-  if (file.size > MAX_BACKGROUND_IMAGE_SIZE_BYTES) {
-    return 'Background image must be 100MB or smaller.';
-  }
-  return null;
-}
-
 export function useBackgroundUpload(): UseBackgroundUploadResult {
-  const [userId, setUserId] = useState<string | undefined>(undefined);
+  const userId = useSupabaseUserId();
   const [stage, setStage] = useState<'idle' | 'optimizing' | 'uploading'>('idle');
   const [isUploading, setIsUploading] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isActive = true;
-    void supabase.auth.getUser().then(({ data }) => {
-      if (isActive) {
-        setUserId(data.user?.id);
-      }
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (isActive) {
-        setUserId(session?.user.id);
-      }
-    });
-
-    return () => {
-      isActive = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
 
   const clearError = useCallback(() => {
     setLastError(null);
@@ -66,7 +35,7 @@ export function useBackgroundUpload(): UseBackgroundUploadResult {
 
   const uploadBackground = useCallback(
     async (file: File, projectId: string): Promise<SceneBackgroundImage> => {
-      const validationError = validateBackgroundImage(file);
+      const validationError = validateBackgroundImageFile(file);
       if (validationError) {
         setLastError(validationError);
         throw new Error(validationError);

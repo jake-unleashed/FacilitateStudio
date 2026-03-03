@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase';
 import type { AssetMetadata, ModelFileType } from '../types/model';
 import type { ModelMetrics } from '../types/model';
 import type { ChildMesh } from '../types';
-import { STORAGE_CONFIG } from '../types/model';
+import { formatFileSize, getModelMaxFileSize } from '../types/model';
 import { StorageError, ValidationError } from './errors';
 import { logger } from './logger';
 
@@ -163,8 +163,11 @@ export async function uploadAssetToCloud(
   assetId: string,
   metadata: CloudUploadMetadata
 ): Promise<{ storageKey: string }> {
-  if (metadata.fileSize > STORAGE_CONFIG.MAX_FILE_SIZE) {
-    throw new ValidationError('File exceeds maximum upload size of 100MB.');
+  const cloudMaxFileSize = getModelMaxFileSize();
+  if (metadata.fileSize > cloudMaxFileSize) {
+    throw new ValidationError(
+      `File exceeds maximum cloud upload size of ${formatFileSize(cloudMaxFileSize)}.`
+    );
   }
   if (metadata.fileType !== 'glb' && metadata.fileType !== 'fbx' && metadata.fileType !== 'obj') {
     throw new ValidationError('Unsupported model file type.');

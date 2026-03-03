@@ -168,6 +168,17 @@ export interface ValidationResult {
   warning?: string;
 }
 
+/**
+ * Optional validation policy overrides.
+ */
+export interface ModelValidationOptions {
+  /**
+   * When true, use the extended internal-testing upload limit.
+   * Default is false (standard production limit).
+   */
+  extendedSizeLimit?: boolean;
+}
+
 // =============================================================================
 // Storage Configuration
 // =============================================================================
@@ -176,6 +187,8 @@ export interface ValidationResult {
 export const STORAGE_CONFIG = {
   /** Maximum file size allowed (100MB) */
   MAX_FILE_SIZE: 100 * 1024 * 1024,
+  /** Extended maximum file size for internal testing (500MB) */
+  EXTENDED_MAX_FILE_SIZE: 500 * 1024 * 1024,
   /** Size threshold for showing a warning (50MB) */
   WARNING_FILE_SIZE: 50 * 1024 * 1024,
   /** Maximum number of models in memory cache */
@@ -218,9 +231,17 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * Validate a file for upload.
+ * Resolve the active max upload size based on validation options.
  */
-export function validateModelFile(file: File): ValidationResult {
+export function getModelMaxFileSize(options?: ModelValidationOptions): number {
+  return options?.extendedSizeLimit ? STORAGE_CONFIG.EXTENDED_MAX_FILE_SIZE : STORAGE_CONFIG.MAX_FILE_SIZE;
+}
+
+/**
+ * Validate a file for upload.
+ * @param options.extendedSizeLimit - When true, allows up to EXTENDED_MAX_FILE_SIZE (500MB) instead of the default 100MB. Intended for internal testing only.
+ */
+export function validateModelFile(file: File, options?: ModelValidationOptions): ValidationResult {
   // Check file extension
   try {
     parseFileType(file.name);
@@ -231,11 +252,13 @@ export function validateModelFile(file: File): ValidationResult {
     };
   }
 
+  const maxSize = getModelMaxFileSize(options);
+
   // Check file size
-  if (file.size > STORAGE_CONFIG.MAX_FILE_SIZE) {
+  if (file.size > maxSize) {
     return {
       valid: false,
-      error: `File size (${formatFileSize(file.size)}) exceeds maximum of ${formatFileSize(STORAGE_CONFIG.MAX_FILE_SIZE)}.`,
+      error: `File size (${formatFileSize(file.size)}) exceeds maximum of ${formatFileSize(maxSize)}.`,
     };
   }
 

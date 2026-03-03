@@ -19,7 +19,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { Upload, Loader2, CheckCircle2, AlertTriangle, FileBox } from 'lucide-react';
-import { UploadProgress, validateModelFile } from '../types/model';
+import { ModelValidationOptions, UploadProgress, validateModelFile } from '../types/model';
 import { usePopup } from '../contexts/PopupContext';
 import {
   ACCEPTED_FORMATS,
@@ -36,6 +36,8 @@ import { classifyUploadFiles } from '../utils/uploadClassifier';
 interface AssetUploadButtonProps {
   /** Called when a model is selected for upload with optional texture files */
   onUpload: (modelFile: File, textureFiles?: File[]) => Promise<void>;
+  /** When true, allows model uploads up to 500MB (internal testing). */
+  extendedFileSizeLimit?: boolean;
   /** Disable the upload button */
   disabled?: boolean;
   /** Additional CSS classes */
@@ -53,7 +55,7 @@ export interface AssetUploadButtonHandle {
 // =============================================================================
 
 export const AssetUploadButton = forwardRef<AssetUploadButtonHandle, AssetUploadButtonProps>(
-  ({ onUpload, disabled = false, className = '', uploadProgress }, ref) => {
+  ({ onUpload, extendedFileSizeLimit = false, disabled = false, className = '', uploadProgress }, ref) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,6 +109,11 @@ export const AssetUploadButton = forwardRef<AssetUploadButtonHandle, AssetUpload
     return internalState.isUploading;
   }, [uploadProgress, internalState.isUploading]);
 
+  const validationOptions = useMemo<ModelValidationOptions>(
+    () => ({ extendedSizeLimit: extendedFileSizeLimit }),
+    [extendedFileSizeLimit]
+  );
+
   // ---------------------------------------------------------------------------
   // Event Handlers
   // ---------------------------------------------------------------------------
@@ -149,7 +156,7 @@ export const AssetUploadButton = forwardRef<AssetUploadButtonHandle, AssetUpload
       });
 
       // Validate
-      const validation = validateModelFile(file);
+      const validation = validateModelFile(file, validationOptions);
       if (!validation.valid) {
         // Show error popup, reset button to idle so it stays usable
         showErrorPopup(validation.error ?? 'Invalid file');
@@ -203,7 +210,7 @@ export const AssetUploadButton = forwardRef<AssetUploadButtonHandle, AssetUpload
         }
       }
     },
-    [onUpload, showErrorPopup, showInfoPopup]
+    [onUpload, showErrorPopup, showInfoPopup, validationOptions]
   );
 
   const handleFileChange = useCallback(

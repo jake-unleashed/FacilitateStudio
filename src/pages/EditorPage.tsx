@@ -113,6 +113,7 @@ function EditorPageContent() {
   const [sceneSettings, setSceneSettings] = useState(DEFAULT_SCENE_SETTINGS);
   const [worldEnvironmentPendingFilename, setWorldEnvironmentPendingFilename] = useState<string | null>(null);
   const [worldEnvironmentEnabled, setWorldEnvironmentEnabled] = useState(false);
+  const [extendedFileSizeLimit, setExtendedFileSizeLimit] = useState(false);
   const [simulationTitle, setSimulationTitle] = useState('New Simulation');
   // Recording state for move-item step end position
   // recordingPositionForStepId is owned by useRecordingEndTransform (below)
@@ -280,7 +281,7 @@ function EditorPageContent() {
     refreshRecentAssets,
     lastError: uploadLastError,
     clearError: clearUploadError,
-  } = useModelUpload();
+  } = useModelUpload({ extendedFileSizeLimit });
 
   const {
     uploadBackgroundAndPrepare,
@@ -1418,6 +1419,7 @@ function EditorPageContent() {
                 onStopRecordingPosition={handleStopRecordingPosition}
                 recordingPositionForStepId={recordingPositionForStepId}
                 onUploadAsset={handleUploadAsset}
+                extendedFileSizeLimit={extendedFileSizeLimit}
                 uploadProgress={uploadProgress}
                 recentAssets={recentAssets}
                 starterAssets={starterAssets}
@@ -1469,6 +1471,8 @@ function EditorPageContent() {
                 performanceStats={performanceStats}
                 worldEnvironmentEnabled={worldEnvironmentEnabled}
                 onToggleWorldEnvironment={setWorldEnvironmentEnabled}
+                extendedFileSizeLimit={extendedFileSizeLimit}
+                onToggleExtendedFileSizeLimit={setExtendedFileSizeLimit}
               />
             ),
             publishModal: currentProject ? (

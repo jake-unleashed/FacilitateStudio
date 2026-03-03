@@ -228,6 +228,104 @@ describe('DebugMenu', () => {
     });
   });
 
+  describe('large file uploads toggle', () => {
+    it('does not show Large File Uploads toggle when handler is not provided', () => {
+      render(<DebugMenu {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.queryByText('Large File Uploads')).not.toBeInTheDocument();
+    });
+
+    it('shows Experiments section when onToggleExtendedFileSizeLimit is provided', () => {
+      render(<DebugMenu {...defaultProps} onToggleExtendedFileSizeLimit={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.getByText('Experiments')).toBeInTheDocument();
+    });
+
+    it('shows Large File Uploads toggle button', () => {
+      render(<DebugMenu {...defaultProps} onToggleExtendedFileSizeLimit={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.getByText('Large File Uploads')).toBeInTheDocument();
+    });
+
+    it('shows 100MB → 500MB hint when disabled', () => {
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleExtendedFileSizeLimit={vi.fn()}
+          extendedFileSizeLimit={false}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.getByText('100MB → 500MB')).toBeInTheDocument();
+    });
+
+    it('shows 500MB limit active hint when enabled', () => {
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleExtendedFileSizeLimit={vi.fn()}
+          extendedFileSizeLimit={true}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      expect(screen.getByText('500MB limit active')).toBeInTheDocument();
+    });
+
+    it('calls onToggleExtendedFileSizeLimit with true when toggled on', () => {
+      const onToggle = vi.fn();
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleExtendedFileSizeLimit={onToggle}
+          extendedFileSizeLimit={false}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      fireEvent.click(screen.getByRole('button', { name: /Enable extended 3D file size limit/i }));
+      expect(onToggle).toHaveBeenCalledWith(true);
+    });
+
+    it('calls onToggleExtendedFileSizeLimit with false when toggled off', () => {
+      const onToggle = vi.fn();
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleExtendedFileSizeLimit={onToggle}
+          extendedFileSizeLimit={true}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      fireEvent.click(screen.getByRole('button', { name: /Disable extended 3D file size limit/i }));
+      expect(onToggle).toHaveBeenCalledWith(false);
+    });
+
+    it('reflects aria-pressed state when enabled', () => {
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleExtendedFileSizeLimit={vi.fn()}
+          extendedFileSizeLimit={true}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      const toggle = screen.getByRole('button', { name: /extended 3D file size limit/i });
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('reflects aria-pressed state when disabled', () => {
+      render(
+        <DebugMenu
+          {...defaultProps}
+          onToggleExtendedFileSizeLimit={vi.fn()}
+          extendedFileSizeLimit={false}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle debug menu' }));
+      const toggle = screen.getByRole('button', { name: /extended 3D file size limit/i });
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
   describe('world environment experiment toggle', () => {
     it('does not show Experiments section when onToggleWorldEnvironment is not provided', () => {
       render(<DebugMenu {...defaultProps} />);

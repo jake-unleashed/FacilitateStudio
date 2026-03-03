@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import {
   saveAsset,
+  saveAssetWithTextures,
   getAsset,
   updateAssetMetadata,
   deleteAsset,
@@ -164,6 +165,17 @@ describe('modelAssetStore', () => {
       Object.defineProperty(file, 'size', { value: 101 * 1024 * 1024 });
 
       await expect(saveAsset(file)).rejects.toThrow('exceeds maximum');
+    });
+
+    it('allows oversized files when extended size limit is enabled', async () => {
+      const file = createMockFile('model.obj');
+      Object.defineProperty(file, 'size', { value: 273.7 * 1024 * 1024 });
+
+      await expect(
+        saveAssetWithTextures(file, [], { extendedSizeLimit: true })
+      ).resolves.toMatchObject({
+        name: 'model.obj',
+      });
     });
   });
 

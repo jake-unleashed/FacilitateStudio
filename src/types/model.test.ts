@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseFileType,
   formatFileSize,
+  getModelMaxFileSize,
   validateModelFile,
   STORAGE_CONFIG,
   FILE_TYPE_EXTENSIONS,
@@ -87,6 +88,17 @@ describe('model types', () => {
     });
   });
 
+  describe('getModelMaxFileSize', () => {
+    it('returns default max when extended mode is off', () => {
+      expect(getModelMaxFileSize()).toBe(STORAGE_CONFIG.MAX_FILE_SIZE);
+      expect(getModelMaxFileSize({ extendedSizeLimit: false })).toBe(STORAGE_CONFIG.MAX_FILE_SIZE);
+    });
+
+    it('returns extended max when extended mode is on', () => {
+      expect(getModelMaxFileSize({ extendedSizeLimit: true })).toBe(STORAGE_CONFIG.EXTENDED_MAX_FILE_SIZE);
+    });
+  });
+
   // ===========================================================================
   // validateModelFile
   // ===========================================================================
@@ -131,6 +143,20 @@ describe('model types', () => {
       expect(result.error).toContain('exceeds maximum');
     });
 
+    it('allows files above default max when extended limit is enabled', () => {
+      const file = createMockFile('model.obj', STORAGE_CONFIG.MAX_FILE_SIZE + 1);
+      const result = validateModelFile(file, { extendedSizeLimit: true });
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('still rejects files above extended max when extended limit is enabled', () => {
+      const file = createMockFile('model.obj', STORAGE_CONFIG.EXTENDED_MAX_FILE_SIZE + 1);
+      const result = validateModelFile(file, { extendedSizeLimit: true });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('500.0 MB');
+    });
+
     it('warns for large files under max size', () => {
       const file = createMockFile('model.obj', STORAGE_CONFIG.WARNING_FILE_SIZE + 1);
       const result = validateModelFile(file);
@@ -167,6 +193,7 @@ describe('model types', () => {
 
     it('STORAGE_CONFIG has reasonable values', () => {
       expect(STORAGE_CONFIG.MAX_FILE_SIZE).toBe(100 * 1024 * 1024); // 100MB
+      expect(STORAGE_CONFIG.EXTENDED_MAX_FILE_SIZE).toBe(500 * 1024 * 1024); // 500MB
       expect(STORAGE_CONFIG.WARNING_FILE_SIZE).toBe(50 * 1024 * 1024); // 50MB
       expect(STORAGE_CONFIG.MAX_CACHE_SIZE).toBeGreaterThan(0);
       expect(STORAGE_CONFIG.CACHE_CLEANUP_THRESHOLD).toBeLessThan(STORAGE_CONFIG.MAX_CACHE_SIZE);

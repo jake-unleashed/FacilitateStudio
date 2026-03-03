@@ -12,6 +12,7 @@ type AddPanelView = 'main' | 'new-model';
 
 export function AddPanel({
   onUploadAsset,
+  extendedFileSizeLimit = false,
   uploadProgress,
   recentAssets = [],
   starterAssets = [],
@@ -24,6 +25,7 @@ export function AddPanel({
   onRetryGeneration,
 }: {
   onUploadAsset?: (file: File, textureFiles?: File[]) => Promise<void>;
+  extendedFileSizeLimit?: boolean;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];
@@ -118,6 +120,7 @@ export function AddPanel({
         <AssetUploadButton
           ref={uploadButtonRef}
           onUpload={handleUpload}
+          extendedFileSizeLimit={extendedFileSizeLimit}
           uploadProgress={uploadProgress}
           className="hidden"
         />

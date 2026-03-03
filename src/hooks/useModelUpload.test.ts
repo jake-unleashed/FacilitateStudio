@@ -312,7 +312,7 @@ describe('useModelUpload', () => {
         await result.current.uploadFile(file, []);
       });
 
-      expect(saveAssetWithTextures).toHaveBeenCalledWith(file, []);
+      expect(saveAssetWithTextures).toHaveBeenCalledWith(file, [], { extendedSizeLimit: false });
     });
 
     it('handles storage errors', async () => {

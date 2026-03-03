@@ -42,6 +42,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   onStopRecordingPosition,
   recordingPositionForStepId,
   onUploadAsset,
+  extendedFileSizeLimit = false,
   uploadProgress,
   recentAssets = [],
   starterAssets = [],
@@ -355,6 +356,7 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
           {activeTab === 'add' && (
             <AddPanel
               onUploadAsset={onUploadAsset}
+              extendedFileSizeLimit={extendedFileSizeLimit}
               uploadProgress={uploadProgress}
               recentAssets={recentAssets}
               starterAssets={starterAssets}

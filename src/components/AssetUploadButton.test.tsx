@@ -7,6 +7,7 @@ import { render, screen, fireEvent, waitFor, RenderOptions } from '@testing-libr
 import userEvent from '@testing-library/user-event';
 import { AssetUploadButton } from './AssetUploadButton';
 import type { UploadProgress } from '../types/model';
+import * as modelTypes from '../types/model';
 import { PopupProvider } from '../contexts/PopupContext';
 import { GlobalPopup } from './GlobalPopup';
 import { ReactElement } from 'react';
@@ -205,6 +206,24 @@ describe('AssetUploadButton', () => {
       await waitFor(() => {
         expect(mockOnUpload).toHaveBeenCalledWith(file, []);
       });
+    });
+
+    it('passes extendedSizeLimit to validation when enabled', async () => {
+      mockOnUpload.mockResolvedValue(undefined);
+      const validateSpy = vi.spyOn(modelTypes, 'validateModelFile');
+      renderWithPopupProvider(
+        <AssetUploadButton onUpload={mockOnUpload} extendedFileSizeLimit />
+      );
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const file = createMockFile('model.obj');
+      await userEvent.upload(input, file);
+
+      await waitFor(() => {
+        expect(validateSpy).toHaveBeenCalledWith(file, { extendedSizeLimit: true });
+      });
+
+      validateSpy.mockRestore();
     });
 
     it('shows error for unsupported GLTF file (use GLB instead)', async () => {

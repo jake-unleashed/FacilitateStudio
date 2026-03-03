@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { formatFileSize } from '../types/model';
 
 const BACKGROUND_BUCKET = 'user-assets';
 const BACKGROUND_STORAGE_PREFIX = 'bg://';
@@ -18,6 +19,16 @@ function sanitizeFileName(filename: string): string {
 
 export function isValidBackgroundImageFileType(type: string): boolean {
   return (SUPPORTED_BACKGROUND_IMAGE_TYPES as readonly string[]).includes(type);
+}
+
+export function validateBackgroundImageFile(file: File): string | null {
+  if (!isValidBackgroundImageFileType(file.type)) {
+    return 'Use a JPG, PNG, or WebP image for the 360 background.';
+  }
+  if (file.size > MAX_BACKGROUND_IMAGE_SIZE_BYTES) {
+    return `Background image must be ${formatFileSize(MAX_BACKGROUND_IMAGE_SIZE_BYTES)} or smaller.`;
+  }
+  return null;
 }
 
 export function toBackgroundImageStorageRef(path: string): string {

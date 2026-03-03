@@ -10,11 +10,12 @@
  * Designed for clean separation between storage/processing and scene logic.
  */
 
-import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
+import { useCallback, useState, useRef, useMemo } from 'react';
 import type { SceneObject } from '../types';
 import {
   AssetMetadata,
   ModelMetrics,
+  ModelValidationOptions,
   UploadProgress,
   INITIAL_UPLOAD_PROGRESS,
   validateModelFile,
@@ -37,7 +38,7 @@ import { processModelBuffer } from './modelUpload/processBuffer';
 import { useModelUploadInit } from './modelUpload/useModelUploadInit';
 import { useAutoResetProgress } from './modelUpload/useAutoResetProgress';
 import { getStarterAssetIds } from '../utils/starterAssets/seedStarterAssets';
-import { supabase } from '../lib/supabase';
+import { useSupabaseUserId } from './useSupabaseUserId';
 
 // Re-export types for convenience
 export type { UploadProgress };
@@ -56,6 +57,8 @@ export interface UploadResult {
 interface UseModelUploadOptions {
   onSuccess?: (result: UploadResult) => void;
   onError?: (error: string) => void;
+  /** When true, allows uploads up to 500MB instead of the default 100MB. Internal testing only. */
+  extendedFileSizeLimit?: boolean;
 }
 
 interface UseModelUploadReturn {
@@ -97,29 +100,12 @@ interface UseModelUploadReturn {
 // =============================================================================
 
 export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUploadReturn {
-  const { onSuccess, onError } = options;
-  const [userId, setUserId] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    let isActive = true;
-
-    void supabase.auth.getUser().then(({ data }) => {
-      if (isActive) {
-        setUserId(data.user?.id);
-      }
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (isActive) {
-        setUserId(session?.user.id);
-      }
-    });
-
-    return () => {
-      isActive = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+  const { onSuccess, onError, extendedFileSizeLimit = false } = options;
+  const validationOptions = useMemo<ModelValidationOptions>(
+    () => ({ extendedSizeLimit: extendedFileSizeLimit }),
+    [extendedFileSizeLimit]
+  );
+  const userId = useSupabaseUserId();
 
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(INITIAL_UPLOAD_PROGRESS);
   const [recentAssets, setRecentAssets] = useState<AssetMetadata[]>([]);
@@ -312,7 +298,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         // Stage 1: Validate
         setProgress('validating', 10, { fileName: uploadDisplayName, warning: null });
 
-        const validation = validateModelFile(file);
+        const validation = validateModelFile(file, validationOptions);
         if (!validation.valid) {
           setError(file.name, validation.error ?? 'Invalid file');
           return null;
@@ -326,7 +312,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
         let metadata: AssetMetadata;
         try {
-          metadata = await saveAssetWithTextures(file, textureFiles);
+          metadata = await saveAssetWithTextures(file, textureFiles, {
+            extendedSizeLimit: validationOptions.extendedSizeLimit,
+          });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to store file';
           setError(file.name, msg);
@@ -369,6 +357,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       setLastError,
       starterAssetIds,
       userId,
+      validationOptions,
     ]
   );
 

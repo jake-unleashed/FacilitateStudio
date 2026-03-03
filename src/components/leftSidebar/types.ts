@@ -23,6 +23,8 @@ export interface LeftSidebarProps {
   onStopRecordingPosition?: (stepId: string) => void;
   recordingPositionForStepId?: string | null;
   onUploadAsset?: (file: File, textureFiles?: File[]) => Promise<void>;
+  /** When true, allows model uploads up to 500MB (internal testing). */
+  extendedFileSizeLimit?: boolean;
   uploadProgress?: UploadProgress;
   recentAssets?: AssetMetadata[];
   starterAssets?: AssetMetadata[];
