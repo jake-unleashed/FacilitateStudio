@@ -21,10 +21,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "check:typography-min-text": "node check-typography-min-text.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:diagnose": "vitest run --reporter=hanging-process --logHeapUsage --pool=threads",
+    "test": "node ./scripts/runVitestBatched.mjs",
+    "test:watch": "node --max-old-space-size=8192 ./node_modules/vitest/vitest.mjs",
+    "test:coverage": "node --max-old-space-size=8192 ./node_modules/vitest/vitest.mjs run --coverage",
+    "test:diagnose": "node ./scripts/runVitestBatched.mjs --reporter=hanging-process --logHeapUsage",
     "prepare": "husky"
   },
   "dependencies": {

@@ -105,4 +105,3 @@ export function useEditorProjectLifecycle({
 
   return { currentProject, isInitialized };
 }
-

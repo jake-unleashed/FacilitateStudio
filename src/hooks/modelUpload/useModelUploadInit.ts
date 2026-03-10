@@ -7,7 +7,8 @@ import {
   migrateLegacyAssets,
 } from '../../utils/modelAssetStore';
 import { reconcilePendingSync } from '../../utils/assetSyncReconciler';
-import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
+
+const LEGACY_STARTER_LIBRARY_VERSION_KEY = 'facilitate-starter-library-version';
 
 export function useModelUploadInit({
   setRecentAssets,
@@ -33,16 +34,9 @@ export function useModelUploadInit({
         }
       }
 
-      // Seed starter assets if needed (first run or version change)
-      if (shouldReseedLibrary()) {
-        try {
-          const seeded = await seedStarterAssets();
-          if (seeded > 0) {
-            console.log(`[useModelUpload] Seeded ${seeded} starter asset(s)`);
-          }
-        } catch (error) {
-          console.error('[useModelUpload] Starter asset seeding failed:', error);
-        }
+      // One-time cleanup from legacy bundled starter model system.
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(LEGACY_STARTER_LIBRARY_VERSION_KEY);
       }
 
       // Load recent assets

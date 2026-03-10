@@ -10,6 +10,7 @@ import { getAsset, getAssetMetadata, updateAssetMetadata, blobToArrayBuffer } fr
 import { loadAndPreprocessModelFromArrayBuffer } from '../modelLoaders';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { logger } from '../logger';
+import { emitStarterAssetsUpdated } from '../starterAssets/starterAssetEvents';
 
 /**
  * Throttle to limit concurrent thumbnail generation.
@@ -53,6 +54,7 @@ class ThumbnailThrottle {
 }
 
 const thumbnailThrottle = new ThumbnailThrottle();
+const inFlightThumbnailRequests = new Map<string, Promise<string | null>>();
 
 /**
  * Lighten a color if it's too dark (prevents black materials).
@@ -80,141 +82,156 @@ function ensureMinLuminance(color: THREE.Color, minLuminance: number): void {
  * @returns Base64 data URL of the thumbnail, or null if generation fails
  */
 async function generateThumbnailFromModel(model: THREE.Group): Promise<string | null> {
-  const renderer = new THREE.WebGLRenderer({
-    alpha: false,
-    antialias: true,
-    preserveDrawingBuffer: true,
-    powerPreference: 'high-performance',
-  });
-  renderer.setSize(640, 360);
-  renderer.setPixelRatio(2);
-  renderer.setClearColor(0xe2e8f0, 1.0); // slate-200 - visible but not harsh
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  // Linear avoids ACES crushing darks; higher exposure = brighter output
-  renderer.toneMapping = THREE.LinearToneMapping;
-  renderer.toneMappingExposure = 1.8;
-
+  let renderer: THREE.WebGLRenderer | null = null;
+  let pmremGenerator: THREE.PMREMGenerator | null = null;
+  let envRenderTarget: THREE.WebGLRenderTarget | null = null;
+  const clonedMaterials: THREE.Material[] = [];
   const scene = new THREE.Scene();
 
-  // Studio environment for metallic/roughness materials
-  const pmremGenerator = new THREE.PMREMGenerator(renderer);
-  const envTexture = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environment = envTexture;
-
-  const renderModel = model.clone(true);
-  renderModel.traverse((obj) => {
-    if (!(obj as THREE.Mesh).isMesh) return;
-    const mesh = obj as THREE.Mesh;
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.forEach((mat) => {
-      if (!mat) return;
-      // Handle PBR materials
-      if (mat instanceof THREE.MeshStandardMaterial) {
-        // Make metallic surfaces less extreme so they reflect environment better
-        mat.metalness = Math.min(mat.metalness ?? 0, 0.7);
-        mat.roughness = Math.max(mat.roughness ?? 0.5, 0.25);
-        mat.envMapIntensity = 2.5; // Strong environment reflection
-        if (mat.color) ensureMinLuminance(mat.color, 0.15);
-        // Add subtle emissive so nothing goes pure black
-        mat.emissive = mat.emissive?.clone() ?? new THREE.Color(0x000000);
-        mat.emissiveIntensity = Math.max(mat.emissiveIntensity ?? 0, 0.15);
-        mat.needsUpdate = true;
-      }
-      // Handle MeshBasicMaterial (ignores all lights - will be black without fix)
-      else if (mat instanceof THREE.MeshBasicMaterial) {
-        const baseColor = mat.color?.clone() ?? new THREE.Color(0x888888);
-        ensureMinLuminance(baseColor, 0.2);
-        // Convert to MeshLambertMaterial so it responds to light
-        const lambert = new THREE.MeshLambertMaterial({
-          color: baseColor,
-          map: mat.map,
-          transparent: mat.transparent,
-          opacity: mat.opacity,
-        });
-        const idx = materials.indexOf(mat);
-        if (Array.isArray(mesh.material)) mesh.material[idx] = lambert;
-        else mesh.material = lambert;
-      }
-      // Handle MeshLambertMaterial
-      else if (mat instanceof THREE.MeshLambertMaterial && mat.color) {
-        ensureMinLuminance(mat.color, 0.15);
-        mat.emissive = mat.emissive?.clone() ?? new THREE.Color(0x000000);
-        mat.emissiveIntensity = Math.max(mat.emissiveIntensity ?? 0, 0.12);
-        mat.needsUpdate = true;
-      }
+  try {
+    renderer = new THREE.WebGLRenderer({
+      alpha: false,
+      antialias: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'high-performance',
     });
-  });
-  scene.add(renderModel);
+    renderer.setSize(640, 360);
+    renderer.setPixelRatio(2);
+    renderer.setClearColor(0xe2e8f0, 1.0); // slate-200 - visible but not harsh
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Linear avoids ACES crushing darks; higher exposure = brighter output
+    renderer.toneMapping = THREE.LinearToneMapping;
+    renderer.toneMappingExposure = 1.8;
 
-  const box = new THREE.Box3().setFromObject(renderModel);
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    // Studio environment for metallic/roughness materials
+    pmremGenerator = new THREE.PMREMGenerator(renderer);
+    envRenderTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
+    scene.environment = envRenderTarget.texture;
 
-  const camera = new THREE.PerspectiveCamera(40, 640 / 360, 0.05, 2000);
-  const distance = maxDim / (2 * Math.tan((Math.PI * camera.fov) / 360)) * 1.2;
-  camera.position.set(
-    center.x + distance * 0.7,
-    center.y + distance * 0.55,
-    center.z + distance * 0.7
-  );
-  camera.lookAt(center);
+    const renderModel = model.clone(true);
+    renderModel.traverse((obj) => {
+      if (!(obj as THREE.Mesh).isMesh) return;
+      const mesh = obj as THREE.Mesh;
+      const sourceMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const nextMaterials = sourceMaterials.map((sourceMaterial) => {
+        if (!sourceMaterial) return sourceMaterial;
+        let material = sourceMaterial.clone();
 
-  // Strong, even lighting (aligned with main editor scene style but brighter)
-  const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
-  keyLight.position.set(center.x + distance, center.y + distance * 1.2, center.z + distance);
-  scene.add(keyLight);
+        // Handle PBR materials
+        if (material instanceof THREE.MeshStandardMaterial) {
+          material.metalness = Math.min(material.metalness ?? 0, 0.7);
+          material.roughness = Math.max(material.roughness ?? 0.5, 0.25);
+          material.envMapIntensity = 2.5;
+          if (material.color) ensureMinLuminance(material.color, 0.15);
+          material.emissive = material.emissive?.clone() ?? new THREE.Color(0x000000);
+          material.emissiveIntensity = Math.max(material.emissiveIntensity ?? 0, 0.15);
+          material.needsUpdate = true;
+          clonedMaterials.push(material);
+          return material;
+        }
 
-  const fillLight = new THREE.DirectionalLight(0xffffff, 2.0);
-  fillLight.position.set(center.x - distance * 0.8, center.y + distance * 0.7, center.z + distance * 0.5);
-  scene.add(fillLight);
+        if (material instanceof THREE.MeshBasicMaterial) {
+          const baseColor = material.color?.clone() ?? new THREE.Color(0x888888);
+          const sourceMap = material.map;
+          const sourceTransparent = material.transparent;
+          const sourceOpacity = material.opacity;
+          ensureMinLuminance(baseColor, 0.2);
+          material.dispose();
+          material = new THREE.MeshLambertMaterial({
+            color: baseColor,
+            map: sourceMap,
+            transparent: sourceTransparent,
+            opacity: sourceOpacity,
+          });
+          clonedMaterials.push(material);
+          return material;
+        }
 
-  const rimLight = new THREE.DirectionalLight(0xffffff, 1.5);
-  rimLight.position.set(center.x, center.y + distance * 0.6, center.z - distance * 1.2);
-  scene.add(rimLight);
+        if (material instanceof THREE.MeshLambertMaterial && material.color) {
+          ensureMinLuminance(material.color, 0.15);
+          material.emissive = material.emissive?.clone() ?? new THREE.Color(0x000000);
+          material.emissiveIntensity = Math.max(material.emissiveIntensity ?? 0, 0.12);
+          material.needsUpdate = true;
+        }
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
-  scene.add(ambientLight);
+        clonedMaterials.push(material);
+        return material;
+      });
 
-  const hemiLight = new THREE.HemisphereLight(0xffffff, 0xbbccdd, 1.2);
-  hemiLight.position.set(0, distance * 2, 0);
-  scene.add(hemiLight);
+      mesh.material = Array.isArray(mesh.material) ? nextMaterials : nextMaterials[0];
+    });
+    scene.add(renderModel);
 
-  // Point lights add localized punch (like main scene)
-  const pointLight1 = new THREE.PointLight(0xffffff, 3.0, distance * 3);
-  pointLight1.position.set(center.x + distance, center.y + distance, center.z + distance);
-  scene.add(pointLight1);
+    const box = new THREE.Box3().setFromObject(renderModel);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
 
-  const pointLight2 = new THREE.PointLight(0xffffff, 2.0, distance * 3);
-  pointLight2.position.set(center.x - distance * 0.6, center.y + distance * 0.8, center.z - distance * 0.5);
-  scene.add(pointLight2);
+    const camera = new THREE.PerspectiveCamera(40, 640 / 360, 0.05, 2000);
+    const distance = (maxDim / (2 * Math.tan((Math.PI * camera.fov) / 360))) * 1.2;
+    camera.position.set(
+      center.x + distance * 0.7,
+      center.y + distance * 0.55,
+      center.z + distance * 0.7
+    );
+    camera.lookAt(center);
 
-  renderer.render(scene, camera);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
+    keyLight.position.set(center.x + distance, center.y + distance * 1.2, center.z + distance);
+    scene.add(keyLight);
 
-  const offscreen = document.createElement('canvas');
-  offscreen.width = 320;
-  offscreen.height = 180;
-  const ctx = offscreen.getContext('2d');
-  if (!ctx) {
-    pmremGenerator.dispose();
-    envTexture.dispose();
-    renderer.dispose();
+    const fillLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    fillLight.position.set(center.x - distance * 0.8, center.y + distance * 0.7, center.z + distance * 0.5);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    rimLight.position.set(center.x, center.y + distance * 0.6, center.z - distance * 1.2);
+    scene.add(rimLight);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xbbccdd, 1.2);
+    hemiLight.position.set(0, distance * 2, 0);
+    scene.add(hemiLight);
+
+    const pointLight1 = new THREE.PointLight(0xffffff, 3.0, distance * 3);
+    pointLight1.position.set(center.x + distance, center.y + distance, center.z + distance);
+    scene.add(pointLight1);
+
+    const pointLight2 = new THREE.PointLight(0xffffff, 2.0, distance * 3);
+    pointLight2.position.set(center.x - distance * 0.6, center.y + distance * 0.8, center.z - distance * 0.5);
+    scene.add(pointLight2);
+
+    renderer.render(scene, camera);
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = 320;
+    offscreen.height = 180;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) {
+      return null;
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(renderer.domElement, 0, 0, 320, 180);
+
+    return offscreen.toDataURL('image/jpeg', 0.92);
+  } finally {
+    scene.environment = null;
     scene.clear();
-    return null;
+    clonedMaterials.forEach((material) => material.dispose());
+    envRenderTarget?.dispose();
+    pmremGenerator?.dispose();
+    if (renderer) {
+      renderer.renderLists.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.width = 0;
+      renderer.domElement.height = 0;
+    }
   }
-
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(renderer.domElement, 0, 0, 320, 180);
-
-  const thumbnail = offscreen.toDataURL('image/jpeg', 0.92);
-
-  pmremGenerator.dispose();
-  envTexture.dispose();
-  renderer.dispose();
-  scene.clear();
-
-  return thumbnail;
 }
 
 /**
@@ -225,7 +242,6 @@ async function generateThumbnailFromModel(model: THREE.Group): Promise<string | 
  * @returns The thumbnail data URL, or null if generation fails
  */
 export async function ensureAssetThumbnail(assetId: string): Promise<string | null> {
-  // Check if thumbnail already exists
   const metadata = await getAssetMetadata(assetId);
   if (!metadata) {
     logger.warn(`[ensureAssetThumbnail] Asset not found: ${assetId}`);
@@ -236,41 +252,56 @@ export async function ensureAssetThumbnail(assetId: string): Promise<string | nu
     return metadata.thumbnail;
   }
 
-  // Generate thumbnail (throttled to avoid UI freezing)
-  return thumbnailThrottle.add(async () => {
-    logger.log(`[ensureAssetThumbnail] Generating thumbnail for ${assetId}`);
+  const existingRequest = inFlightThumbnailRequests.get(assetId);
+  if (existingRequest) {
+    return existingRequest;
+  }
 
-    try {
-      // Load the asset
-      const asset = await getAsset(assetId);
-      if (!asset) {
-        logger.warn(`[ensureAssetThumbnail] Asset data not found: ${assetId}`);
+  const request = thumbnailThrottle
+    .add(async () => {
+      logger.log(`[ensureAssetThumbnail] Generating thumbnail for ${assetId}`);
+
+      try {
+        const refreshedMetadata = await getAssetMetadata(assetId);
+        if (refreshedMetadata?.thumbnail) {
+          return refreshedMetadata.thumbnail;
+        }
+
+        const asset = await getAsset(assetId);
+        if (!asset) {
+          logger.warn(`[ensureAssetThumbnail] Asset data not found: ${assetId}`);
+          return null;
+        }
+
+        const arrayBuffer = await blobToArrayBuffer(asset.blob);
+        const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
+          arrayBuffer,
+          refreshedMetadata?.fileType ?? metadata.fileType
+        );
+
+        const thumbnail = await generateThumbnailFromModel(preprocessed.model);
+
+        if (thumbnail) {
+          await updateAssetMetadata(assetId, {
+            thumbnail,
+            thumbnailUpdatedAt: new Date().toISOString(),
+          });
+          if (assetId.startsWith('starter:')) {
+            emitStarterAssetsUpdated([assetId]);
+          }
+          logger.log(`[ensureAssetThumbnail] Thumbnail generated and cached for ${assetId}`);
+        }
+
+        return thumbnail;
+      } catch (error) {
+        logger.error(`[ensureAssetThumbnail] Failed to generate thumbnail for ${assetId}:`, error);
         return null;
       }
+    })
+    .finally(() => {
+      inFlightThumbnailRequests.delete(assetId);
+    });
 
-      // Preprocess the model
-      const arrayBuffer = await blobToArrayBuffer(asset.blob);
-      const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
-        arrayBuffer,
-        metadata.fileType
-      );
-
-      // Generate thumbnail
-      const thumbnail = await generateThumbnailFromModel(preprocessed.model);
-
-      if (thumbnail) {
-        // Cache in metadata
-        await updateAssetMetadata(assetId, {
-          thumbnail,
-          thumbnailUpdatedAt: new Date().toISOString(),
-        });
-        logger.log(`[ensureAssetThumbnail] Thumbnail generated and cached for ${assetId}`);
-      }
-
-      return thumbnail;
-    } catch (error) {
-      logger.error(`[ensureAssetThumbnail] Failed to generate thumbnail for ${assetId}:`, error);
-      return null;
-    }
-  });
+  inFlightThumbnailRequests.set(assetId, request);
+  return request;
 }

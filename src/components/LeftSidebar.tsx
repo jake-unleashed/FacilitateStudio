@@ -54,6 +54,8 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
   onRetryGeneration,
   backgroundImage,
   onUploadBackground,
+  starterBackgrounds = [],
+  onSelectStarterBackground,
   onRemoveBackground,
   isUploadingBackground,
   backgroundUploadStatusText,
@@ -412,6 +414,8 @@ const LeftSidebarInner = forwardRef<LeftSidebarHandle, LeftSidebarProps>(({
               backgroundImage={backgroundImage}
               worldEnvironment={worldEnvironment}
               onUploadBackground={onUploadBackground}
+              starterBackgrounds={starterBackgrounds}
+              onSelectStarterBackground={onSelectStarterBackground}
               onRemoveBackground={onRemoveBackground}
               onGenerateWorldEnvironment={onGenerateWorldEnvironment}
               onRemoveWorldEnvironment={onRemoveWorldEnvironment}

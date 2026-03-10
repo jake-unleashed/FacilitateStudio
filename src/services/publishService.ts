@@ -6,7 +6,11 @@ import type { AssetManifestEntry, PublishedSnapshot, PublishURLResult } from '..
 import { toSceneSettings, type SceneSettings } from '../types/sceneSettings';
 import type { SimulationSettings } from '../types/simulationSettings';
 import { toSimulationSettings } from '../types/simulationSettings';
-import { extractBackgroundImageStoragePath } from '../utils/backgroundImageUpload';
+import {
+  extractBackgroundImageStoragePath,
+  extractStarterBackgroundStoragePath,
+  isStarterBackgroundStorageRef,
+} from '../utils/backgroundImageUpload';
 import { syncAssetToCloud } from '../utils/modelAssetStore';
 import { hasUsableSteps } from '../utils/stepValidation';
 import { NotFoundError, StorageError, ValidationError } from '../utils/errors';
@@ -185,6 +189,18 @@ async function copyBackgroundImageToPublishedBucket(args: {
   const sceneSettings = toSceneSettings(args.project.sceneSettings);
   const storageKeyOrRef = sceneSettings.backgroundImage?.storageKey;
   if (!storageKeyOrRef) return undefined;
+
+  if (isStarterBackgroundStorageRef(storageKeyOrRef)) {
+    const starterPath = extractStarterBackgroundStoragePath(storageKeyOrRef);
+    if (!starterPath) return undefined;
+    const { data } = supabase.storage.from('starter-assets').getPublicUrl(starterPath);
+    return {
+      backgroundImage: {
+        ...sceneSettings.backgroundImage!,
+        signedUrl: data.publicUrl,
+      },
+    };
+  }
 
   const storagePath = extractBackgroundImageStoragePath(storageKeyOrRef) ?? storageKeyOrRef;
   const filename = storagePath.split('/').pop() ?? 'background.jpg';
@@ -388,7 +404,7 @@ async function fetchPublishedSnapshotDirect(shareToken: string): Promise<Publish
 
 /**
  * Publish a project by creating/updating a backend snapshot and copying user assets to a public bucket.
- * Starter assets (`starter:*`) are not copied; they are app-bundled and resolved client-side.
+ * Starter assets (`starter:*`, `starter-bg://`) are not copied; they are resolved from the starter catalog.
  */
 export async function publishProject(project: Project, userId: string): Promise<PublishURLResult> {
   if (!project.id?.trim()) {

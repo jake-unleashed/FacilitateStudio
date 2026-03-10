@@ -7,10 +7,10 @@ import { toSceneSettings, type SceneSettings } from '../../types/sceneSettings';
 import type { SimulationSettings } from '../../types/simulationSettings';
 import { toSimulationSettings } from '../../types/simulationSettings';
 import { clearAssetResolver, setAssetResolver } from '../../utils/modelCache';
-import { seedStarterAssets, shouldReseedLibrary } from '../../utils/starterAssets/seedStarterAssets';
 import { preloadBackgroundTexture } from '../../utils/backgroundTextureCache';
 import { logger } from '../../utils/logger';
 import { getPublishedSceneBackgroundUrl, getPublishedSceneWorldEnvironmentUrl } from '../../utils/sceneBackgroundUrl';
+import { getStarterAssetById } from '../../services/starterAssetService';
 
 interface PublishedProject {
   objects: SceneObject[];
@@ -29,7 +29,7 @@ interface UsePublishedSnapshotResult {
 
 /**
  * Loads a published simulation snapshot (by share token) and configures the asset resolver.
- * Also seeds starter assets if the snapshot references them.
+ * Starter assets referenced by the snapshot are resolved from the starter catalog on demand.
  *
  * This hook owns lifecycle cleanup for the asset resolver.
  */
@@ -66,20 +66,31 @@ export function usePublishedSnapshot(
           return;
         }
 
-        // Ensure starter assets are available if the snapshot references them.
-        const usesStarter = snapshot.objects.some(
-          (obj) =>
-            typeof obj.properties?.modelAssetId === 'string' &&
-            obj.properties.modelAssetId.startsWith('starter:')
-        );
-        if (usesStarter && shouldReseedLibrary()) {
-          await seedStarterAssets();
-        }
+        setAssetResolver(async (assetId) => {
+          try {
+            const entry = snapshot.assetManifest?.[assetId];
+            if (entry) {
+              return { url: entry.url, fileType: entry.fileType };
+            }
 
-        setAssetResolver((assetId) => {
-          const entry = snapshot.assetManifest?.[assetId];
-          if (!entry) return null;
-          return { url: entry.url, fileType: entry.fileType };
+            if (assetId.startsWith('starter:')) {
+              const starter = await getStarterAssetById(assetId);
+              if (
+                starter &&
+                (starter.fileType === 'glb' || starter.fileType === 'fbx' || starter.fileType === 'obj')
+              ) {
+                return { url: starter.publicUrl, fileType: starter.fileType };
+              }
+            }
+
+            return null;
+          } catch (error) {
+            logger.warn('[usePublishedSnapshot] Failed to resolve asset for published snapshot:', {
+              assetId,
+              error,
+            });
+            return null;
+          }
         });
 
         const backgroundUrl = getPublishedSceneBackgroundUrl(snapshot.sceneSettings);

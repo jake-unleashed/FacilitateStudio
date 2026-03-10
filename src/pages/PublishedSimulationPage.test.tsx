@@ -16,11 +16,6 @@ vi.mock('../utils/modelCache', () => ({
   clearAssetResolver: vi.fn(),
 }));
 
-vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
-  shouldReseedLibrary: () => false,
-  seedStarterAssets: vi.fn(),
-}));
-
 const mockFetchPublishedSnapshotByToken = vi.mocked(fetchPublishedSnapshotByToken);
 
 // Mock useSearchParams

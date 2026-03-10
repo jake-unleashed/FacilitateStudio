@@ -23,6 +23,7 @@ import {
 import { deepCloneGroup } from './deepCloneModel';
 import { supabase } from '../lib/supabase';
 import { logger } from './logger';
+import { getStarterAssetById } from '../services/starterAssetService';
 
 type AssetResolverResult = { url: string; fileType: ModelFileType } | null;
 
@@ -216,11 +217,18 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
 
   const assetData = await getAsset(assetId, userId ? { userId } : undefined);
   if (!assetData) {
-    if (!assetResolver) {
-      throw new Error(`Asset not found: ${assetId}`);
+    let resolved: AssetResolverResult = null;
+    if (assetId.startsWith('starter:')) {
+      const starter = await getStarterAssetById(assetId);
+      if (starter && (starter.fileType === 'glb' || starter.fileType === 'fbx' || starter.fileType === 'obj')) {
+        resolved = { url: starter.publicUrl, fileType: starter.fileType };
+      }
     }
 
-    const resolved = await assetResolver(assetId);
+    if (!resolved && assetResolver) {
+      resolved = await assetResolver(assetId);
+    }
+
     if (!resolved) {
       throw new Error(`Asset not found: ${assetId}`);
     }

@@ -274,4 +274,3 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
     </div>
   );
 };
-

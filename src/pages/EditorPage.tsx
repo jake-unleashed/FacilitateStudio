@@ -27,11 +27,14 @@ import {
 import { useProjects } from '../hooks/useProjects';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useModelUpload } from '../hooks/useModelUpload';
+import { usePreloadStarterAssets } from '../hooks/usePreloadStarterAssets';
+import { useStarterAssets } from '../hooks/useStarterAssets';
 import { useModelGeneration } from '../hooks/useModelGeneration';
 import { useBackgroundImageFlow } from '../hooks/useBackgroundImageFlow';
 import { useWorldEnvironmentFlow } from '../hooks/useWorldEnvironmentFlow';
 import { captureThumbnail } from '../utils/captureThumbnail';
 import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
+import { toStarterBackgroundStorageRef } from '../utils/backgroundImageUpload';
 import { logger } from '../utils/logger';
 import { getSceneBackgroundUrl, getSceneWorldEnvironmentUrl } from '../utils/sceneBackgroundUrl';
 import { DEFAULT_SCENE_SETTINGS, toSceneSettings } from '../types/sceneSettings';
@@ -282,6 +285,9 @@ function EditorPageContent() {
     lastError: uploadLastError,
     clearError: clearUploadError,
   } = useModelUpload({ extendedFileSizeLimit });
+  const { assets: starterModelCatalogAssets } = useStarterAssets('model');
+  const { assets: starterBackgrounds } = useStarterAssets('background');
+  usePreloadStarterAssets(starterModelCatalogAssets);
 
   const {
     uploadBackgroundAndPrepare,
@@ -756,6 +762,23 @@ function EditorPageContent() {
       };
     });
   }, [removeBackground]);
+
+  const handleSelectStarterBackground = useCallback(
+    async (asset: { storageKey: string; name: string; fileSize?: number; publicUrl: string }) => {
+      preloadBackgroundTexture(asset.publicUrl);
+      setSceneSettings((prev) => ({
+        ...prev,
+        backgroundImage: {
+          storageKey: toStarterBackgroundStorageRef(asset.storageKey),
+          filename: asset.name,
+          fileSize: Math.max(1, asset.fileSize ?? 1),
+          signedUrl: asset.publicUrl,
+        },
+        worldEnvironment: undefined,
+      }));
+    },
+    []
+  );
 
   const handleGenerateWorldEnvironment = useCallback(
     async (file: File) => {
@@ -1431,6 +1454,8 @@ function EditorPageContent() {
                 onRetryGeneration={(generationId) => void retryGeneration(generationId)}
                 backgroundImage={sceneSettings.backgroundImage}
                 onUploadBackground={handleUploadBackground}
+                starterBackgrounds={starterBackgrounds}
+                onSelectStarterBackground={handleSelectStarterBackground}
                 onRemoveBackground={handleRemoveBackground}
                 isUploadingBackground={isUploadingBackground}
                 backgroundUploadStatusText={backgroundUploadStatusText}

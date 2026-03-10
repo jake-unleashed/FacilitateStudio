@@ -2,7 +2,9 @@ import { supabase } from '../lib/supabase';
 import { formatFileSize } from '../types/model';
 
 const BACKGROUND_BUCKET = 'user-assets';
+const STARTER_BACKGROUND_BUCKET = 'starter-assets';
 const BACKGROUND_STORAGE_PREFIX = 'bg://';
+const STARTER_BACKGROUND_STORAGE_PREFIX = 'starter-bg://';
 const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
 
 export const SUPPORTED_BACKGROUND_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
@@ -35,11 +37,26 @@ export function toBackgroundImageStorageRef(path: string): string {
   return `${BACKGROUND_STORAGE_PREFIX}${path}`;
 }
 
+export function toStarterBackgroundStorageRef(path: string): string {
+  return `${STARTER_BACKGROUND_STORAGE_PREFIX}${path}`;
+}
+
 export function extractBackgroundImageStoragePath(value: string | null | undefined): string | null {
   if (!value || !value.startsWith(BACKGROUND_STORAGE_PREFIX)) {
     return null;
   }
   return value.slice(BACKGROUND_STORAGE_PREFIX.length);
+}
+
+export function extractStarterBackgroundStoragePath(value: string | null | undefined): string | null {
+  if (!value || !value.startsWith(STARTER_BACKGROUND_STORAGE_PREFIX)) {
+    return null;
+  }
+  return value.slice(STARTER_BACKGROUND_STORAGE_PREFIX.length);
+}
+
+export function isStarterBackgroundStorageRef(value: string | null | undefined): boolean {
+  return Boolean(value && value.startsWith(STARTER_BACKGROUND_STORAGE_PREFIX));
 }
 
 export async function uploadBackgroundImageToStorage(
@@ -75,6 +92,12 @@ export async function resolveBackgroundImageUrl(
 ): Promise<string | undefined> {
   if (!storagePathOrRef) return undefined;
 
+  const starterPath = extractStarterBackgroundStoragePath(storagePathOrRef);
+  if (starterPath) {
+    const { data } = supabase.storage.from(STARTER_BACKGROUND_BUCKET).getPublicUrl(starterPath);
+    return data.publicUrl;
+  }
+
   const storagePath = extractBackgroundImageStoragePath(storagePathOrRef) ?? storagePathOrRef;
   const { data, error } = await supabase.storage
     .from(BACKGROUND_BUCKET)
@@ -90,6 +113,7 @@ export async function removeBackgroundImageFromStorage(
   storagePathOrRef: string | null | undefined
 ): Promise<void> {
   if (!storagePathOrRef) return;
+  if (isStarterBackgroundStorageRef(storagePathOrRef)) return;
   const storagePath = extractBackgroundImageStoragePath(storagePathOrRef) ?? storagePathOrRef;
   await supabase.storage.from(BACKGROUND_BUCKET).remove([storagePath]);
 }

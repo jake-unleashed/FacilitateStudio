@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Globe2, ImagePlus, Loader2, Move3d, RefreshCw, Rotate3d, Scaling, Sparkles, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Globe2, ImagePlus, Loader2, Move3d, RefreshCw, Rotate3d, Scaling, Sparkles, Trash2, X } from 'lucide-react';
 import type { SceneBackgroundImage, SceneWorldEnvironment } from '../../types/sceneSettings';
 import type { BackgroundImageFlowPhase } from '../../hooks/useBackgroundImageFlow';
 import type { WorldEnvironmentFlowPhase } from '../../types/worldEnvironment';
+import type { StarterAssetCatalogEntry } from '../../services/starterAssetService';
+import { preloadBackgroundTexture } from '../../utils/backgroundTextureCache';
+import { toStarterBackgroundStorageRef } from '../../utils/backgroundImageUpload';
 import { RotationSection } from '../rightSidebar/RotationSection';
 import { ScaleSection } from '../rightSidebar/ScaleSection';
 
@@ -10,6 +13,8 @@ interface ScenePanelProps {
   backgroundImage?: SceneBackgroundImage;
   worldEnvironment?: SceneWorldEnvironment;
   onUploadBackground?: (file: File) => Promise<void>;
+  starterBackgrounds?: StarterAssetCatalogEntry[];
+  onSelectStarterBackground?: (asset: StarterAssetCatalogEntry) => Promise<void> | void;
   onRemoveBackground?: () => Promise<void>;
   onGenerateWorldEnvironment?: (file: File) => Promise<void>;
   onRemoveWorldEnvironment?: () => Promise<void>;
@@ -38,20 +43,56 @@ interface ScenePanelProps {
 const ACCEPTED_BACKGROUND_FORMATS = '.jpg,.jpeg,.png,.webp';
 const ACCEPTED_WORLD_FORMATS = '.jpg,.jpeg,.png,.webp';
 
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  if (bytes >= 1024) {
-    return `${Math.round(bytes / 1024)} KB`;
-  }
-  return `${bytes} B`;
+function StarterBackgroundCard({
+  asset,
+  isSelected,
+  isDisabled,
+  onSelect,
+}: {
+  asset: StarterAssetCatalogEntry;
+  isSelected: boolean;
+  isDisabled: boolean;
+  onSelect: (asset: StarterAssetCatalogEntry) => void;
+}): JSX.Element {
+  const handleWarmTexture = useCallback(() => {
+    preloadBackgroundTexture(asset.publicUrl);
+  }, [asset.publicUrl]);
+
+  return (
+    <button
+      type="button"
+      className={`group flex w-full items-center justify-between rounded-[12px] border px-3 py-2.5 text-left transition-all hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${
+        isSelected ? 'border-blue-300 bg-blue-50/80 shadow-sm' : 'border-white/50 bg-white/60'
+      }`}
+      onClick={() => onSelect(asset)}
+      onMouseEnter={handleWarmTexture}
+      onFocus={handleWarmTexture}
+      disabled={isDisabled}
+      aria-label={isSelected ? `Starter background ${asset.name} selected` : `Use starter background ${asset.name}`}
+    >
+      <p
+        className={`truncate text-sm font-semibold ${
+          isSelected ? 'text-blue-900' : 'text-slate-700 group-hover:text-slate-900'
+        }`}
+      >
+        {asset.name}
+      </p>
+      {isSelected && (
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+          <CheckCircle2 size={10} />
+          Active
+        </span>
+      )}
+    </button>
+  );
 }
 
 export function ScenePanel({
   backgroundImage,
   worldEnvironment,
   onUploadBackground,
+  starterBackgrounds = [],
+  onSelectStarterBackground,
   onRemoveBackground,
   onGenerateWorldEnvironment,
   onRemoveWorldEnvironment,
@@ -69,6 +110,7 @@ export function ScenePanel({
 }: ScenePanelProps): JSX.Element {
   const [adjustMode, setAdjustMode] = useState<'menu' | 'position' | 'rotation' | 'scale' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isStarterSectionOpen, setIsStarterSectionOpen] = useState(true);
   const dragCounterRef = useRef(0);
 
   const effectivePhase = phase ?? (isUploading ? 'uploading' : isTextureLoading ? 'preparingScene' : 'idle');
@@ -182,6 +224,8 @@ export function ScenePanel({
   // When it's on, show the "Environment" picker with both options.
   const sectionLabel = showWorldEnvironmentUI ? 'Environment' : 'Background';
   const showEmptyState = !hasBackgroundImage && !hasWorldEnvironment && !isWorldGenerating && !isWorldLoading;
+  const hasStarterBackgrounds = starterBackgrounds.length > 0;
+  const activeStarterBackgroundRef = backgroundImage?.storageKey ?? null;
 
   return (
     <div className="space-y-4">
@@ -301,13 +345,13 @@ export function ScenePanel({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-slate-800">{backgroundImage.filename}</p>
-                    <p className="text-xs text-slate-500">
-                      {isUploadingPhase
-                        ? (statusText ?? 'Uploading...')
-                        : isTextureLoadingPhase
-                        ? 'Preparing scene...'
-                        : formatBytes(backgroundImage.fileSize)}
-                    </p>
+                    {(isUploadingPhase || isTextureLoadingPhase) && (
+                      <p className="text-xs text-slate-500">
+                        {isUploadingPhase
+                          ? (statusText ?? 'Uploading...')
+                          : 'Preparing scene...'}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -566,6 +610,43 @@ export function ScenePanel({
                     />
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasStarterBackgrounds && (
+          <div className="mt-3 border-t border-white/40 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsStarterSectionOpen((prev) => !prev)}
+              className="mb-2 flex w-full items-center justify-between text-left"
+              aria-expanded={isStarterSectionOpen}
+              aria-label={isStarterSectionOpen ? 'Collapse starter backgrounds' : 'Expand starter backgrounds'}
+            >
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Starter backgrounds</p>
+              <span className="text-xs font-medium text-slate-500">
+                {isStarterSectionOpen ? 'Hide' : 'Show'}
+              </span>
+            </button>
+            {isStarterSectionOpen && (
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {starterBackgrounds.map((asset) => {
+                  const isSelected = activeStarterBackgroundRef === toStarterBackgroundStorageRef(asset.storageKey);
+
+                  return (
+                    <StarterBackgroundCard
+                      key={asset.id}
+                      asset={asset}
+                      isSelected={isSelected}
+                      isDisabled={isAnyLoading || !onSelectStarterBackground}
+                      onSelect={(selectedAsset) => {
+                        if (!onSelectStarterBackground) return;
+                        void onSelectStarterBackground(selectedAsset);
+                      }}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>

@@ -281,33 +281,31 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
   const relativeDate = formatRelativeDate(asset.uploadDate);
   const [thumbnail, setThumbnail] = useState<string | null>(asset.thumbnail || null);
 
-  // Lazy-load thumbnail if not already available
   useEffect(() => {
-    if (!thumbnail && !isAdded) {
-      import('../utils/assetThumbnails/ensureAssetThumbnail').then(({ ensureAssetThumbnail }) => {
-        ensureAssetThumbnail(asset.id).then((thumb) => {
-          if (thumb) {
-            setThumbnail(thumb);
-          }
-        }).catch((error) => {
-          console.error(`[AssetCard] Thumbnail generation failed for ${asset.id}:`, error);
-        });
-      }).catch((error) => {
-        console.error('[AssetCard] Failed to load thumbnail module:', error);
-      });
+    if (asset.thumbnail && asset.thumbnail !== thumbnail) {
+      setThumbnail(asset.thumbnail);
     }
-  }, [asset.id, thumbnail, isAdded]);
+  }, [asset.thumbnail, thumbnail]);
 
-  /** Handle keyboard activation of the card */
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!isAdded && (e.key === 'Enter' || e.key === ' ')) {
-        e.preventDefault();
-        onAdd();
+  useEffect(() => {
+    if (thumbnail || isAdded) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { ensureAssetThumbnail } = await import('../utils/assetThumbnails/ensureAssetThumbnail');
+        const thumb = await ensureAssetThumbnail(asset.id);
+        if (!cancelled && thumb) {
+          setThumbnail(thumb);
+        }
+      } catch (error) {
+        console.error(`[AssetCard] Thumbnail generation failed for ${asset.id}:`, error);
       }
-    },
-    [isAdded, onAdd]
-  );
+    })();
+
+    return () => { cancelled = true; };
+  }, [asset.id, thumbnail, isAdded]);
 
   /** Handle click on the card */
   const handleClick = useCallback(() => {
@@ -331,25 +329,24 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
 
   return (
     <div
-      onClick={handleClick}
-      role="button"
-      tabIndex={isAdded ? -1 : 0}
-      onKeyDown={handleKeyDown}
-      className={`group relative w-full cursor-pointer rounded-[20px] border p-4 text-left shadow-sm transition-all ${cardClasses}`}
-      aria-label={isAdded ? `${displayName} added to scene` : `Add ${displayName} to scene`}
+      className={`group relative w-full rounded-[20px] border p-4 text-left shadow-sm transition-all ${cardClasses}`}
     >
       {/* Options Menu (only shown when onRemove is provided and not in added state) */}
       {onRemove && !isAdded && <AssetOptionsMenu displayName={displayName} onRemove={onRemove} />}
 
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={isAdded}
+        className={`flex w-full items-center gap-3 text-left disabled:cursor-default ${
+          onRemove && !isAdded ? 'pr-8' : ''
+        }`}
+        aria-label={isAdded ? `${displayName} added to scene` : `Add ${displayName} to scene`}
+      >
         {/* Thumbnail or Icon */}
         {thumbnail && !isAdded ? (
           <div className="h-10 w-16 shrink-0 overflow-hidden rounded-[8px] shadow-sm">
-            <img
-              src={thumbnail}
-              alt={displayName}
-              className="h-full w-full object-cover"
-            />
+            <img src={thumbnail} alt={displayName} className="h-full w-full object-cover" />
           </div>
         ) : (
           <div
@@ -382,7 +379,7 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
             )}
           </div>
         </div>
-      </div>
+      </button>
     </div>
   );
 };

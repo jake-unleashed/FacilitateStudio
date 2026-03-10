@@ -1,53 +1,60 @@
-# ADR 0006: Starter models remain app-bundled (not user assets) in MVP backend
+# ADR 0006: Starter assets move to Supabase-backed public catalog
 
 ## Status
 
-Accepted (MVP)
+Accepted
 
 ## Context
 
-Facilitate Studio now includes “Starter models” that are:
+Facilitate Studio supports two starter media types:
 
-- discovered at build time (Vite `import.meta.glob`)
-- shipped with the app under `src/starterAssets/models/`
-- seeded into local IndexedDB with deterministic IDs like `starter:<slug>`
+- starter 3D models in the Add panel
+- starter 360 backgrounds in the Scene panel
 
-As we add a backend, we need to decide whether starter models are:
+The original model-only system was app-bundled and seeded into IndexedDB from files committed in Git.
+That approach does not scale for content growth, runtime updates, or mixed asset types.
 
-- stored as normal user assets in object storage, or
-- kept as app-bundled public assets
+We need a single backend-driven system that:
 
-Constraints:
-
-- MVP must stay **simple and elegant**
-- security must stay robust (avoid complicated public/private asset policy interactions)
+- supports both starter models and starter backgrounds
+- allows updating starter content without app redeploys
+- preserves stable IDs for existing projects (`starter:*`)
+- avoids mixing starter assets with private user assets
 
 ## Decision
 
-For MVP backend:
+Starter assets are now managed via Supabase as a public catalog:
 
-- Starter models remain **bundled with the app**.
-- Starter models are **not** stored in the user `assets` table.
-- Projects may reference starter assets via IDs like `starter:<slug>`; clients resolve these to bundled URLs.
+- Add `public.starter_assets` table for metadata (ID, type, storage key, thumbnail URL, display data).
+- Add public `starter-assets` storage bucket for files.
+- Keep user uploads in `user-assets`; starter assets are never written to user asset rows.
+- Resolve starter models by stable IDs like `starter:<slug>` using catalog entries.
+- Resolve starter backgrounds by `starter-bg://<storage-path>` storage references.
+- Published snapshots reuse starter public URLs and do not copy starter media into `published-assets`.
 
-Cloud migration rule:
+Migration policy:
 
-- When importing local projects to cloud, **do not upload starter assets**; only upload user assets.
+- Remove Git-bundled starter model files and starter seeding code.
+- Existing project references that already use `starter:*` remain valid through catalog lookup.
 
 ## Consequences
 
 ### Positive
 
-- Simplifies storage policies (no need to make starter assets public via storage buckets).
-- Reduces backend complexity and avoids accidental privacy leaks.
-- Published snapshots continue to work because starter models are served from the same app origin.
+- Unified architecture for model and background starter media.
+- Starter library can be updated in Supabase without shipping app code.
+- Removes large binary assets from repository history.
+- Published and editor flows share the same public URL source for starter media.
 
 ### Negative / Tradeoffs
 
-- If starter library grows large, it increases app bundle/static asset size.
-- If we later want server-managed starter libraries, we’ll need a new asset source concept.
+- Requires manual catalog curation in Supabase dashboard (or future admin tooling).
+- Adds runtime dependency on catalog query availability.
+- Starter assets are no longer guaranteed from app bundle offline.
 
 ### Follow-ups
 
-- If bundle size becomes an issue, revisit and move starter models to a public storage bucket/CDN with versioning.
+- Add lightweight admin tooling for starter catalog management.
+- Add richer starter metadata (tags, filtering, curated collections) when needed.
+- Convert legacy FBX starter models to GLB as content is refreshed.
 

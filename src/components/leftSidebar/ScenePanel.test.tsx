@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { SceneBackgroundImage } from '../../types/sceneSettings';
+import type { StarterAssetCatalogEntry } from '../../services/starterAssetService';
 import { ScenePanel } from './ScenePanel';
 
 const mockBackgroundImage: SceneBackgroundImage = {
@@ -9,6 +10,21 @@ const mockBackgroundImage: SceneBackgroundImage = {
   fileSize: 5 * 1024 * 1024,
   signedUrl: 'https://example.com/bg/panorama.jpg',
 };
+
+const starterBackgrounds: StarterAssetCatalogEntry[] = [
+  {
+    id: 'starter:bg-desert',
+    type: 'background',
+    name: 'Desert Test',
+    storageKey: 'backgrounds/desert.jpg',
+    fileType: 'jpg',
+    fileSize: 1234,
+    sortOrder: 0,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    publicUrl: 'https://example.com/backgrounds/desert.jpg',
+  },
+];
 
 describe('ScenePanel', () => {
   it('shows only 360 upload by default when world environment is disabled', () => {
@@ -90,8 +106,6 @@ describe('ScenePanel', () => {
     );
 
     expect(screen.getByText('Optimizing image...')).toBeInTheDocument();
-    expect(screen.queryByText(/5\.0 MB/)).not.toBeInTheDocument();
-    // thumbnail area shows spinner, not the old preview image
     expect(screen.queryByAltText('360 background preview')).not.toBeInTheDocument();
   });
 
@@ -106,10 +120,9 @@ describe('ScenePanel', () => {
     );
 
     expect(screen.getByText('Preparing scene...')).toBeInTheDocument();
-    expect(screen.queryByText(/5\.0 MB/)).not.toBeInTheDocument();
   });
 
-  it('shows file size once texture is ready', () => {
+  it('does not show file size in idle state', () => {
     render(
       <ScenePanel
         onUploadBackground={vi.fn()}
@@ -119,7 +132,7 @@ describe('ScenePanel', () => {
       />
     );
 
-    expect(screen.getByText('5.0 MB')).toBeInTheDocument();
+    expect(screen.queryByText('5.0 MB')).not.toBeInTheDocument();
     expect(screen.queryByText('Preparing scene...')).not.toBeInTheDocument();
   });
 
@@ -135,5 +148,34 @@ describe('ScenePanel', () => {
 
     expect(screen.getByRole('button', { name: /replace/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /remove/i })).toBeDisabled();
+  });
+
+  it('keeps starter backgrounds visible when a background is already applied', () => {
+    render(
+      <ScenePanel
+        backgroundImage={mockBackgroundImage}
+        starterBackgrounds={starterBackgrounds}
+        onUploadBackground={vi.fn()}
+        onRemoveBackground={vi.fn()}
+        onSelectStarterBackground={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Starter backgrounds')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /use starter background desert test/i })).toBeInTheDocument();
+  });
+
+  it('renders starter background cards as title-only buttons', () => {
+    render(
+      <ScenePanel
+        starterBackgrounds={starterBackgrounds}
+        onUploadBackground={vi.fn()}
+        onRemoveBackground={vi.fn()}
+        onSelectStarterBackground={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Desert Test')).toBeInTheDocument();
+    expect(screen.queryByAltText('Desert Test')).not.toBeInTheDocument();
   });
 });

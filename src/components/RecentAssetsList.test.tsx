@@ -257,9 +257,8 @@ describe('RecentAssetsList', () => {
       render(<RecentAssetsList assets={assets} onAddAsset={mockOnAddAsset} />);
 
       const button = screen.getByRole('button', { name: /add test to scene/i });
-      // The card uses role="button" and tabindex for keyboard accessibility
-      expect(button).toHaveAttribute('role', 'button');
-      expect(button).toHaveAttribute('tabindex', '0');
+      expect(button).toHaveAttribute('type', 'button');
+      expect(button).toBeEnabled();
     });
   });
 
@@ -337,17 +336,17 @@ describe('RecentAssetsList', () => {
 
       const button = screen.getByRole('button', { name: /add chair to scene/i });
 
-      // Initially enabled (focusable)
-      expect(button).toHaveAttribute('tabindex', '0');
+      // Initially enabled
+      expect(button).toBeEnabled();
 
       // Click the asset
       await act(async () => {
         button.click();
       });
 
-      // Button should now be non-interactive (tabindex=-1 and cursor-default)
-      expect(button).toHaveAttribute('tabindex', '-1');
-      expect(button).toHaveClass('cursor-default');
+      // Button should now be non-interactive
+      expect(button).toBeDisabled();
+      expect(button).toHaveClass('disabled:cursor-default');
     });
 
     it('updates aria-label when showing feedback', async () => {
@@ -376,8 +375,8 @@ describe('RecentAssetsList', () => {
         button.click();
       });
 
-      // Button should have green styling (border-green-200 class)
-      expect(button).toHaveClass('border-green-200');
+      // The card wrapper should switch to the green feedback styling.
+      expect(button.parentElement).toHaveClass('border-green-200');
     });
 
     it('resets feedback after timeout duration', async () => {
@@ -393,7 +392,7 @@ describe('RecentAssetsList', () => {
 
       // Verify feedback is showing
       expect(screen.getByText('Added to scene!')).toBeInTheDocument();
-      expect(button).toHaveAttribute('tabindex', '-1');
+      expect(button).toBeDisabled();
 
       // Advance time past the feedback duration
       await act(async () => {
@@ -403,7 +402,7 @@ describe('RecentAssetsList', () => {
       // Feedback should be reset - button should now be interactive and show the asset name
       expect(screen.queryByText('Added to scene!')).not.toBeInTheDocument();
       expect(screen.getByText('chair')).toBeInTheDocument();
-      expect(button).toHaveAttribute('tabindex', '0');
+      expect(button).toBeEnabled();
     });
 
     it('only shows feedback on the clicked asset', async () => {
@@ -422,13 +421,13 @@ describe('RecentAssetsList', () => {
       });
 
       // Table button should be non-interactive and show feedback
-      expect(tableButton).toHaveAttribute('tabindex', '-1');
+      expect(tableButton).toBeDisabled();
 
       // Chair and lamp buttons should still be interactive
       const chairButton = screen.getByRole('button', { name: /add chair to scene/i });
       const lampButton = screen.getByRole('button', { name: /add lamp to scene/i });
-      expect(chairButton).toHaveAttribute('tabindex', '0');
-      expect(lampButton).toHaveAttribute('tabindex', '0');
+      expect(chairButton).toBeEnabled();
+      expect(lampButton).toBeEnabled();
 
       // Only one "Added to scene!" should be visible
       expect(screen.getAllByText('Added to scene!')).toHaveLength(1);
@@ -449,7 +448,7 @@ describe('RecentAssetsList', () => {
       });
 
       // Chair should show feedback (non-interactive)
-      expect(chairButton).toHaveAttribute('tabindex', '-1');
+      expect(chairButton).toBeDisabled();
 
       // Advance time partially
       act(() => {
@@ -463,8 +462,8 @@ describe('RecentAssetsList', () => {
       });
 
       // Now table should show feedback and chair should be back to normal
-      expect(tableButton).toHaveAttribute('tabindex', '-1');
-      expect(chairButton).toHaveAttribute('tabindex', '0');
+      expect(tableButton).toBeDisabled();
+      expect(chairButton).toBeEnabled();
 
       // Still only one "Added to scene!" visible
       expect(screen.getAllByText('Added to scene!')).toHaveLength(1);

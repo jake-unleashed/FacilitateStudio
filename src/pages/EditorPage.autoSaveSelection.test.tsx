@@ -71,11 +71,16 @@ vi.mock('../utils/captureThumbnail', () => {
   };
 });
 
-vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
-  seedStarterAssets: vi.fn().mockResolvedValue(0),
-  shouldReseedLibrary: vi.fn().mockReturnValue(false),
-  getStarterAssetIds: vi.fn().mockReturnValue([]),
-  STARTER_LIBRARY_VERSION: '4',
+vi.mock('../hooks/useStarterAssets', () => ({
+  useStarterAssets: () => ({
+    assets: [],
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('../hooks/usePreloadStarterAssets', () => ({
+  usePreloadStarterAssets: vi.fn(),
 }));
 
 // Mock heavy UI components we don't need for this behavior test

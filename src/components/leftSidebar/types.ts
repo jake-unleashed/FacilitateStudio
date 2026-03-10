@@ -4,6 +4,7 @@ import type { SceneBackgroundImage, SceneWorldEnvironment } from '../../types/sc
 import type { BackgroundImageFlowPhase } from '../../hooks/useBackgroundImageFlow';
 import type { WorldEnvironmentFlowPhase } from '../../types/worldEnvironment';
 import type { ChildMesh, FocusMode, SceneObject, SidebarSection, SimStep } from '../../types';
+import type { StarterAssetCatalogEntry } from '../../services/starterAssetService';
 
 export interface LeftSidebarProps {
   activeTab: SidebarSection | null;
@@ -36,6 +37,8 @@ export interface LeftSidebarProps {
   onRetryGeneration?: (generationId: string) => void;
   backgroundImage?: SceneBackgroundImage;
   onUploadBackground?: (file: File) => Promise<void>;
+  starterBackgrounds?: StarterAssetCatalogEntry[];
+  onSelectStarterBackground?: (asset: StarterAssetCatalogEntry) => Promise<void> | void;
   onRemoveBackground?: () => Promise<void>;
   isUploadingBackground?: boolean;
   backgroundUploadStatusText?: string | null;

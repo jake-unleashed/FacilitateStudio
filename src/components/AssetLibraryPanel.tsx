@@ -5,11 +5,10 @@
  * Features collapsible sections and automatic thumbnail generation.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { AssetMetadata } from '../types/model';
 import { RecentAssetsList } from './RecentAssetsList';
-import { ensureAssetThumbnail } from '../utils/assetThumbnails/ensureAssetThumbnail';
 import { HelpIcon } from './HelpIcon';
 
 interface AssetLibraryPanelProps {
@@ -68,20 +67,6 @@ export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({
     setIsStarterSectionOpen(newState);
     setStarterSectionOpen(newState);
   }, [isStarterSectionOpen]);
-
-  // Trigger thumbnail generation for starter assets when section is opened
-  useEffect(() => {
-    if (isStarterSectionOpen && starterAssets.length > 0) {
-      // Generate thumbnails in the background (fire and forget)
-      starterAssets.forEach((asset) => {
-        if (!asset.thumbnail) {
-          ensureAssetThumbnail(asset.id).catch((error) => {
-            console.error(`[AssetLibraryPanel] Thumbnail generation failed for ${asset.id}:`, error);
-          });
-        }
-      });
-    }
-  }, [isStarterSectionOpen, starterAssets]);
 
   return (
     <div className="space-y-6">

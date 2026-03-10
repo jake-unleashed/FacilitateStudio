@@ -13,10 +13,12 @@ import type { ModelMetrics, PreprocessedModel } from '../utils/modelPreprocessin
 vi.mock('../utils/modelAssetStore', () => ({
   saveAssetWithTextures: vi.fn(),
   getAsset: vi.fn(),
+  getAssetMetadata: vi.fn().mockResolvedValue(null),
   getRecentAssets: vi.fn().mockResolvedValue([]),
   syncAssetToCloud: vi.fn().mockResolvedValue(undefined),
   updateAssetMetadata: vi.fn(),
   deleteAsset: vi.fn().mockResolvedValue(undefined),
+  upsertAssetFromBlob: vi.fn(),
   migrateLegacyAssets: vi.fn().mockResolvedValue(0),
   hasLegacyAssets: vi.fn().mockReturnValue(false),
   blobToArrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
@@ -47,17 +49,27 @@ vi.mock('../utils/modelCache', () => ({
   getOrLoadModel: vi.fn(),
 }));
 
-vi.mock('../utils/starterAssets/seedStarterAssets', () => ({
-  seedStarterAssets: vi.fn().mockResolvedValue(0),
-  shouldReseedLibrary: vi.fn().mockReturnValue(false),
-  getStarterAssetIds: vi.fn().mockReturnValue([]),
-  STARTER_LIBRARY_VERSION: '4',
+vi.mock('./useStarterAssets', () => ({
+  useStarterAssets: vi.fn().mockReturnValue({
+    assets: [],
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('../utils/starterAssets/ensureStarterAssetCached', () => ({
+  ensureStarterAssetCached: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../utils/starterAssets/starterAssetEvents', () => ({
+  subscribeToStarterAssetsUpdated: vi.fn(() => () => undefined),
 }));
 
 // Import mocked modules for assertions
 import {
   saveAssetWithTextures,
   getAsset,
+  getAssetMetadata,
   getRecentAssets,
   updateAssetMetadata,
   deleteAsset,
@@ -110,6 +122,7 @@ describe('useModelUpload', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset mock implementations
+    vi.mocked(getAssetMetadata).mockResolvedValue(null);
     vi.mocked(getRecentAssets).mockResolvedValue([]);
     vi.mocked(hasLegacyAssets).mockReturnValue(false);
     vi.mocked(migrateLegacyAssets).mockResolvedValue(0);
