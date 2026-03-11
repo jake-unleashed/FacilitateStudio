@@ -1,14 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
-import { ReactElement } from 'react';
+import { ReactElement, useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { PublishedSimulationPage } from './PublishedSimulationPage';
 import { PopupProvider } from '../contexts/PopupContext';
 import { fetchPublishedSnapshotByToken } from '../services/publishService';
+import { frameShowcaseObjects } from '../utils/showcaseCamera';
 import type { PublishedSnapshot } from '../types/publish';
 
 vi.mock('../services/publishService', () => ({
   fetchPublishedSnapshotByToken: vi.fn(),
+}));
+
+vi.mock('../components/MainCanvas', () => ({
+  MainCanvas: ({ onCameraControlsReady }: { onCameraControlsReady?: (controls: { setLookAt: () => void }) => void }) => {
+    useEffect(() => {
+      onCameraControlsReady?.({ setLookAt: vi.fn() });
+    }, [onCameraControlsReady]);
+
+    return <div>Main Canvas Mock</div>;
+  },
+}));
+
+vi.mock('../components/preview/PreviewStepExecutor', () => ({
+  PreviewStepExecutor: () => <div>Preview Step Executor Mock</div>,
+}));
+
+vi.mock('../utils/showcaseCamera', () => ({
+  getShowcaseObjects: (objects: Array<{ properties?: { modelAssetId?: string } }>) =>
+    objects.filter((object) => Boolean(object.properties?.modelAssetId)),
+  frameShowcaseObjects: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../utils/modelCache', () => ({
@@ -17,6 +38,7 @@ vi.mock('../utils/modelCache', () => ({
 }));
 
 const mockFetchPublishedSnapshotByToken = vi.mocked(fetchPublishedSnapshotByToken);
+const mockFrameShowcaseObjects = vi.mocked(frameShowcaseObjects);
 
 // Mock useSearchParams
 const mockSearchParams = new URLSearchParams();
@@ -110,6 +132,7 @@ describe('PublishedSimulationPage', () => {
     });
 
     renderWithContext(<PublishedSimulationPage />);
+    expect(await screen.findByText(/interactive training/i)).toBeInTheDocument();
 
     // Exit button should not be present (unlike PreviewPage)
     expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument();
@@ -150,5 +173,44 @@ describe('PublishedSimulationPage', () => {
 
     const startButton = await screen.findByRole('button', { name: /start/i });
     expect(startButton).not.toBeDisabled();
+  });
+
+  it('opens model-only published showcases directly in the scene', async () => {
+    mockSearchParams.set('token', 'token-123');
+    mockFetchPublishedSnapshotByToken.mockResolvedValue({
+      name: 'Showcase Snapshot',
+      objects: [
+        {
+          id: 'obj-1',
+          name: 'Model',
+          type: 'mesh',
+          transform: {
+            x: 0,
+            y: 0,
+            z: 0,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            scaleX: 1,
+            scaleY: 1,
+            scaleZ: 1,
+          },
+          properties: {
+            visible: true,
+            modelAssetId: 'asset-1',
+          },
+        },
+      ],
+      steps: [],
+      assetManifest: {},
+    });
+
+    renderWithContext(<PublishedSimulationPage />);
+
+    expect(await screen.findByText('Main Canvas Mock')).toBeInTheDocument();
+    expect(screen.queryByText(/interactive training/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/powered by facilitate/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Preview Step Executor Mock')).not.toBeInTheDocument();
+    expect(mockFrameShowcaseObjects).toHaveBeenCalledTimes(1);
   });
 });

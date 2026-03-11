@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { TopBar } from './TopBar';
@@ -24,7 +25,12 @@ vi.mock('../contexts/PopupContext', () => ({
 }));
 
 // Helper to render with router context
-function renderTopBar(props: { title: string; onTitleChange: (title: string) => void }) {
+function renderTopBar(
+  props: Partial<ComponentProps<typeof TopBar>> & {
+    title: string;
+    onTitleChange: (title: string) => void;
+  }
+) {
   return render(
     <MemoryRouter>
       <TopBar {...props} saveStatus="saved" />
@@ -66,6 +72,18 @@ describe('TopBar', () => {
     renderTopBar(defaultProps);
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByText('Publish')).toBeInTheDocument();
+  });
+
+  it('supports separate preview and publish availability', () => {
+    renderTopBar({ ...defaultProps, canPreview: false, canPublish: true });
+
+    const previewButton = screen.getByText('Preview').closest('button');
+    const publishButton = screen.getByText('Publish').closest('button');
+
+    expect(previewButton).toHaveAttribute('aria-disabled', 'true');
+    expect(previewButton).toHaveAttribute('title', 'Add a model or configure a step to preview');
+    expect(publishButton).toHaveAttribute('aria-disabled', 'false');
+    expect(publishButton).toHaveAttribute('title', 'Publish');
   });
 
   it('disables Undo button initially', () => {

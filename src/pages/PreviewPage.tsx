@@ -7,14 +7,42 @@ import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { usePopup } from '../contexts/PopupContext';
 import { useProjectAutoSave } from '../hooks/useProjectAutoSave';
 import { useProjects } from '../hooks/useProjects';
+import { useShowcaseCameraFraming, useShowcasePresentation } from '../hooks/useShowcasePresentation';
 import type { Project } from '../types/project';
 import { SceneObject, SimStep } from '../types';
-import { DEFAULT_SIMULATION_SETTINGS, toSimulationSettings, type SimulationSettings } from '../types/simulationSettings';
-import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
+import {
+  DEFAULT_SIMULATION_SETTINGS,
+  toSimulationSettings,
+  type SimulationSettings,
+} from '../types/simulationSettings';
 import CameraControlsImpl from 'camera-controls';
 import { logger } from '../utils/logger';
 import { preloadBackgroundTexture } from '../utils/backgroundTextureCache';
 import { getSceneBackgroundUrl, getSceneWorldEnvironmentUrl } from '../utils/sceneBackgroundUrl';
+import { applyPreviewTransformUpdate } from '../utils/previewObjectTransforms';
+
+function PreviewShowcaseExitButton({ onExit }: { onExit: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onExit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onExit]);
+
+  return (
+    <button
+      onClick={onExit}
+      className="fixed left-4 top-4 z-[60] flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white/90"
+      title="Exit Preview (Esc)"
+    >
+      <span>Exit</span>
+    </button>
+  );
+}
 
 /**
  * PreviewPage - Full-screen preview mode for experiencing the training simulation.
@@ -46,6 +74,11 @@ export function PreviewPage() {
 
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
   const [, setControlsReady] = useState(false);
+  const { showcaseObjects, isShowcaseMode, effectiveSimulationSettings } = useShowcasePresentation({
+    objects: previewObjects,
+    steps: project?.steps ?? [],
+    simulationSettings: previewSettings,
+  });
 
   const { setBaseline, flushSave } = useProjectAutoSave({
     project,
@@ -125,6 +158,15 @@ export function PreviewPage() {
     setControlsReady(true);
   }, []);
 
+  useShowcaseCameraFraming({
+    ready: isInitialized,
+    showcaseObjects,
+    isShowcaseMode,
+    controlsRef: cameraControlsRef,
+    resetKey: projectId,
+    logScope: 'PreviewPage',
+  });
+
   // Handle object transform updates during animation
   const handleTransformUpdate = useCallback(
     (
@@ -136,47 +178,7 @@ export function PreviewPage() {
       },
       childPath?: string
     ) => {
-      setPreviewObjects((prev) => {
-        const obj = prev.find((o) => o.id === objectId);
-        if (!obj) return prev;
-
-        if (childPath) {
-          // Child target: position is world-space (child), rotation/scale are local (child).
-          const updatedForPos = applyChildWorldPosition(obj, childPath, update.position) ?? obj;
-          const updatedForRotScale =
-            applyChildLocalTransform(updatedForPos, childPath, {
-              rotationX: update.rotation.x,
-              rotationY: update.rotation.y,
-              rotationZ: update.rotation.z,
-              scaleX: update.scale.x,
-              scaleY: update.scale.y,
-              scaleZ: update.scale.z,
-            }) ?? updatedForPos;
-
-          return prev.map((o) => (o.id === objectId ? updatedForRotScale : o));
-        }
-
-        // Parent target: position/rotation/scale are local (parent transform).
-        return prev.map((o) =>
-          o.id === objectId
-            ? {
-                ...o,
-                transform: {
-                  ...o.transform,
-                  x: update.position.x,
-                  y: update.position.y,
-                  z: update.position.z,
-                  rotationX: update.rotation.x,
-                  rotationY: update.rotation.y,
-                  rotationZ: update.rotation.z,
-                  scaleX: update.scale.x,
-                  scaleY: update.scale.y,
-                  scaleZ: update.scale.z,
-                },
-              }
-            : o
-        );
-      });
+      setPreviewObjects((prev) => applyPreviewTransformUpdate(prev, objectId, update, childPath));
     },
     []
   );
@@ -207,6 +209,19 @@ export function PreviewPage() {
   }, [flushSave, navigate, projectId]);
 
   const handleFirstFrame = useCallback(() => setHasSceneReady(true), []);
+  const handlePreviewSettingsChange = useCallback(
+    (nextSettings: SimulationSettings) => {
+      setPreviewSettings((previous) =>
+        toSimulationSettings({
+          ...nextSettings,
+          showcaseControlsConfigured: isShowcaseMode
+            ? true
+            : previous.showcaseControlsConfigured,
+        })
+      );
+    },
+    [isShowcaseMode]
+  );
 
   if (!isInitialized || !project) {
     return <LoadingScreen message="Preparing preview..." />;
@@ -245,7 +260,7 @@ export function PreviewPage() {
         onFirstFrame={handleFirstFrame}
         showPerformanceMonitor={false}
         previewMode={true}
-        previewSettings={previewSettings}
+        previewSettings={effectiveSimulationSettings}
         previewStep={currentPreviewStep}
         onPreviewObjectClick={(objectId) => {
           if (objectClickHandlerRef.current) {
@@ -274,31 +289,39 @@ export function PreviewPage() {
       />
 
       <PreviewSettingsPanel
-        settings={previewSettings}
-        onSettingsChange={(nextSettings) => setPreviewSettings(toSimulationSettings(nextSettings))}
+        settings={effectiveSimulationSettings}
+        onSettingsChange={handlePreviewSettingsChange}
       />
 
-      <PreviewStepExecutor
-        steps={project.steps}
-        objects={previewObjects}
-        onComplete={handlePreviewComplete}
-        onExit={() => {
-          void handleExit();
-        }}
-        onSetCurrentPreviewStep={setCurrentPreviewStep}
-        onObjectClick={() => {
-          setShouldAnimateMoveItem(true);
-        }}
-        onRegisterObjectClickHandler={(handler) => {
-          objectClickHandlerRef.current = handler;
-        }}
-        onRegisterWrongObjectClickHandler={(handler) => {
-          wrongObjectClickHandlerRef.current = handler;
-        }}
-        onRegisterStepCompleteHandler={(handler) => {
-          stepCompleteHandlerRef.current = handler;
-        }}
-      />
+      {isShowcaseMode ? (
+        <PreviewShowcaseExitButton
+          onExit={() => {
+            void handleExit();
+          }}
+        />
+      ) : (
+        <PreviewStepExecutor
+          steps={project.steps}
+          objects={previewObjects}
+          onComplete={handlePreviewComplete}
+          onExit={() => {
+            void handleExit();
+          }}
+          onSetCurrentPreviewStep={setCurrentPreviewStep}
+          onObjectClick={() => {
+            setShouldAnimateMoveItem(true);
+          }}
+          onRegisterObjectClickHandler={(handler) => {
+            objectClickHandlerRef.current = handler;
+          }}
+          onRegisterWrongObjectClickHandler={(handler) => {
+            wrongObjectClickHandlerRef.current = handler;
+          }}
+          onRegisterStepCompleteHandler={(handler) => {
+            stepCompleteHandlerRef.current = handler;
+          }}
+        />
+      )}
 
       {!hasSceneReady && (
         <div className="absolute inset-0 z-50">

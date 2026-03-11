@@ -5,7 +5,7 @@ import { createErrorPopup, type PopupOptions } from '../../contexts/PopupContext
 import { useRouteTransition } from '../../contexts/RouteTransitionContext';
 import type { SceneObject, SimStep } from '../../types';
 import type { UseProjectAutoSaveResult } from '../useProjectAutoSave';
-import { hasUsableSteps } from '../../utils/stepValidation';
+import { hasPreviewableContent } from '../../utils/stepValidation';
 
 export type ExitOverlayState =
   | null
@@ -114,12 +114,13 @@ export function useEditorNavigationGuards({
       }
 
       const snapshot = getCurrentState();
-      if (destination.type === 'preview' && snapshot.steps.length === 0) {
-        showPopup(createErrorPopup('Nothing to preview', 'Add at least one step before previewing.'));
-        return;
-      }
-      if (destination.type === 'preview' && !hasUsableSteps(snapshot.steps)) {
-        showPopup(createErrorPopup('Not ready to preview', 'Choose a step type before previewing.'));
+      if (destination.type === 'preview' && !hasPreviewableContent(snapshot.objects, snapshot.steps)) {
+        showPopup(
+          createErrorPopup(
+            'Nothing to preview',
+            'Add a model or configure at least one step before previewing.'
+          )
+        );
         return;
       }
       const dataOverride = {
@@ -233,12 +234,13 @@ export function useEditorNavigationGuards({
         stopRecording?.();
       }
       const snapshot = getCurrentState();
-      if (snapshot.steps.length === 0) {
-        showPopup(createErrorPopup('Nothing to publish', 'Add at least one step before publishing.'));
-        return;
-      }
-      if (!hasUsableSteps(snapshot.steps)) {
-        showPopup(createErrorPopup('Not ready to publish', 'Choose a step type before publishing.'));
+      if (!hasPreviewableContent(snapshot.objects, snapshot.steps)) {
+        showPopup(
+          createErrorPopup(
+            'Nothing to publish',
+            'Add a model or configure at least one step before publishing.'
+          )
+        );
         return;
       }
       await flushSave({

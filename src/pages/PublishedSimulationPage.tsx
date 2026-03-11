@@ -3,9 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { MainCanvas } from '../components/MainCanvas';
 import { PreviewStepExecutor } from '../components/preview/PreviewStepExecutor';
 import { usePopup } from '../contexts/PopupContext';
+import { useShowcaseCameraFraming, useShowcasePresentation } from '../hooks/useShowcasePresentation';
 import { SimStep } from '../types';
-import { applyChildLocalTransform, applyChildWorldPosition } from '../utils/childTransformUtils';
 import { getSceneBackgroundUrl, getSceneWorldEnvironmentUrl } from '../utils/sceneBackgroundUrl';
+import { applyPreviewTransformUpdate } from '../utils/previewObjectTransforms';
 import CameraControlsImpl from 'camera-controls';
 import { PublishedCenterCard } from './published/PublishedCenterCard';
 import { PublishedTrainingLanding } from './published/PublishedTrainingLanding';
@@ -42,6 +43,11 @@ export function PublishedSimulationPage(): JSX.Element {
 
   const cameraControlsRef = useRef<CameraControlsImpl | null>(null);
   const [, setControlsReady] = useState(false);
+  const { showcaseObjects, isShowcaseMode, effectiveSimulationSettings } = useShowcasePresentation({
+    objects: previewObjects,
+    steps: project?.steps ?? [],
+    simulationSettings: project?.simulationSettings,
+  });
 
   const clearTransitionTimeout = useCallback(() => {
     if (transitionTimeoutRef.current !== null) {
@@ -73,6 +79,15 @@ export function PublishedSimulationPage(): JSX.Element {
     setControlsReady(true);
   }, []);
 
+  useShowcaseCameraFraming({
+    ready: isInitialized,
+    showcaseObjects,
+    isShowcaseMode,
+    controlsRef: cameraControlsRef,
+    resetKey: tokenParam,
+    logScope: 'PublishedSimulationPage',
+  });
+
   // Handle object transform updates during animation
   const handleTransformUpdate = useCallback(
     (
@@ -84,45 +99,7 @@ export function PublishedSimulationPage(): JSX.Element {
       },
       childPath?: string
     ) => {
-      setPreviewObjects((prev) => {
-        const obj = prev.find((o) => o.id === objectId);
-        if (!obj) return prev;
-
-        if (childPath) {
-          const updatedForPos = applyChildWorldPosition(obj, childPath, update.position) ?? obj;
-          const updatedForRotScale =
-            applyChildLocalTransform(updatedForPos, childPath, {
-              rotationX: update.rotation.x,
-              rotationY: update.rotation.y,
-              rotationZ: update.rotation.z,
-              scaleX: update.scale.x,
-              scaleY: update.scale.y,
-              scaleZ: update.scale.z,
-            }) ?? updatedForPos;
-
-          return prev.map((o) => (o.id === objectId ? updatedForRotScale : o));
-        }
-
-        return prev.map((o) =>
-          o.id === objectId
-            ? {
-                ...o,
-                transform: {
-                  ...o.transform,
-                  x: update.position.x,
-                  y: update.position.y,
-                  z: update.position.z,
-                  rotationX: update.rotation.x,
-                  rotationY: update.rotation.y,
-                  rotationZ: update.rotation.z,
-                  scaleX: update.scale.x,
-                  scaleY: update.scale.y,
-                  scaleZ: update.scale.z,
-                },
-              }
-            : o
-        );
-      });
+      setPreviewObjects((prev) => applyPreviewTransformUpdate(prev, objectId, update, childPath));
     },
     [setPreviewObjects]
   );
@@ -196,7 +173,7 @@ export function PublishedSimulationPage(): JSX.Element {
             onCameraControlsReady={handleCameraControlsReady}
             showPerformanceMonitor={false}
             previewMode={true}
-            previewSettings={project.simulationSettings}
+            previewSettings={effectiveSimulationSettings}
             previewStep={currentPreviewStep}
             onPreviewObjectClick={(objectId) => {
               if (objectClickHandlerRef.current) {
@@ -224,7 +201,7 @@ export function PublishedSimulationPage(): JSX.Element {
             worldEnvironmentTransform={project.sceneSettings.worldEnvironment}
           />
 
-          {hasStarted ? (
+          {hasStarted && !isShowcaseMode ? (
             <PreviewStepExecutor
               key={retryKey}
               steps={project.steps}
@@ -248,7 +225,7 @@ export function PublishedSimulationPage(): JSX.Element {
         </div>
       ) : null}
 
-      {!hasStarted ? (
+      {!hasStarted && !isShowcaseMode ? (
         <PublishedTrainingLanding
           title={landingTitle}
           canStart={canStartTraining}
@@ -258,7 +235,7 @@ export function PublishedSimulationPage(): JSX.Element {
       ) : null}
 
       {/* Completion overlay -- blurs the 3D scene and shows the card on top */}
-      {hasStarted && isComplete ? (
+      {hasStarted && isComplete && !isShowcaseMode ? (
         <PublishedTrainingCompleteDialog
           visible={showCompletion}
           title={project?.name?.trim() || 'Training Complete'}

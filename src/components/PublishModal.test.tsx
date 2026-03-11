@@ -65,6 +65,32 @@ const mockProjectWithReadyStep: Project = {
   ],
 };
 
+const mockProjectWithModelOnly: Project = {
+  ...mockProject,
+  objects: [
+    {
+      id: 'obj-1',
+      name: 'Model',
+      type: 'mesh',
+      transform: {
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+      },
+      properties: {
+        visible: true,
+        modelAssetId: 'asset-1',
+      },
+    },
+  ],
+};
+
 const mockProjectWithUnconfiguredStep: Project = {
   ...mockProject,
   steps: [
@@ -230,7 +256,24 @@ describe('PublishModal', () => {
 
     const publishButton = screen.getByRole('button', { name: /^publish$/i });
     expect(publishButton).toBeDisabled();
-    expect(screen.getAllByText(/choose a step type before publishing/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/add a model or configure a step before publishing/i).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('allows publishing a model-only showcase', async () => {
+    const user = userEvent.setup();
+    renderWithContext(<PublishModal project={mockProjectWithModelOnly} isOpen={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetExistingPublish).toHaveBeenCalled());
+
+    expect(screen.getAllByText(/publish this scene as a model showcase/i).length).toBeGreaterThan(0);
+
+    const publishButton = screen.getByRole('button', { name: /^publish$/i });
+    expect(publishButton).not.toBeDisabled();
+
+    await user.click(publishButton);
+
+    expect(mockGeneratePublishURL).toHaveBeenCalledWith(mockProjectWithModelOnly, 'user-1');
   });
 
   it('shows existing published URL when already published', async () => {

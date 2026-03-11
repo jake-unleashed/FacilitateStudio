@@ -14,7 +14,7 @@ import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { GuidedWorkflowOverlay, WelcomeModal } from '../components/guidedWorkflow';
 import { PhaseIndicator } from '../components/guidedWorkflow/PhaseIndicator';
 import { INITIAL_OBJECTS, INITIAL_STEPS } from '../constants';
-import { hasUsableSteps } from '../utils/stepValidation';
+import { hasPreviewableContent } from '../utils/stepValidation';
 import {
   SceneObject,
   SidebarSection,
@@ -483,7 +483,10 @@ function EditorPageContent() {
     };
   }, [currentProject, objects, sceneSettings, simulationTitle, steps]);
 
-  const hasReadySteps = useMemo(() => hasUsableSteps(steps), [steps]);
+  const canPreviewOrPublish = useMemo(
+    () => hasPreviewableContent(objects, steps),
+    [objects, steps]
+  );
 
   useAutosaveHydration({
     currentProjectId,
@@ -1412,7 +1415,8 @@ function EditorPageContent() {
                 }
                 onPublishClick={handlePublishClick}
                 projectId={projectId}
-                hasUsableSteps={hasReadySteps}
+                canPreview={canPreviewOrPublish}
+                canPublish={canPreviewOrPublish}
               />
             ),
             leftSidebar: (

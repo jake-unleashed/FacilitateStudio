@@ -4,7 +4,7 @@ import type { Project } from '../types/project';
 import { Button } from './Button';
 import { usePopup, createErrorPopup, createSuccessPopup } from '../contexts/PopupContext';
 import { copyToClipboard, generatePublishURL } from '../utils/publishUtils';
-import { hasUsableSteps } from '../utils/stepValidation';
+import { hasPreviewableContent, hasUsableSteps } from '../utils/stepValidation';
 import { useAuth } from '../contexts/AuthContext';
 import { getExistingPublish, unpublishProject } from '../services/publishService';
 import { useLatestRef } from '../hooks/useLatestRef';
@@ -102,17 +102,17 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   }, [isOpen, project.id, user?.id]);
 
   const statusText = useMemo(() => {
-    const hasAnySteps = project.steps.length > 0;
+    const hasAnythingToShow = hasPreviewableContent(project.objects, project.steps);
     const hasReadySteps = hasUsableSteps(project.steps);
     if (!user?.id) return 'Sign in to publish and share this simulation.';
     if (!project.id.trim()) return 'Save this project first, then publish a share link.';
-    if (!hasAnySteps) return 'Add at least one step before publishing.';
-    if (!hasReadySteps) return 'Choose a step type before publishing.';
+    if (!hasAnythingToShow) return 'Add a model or configure a step before publishing.';
     if (isLoadingPublishState) return 'Checking publish status...';
     if (isPublishing) return 'Publishing... Syncing and copying assets...';
     if (isUnpublishing) return 'Unpublishing link...';
     if (isPublished && justPublished) return 'Published. Link copied to your clipboard.';
     if (isPublished) return 'This simulation is live. Share the link or publish your latest changes.';
+    if (!hasReadySteps) return 'Publish this scene as a model showcase.';
     return 'Create a shareable link that anyone can open.';
   }, [
     isLoadingPublishState,
@@ -121,6 +121,7 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
     isUnpublishing,
     justPublished,
     project.id,
+    project.objects,
     project.steps,
     user?.id,
   ]);
@@ -134,12 +135,8 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
       setPublishError('Save this project before publishing.');
       return;
     }
-    if (project.steps.length === 0) {
-      setPublishError('You need to add at least one step before publishing.');
-      return;
-    }
-    if (!hasUsableSteps(project.steps)) {
-      setPublishError('Choose a step type before publishing.');
+    if (!hasPreviewableContent(project.objects, project.steps)) {
+      setPublishError('Add a model or configure a step before publishing.');
       return;
     }
 
@@ -199,9 +196,9 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
   }, [project.id, showPopup, user?.id]);
 
   const isBusy = isPublishing || isLoadingPublishState || isUnpublishing;
-  const hasAnySteps = project.steps.length > 0;
+  const hasAnythingToShow = hasPreviewableContent(project.objects, project.steps);
   const hasReadySteps = hasUsableSteps(project.steps);
-  const canPublish = Boolean(user?.id) && Boolean(project.id.trim()) && hasReadySteps;
+  const canPublish = Boolean(user?.id) && Boolean(project.id.trim()) && hasAnythingToShow;
   const showLinkSection = isPublished && Boolean(publishUrl);
   const showPublishButton = !isPublished;
   const showUpdatePublishButton = isPublished && !justPublished;
@@ -423,12 +420,16 @@ export function PublishModal({ project, isOpen, onClose }: PublishModalProps): J
             </div>
           )}
 
-          {showPublishButton && !hasAnySteps && (
-            <p className="text-center text-xs text-slate-500">You need to add steps before publishing.</p>
+          {showPublishButton && !hasAnythingToShow && (
+            <p className="text-center text-xs text-slate-500">
+              Add a model or configure a step before publishing.
+            </p>
           )}
 
-          {showPublishButton && hasAnySteps && !hasReadySteps && (
-            <p className="text-center text-xs text-slate-500">Choose a step type before publishing.</p>
+          {showPublishButton && hasAnythingToShow && !hasReadySteps && (
+            <p className="text-center text-xs text-slate-500">
+              No training steps are configured, so this will publish as a model showcase.
+            </p>
           )}
 
           {isPublished && (

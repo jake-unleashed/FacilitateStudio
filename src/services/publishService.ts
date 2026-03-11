@@ -12,7 +12,7 @@ import {
   isStarterBackgroundStorageRef,
 } from '../utils/backgroundImageUpload';
 import { syncAssetToCloud } from '../utils/modelAssetStore';
-import { hasUsableSteps } from '../utils/stepValidation';
+import { hasPreviewableContent } from '../utils/stepValidation';
 import { NotFoundError, StorageError, ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { getPublishedSceneBackgroundUrl, getSceneBackgroundUrl } from '../utils/sceneBackgroundUrl';
@@ -413,11 +413,8 @@ export async function publishProject(project: Project, userId: string): Promise<
   if (!userId?.trim()) {
     throw new ValidationError('Authenticated user ID is required to publish.');
   }
-  if (!Array.isArray(project.steps) || project.steps.length === 0) {
-    throw new ValidationError('Add at least one step before publishing.');
-  }
-  if (!hasUsableSteps(project.steps)) {
-    throw new ValidationError('Choose a step type before publishing.');
+  if (!hasPreviewableContent(project.objects, project.steps)) {
+    throw new ValidationError('Add a model or configure a step before publishing.');
   }
 
   const projectId = project.id.trim();
