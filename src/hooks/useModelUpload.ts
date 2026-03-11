@@ -113,7 +113,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
 
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(INITIAL_UPLOAD_PROGRESS);
   const [recentAssets, setRecentAssets] = useState<AssetMetadata[]>([]);
-  const [starterAssetMetadataById, setStarterAssetMetadataById] = useState<Record<string, AssetMetadata>>({});
+  const [starterAssetMetadataById, setStarterAssetMetadataById] = useState<
+    Record<string, AssetMetadata>
+  >({});
   // Separate error state for toast display - independent from upload stage
   // This allows the button to stay usable while showing the error
   const [lastError, setLastError] = useState<string | null>(null);
@@ -128,7 +130,8 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
   const refreshStarterAssetMetadata = useCallback(
     async (assetIds?: string[]) => {
       const requestedIds =
-        assetIds?.filter((assetId) => starterCatalogById.has(assetId)) ?? starterCatalogAssets.map((asset) => asset.id);
+        assetIds?.filter((assetId) => starterCatalogById.has(assetId)) ??
+        starterCatalogAssets.map((asset) => asset.id);
 
       if (requestedIds.length === 0) {
         setStarterAssetMetadataById({});
@@ -186,6 +189,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           uploadDate: cached?.uploadDate ?? asset.createdAt ?? new Date().toISOString(),
           metrics: cached?.metrics,
           children: cached?.children,
+          importDiagnostics: cached?.importDiagnostics,
           thumbnail: cached?.thumbnail ?? asset.thumbnailUrl,
           thumbnailUpdatedAt: cached?.thumbnailUpdatedAt,
         };
@@ -283,12 +287,15 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       existingObjects: SceneObject[],
       existingMetrics?: ModelMetrics,
       existingChildren?: ChildMesh[],
+      existingImportDiagnostics?: AssetMetadata['importDiagnostics'],
       /** Skip progress updates (used for recent assets where feedback is shown on the card) */
       skipProgressUpdates?: boolean
     ): Promise<UploadResult | null> => {
       // Get metrics (compute if not provided)
       let metrics = existingMetrics;
       let children = existingChildren;
+      let importDiagnostics: AssetMetadata['importDiagnostics'] | undefined =
+        existingImportDiagnostics;
 
       if (!metrics) {
         if (!skipProgressUpdates) {
@@ -314,6 +321,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           });
           metrics = processed.metrics;
           children = processed.children;
+          importDiagnostics = processed.importDiagnostics;
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to process model';
           setError(assetName, `Invalid model: ${msg}`);
@@ -321,9 +329,14 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         }
       } else if (children === undefined) {
         try {
-          const { model } = await getOrLoadModel(assetId);
+          const { model, importDiagnostics: cachedImportDiagnostics } =
+            await getOrLoadModel(assetId);
           children = extractChildMeshes(model);
-          await updateAssetMetadata(assetId, { children });
+          importDiagnostics = cachedImportDiagnostics;
+          await updateAssetMetadata(assetId, {
+            children,
+            importDiagnostics: cachedImportDiagnostics,
+          });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Failed to extract model children';
           setError(assetName, `Invalid model: ${msg}`);
@@ -353,6 +366,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           fileSize: 0, // Not needed for result
           uploadDate: new Date().toISOString(),
           metrics,
+          importDiagnostics,
         },
         sceneObject,
         metrics,
@@ -377,7 +391,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
       try {
         const textureCount = textureFiles.length;
         const uploadDisplayName =
-          textureCount > 0 ? `${file.name} + ${textureCount} texture${textureCount === 1 ? '' : 's'}` : file.name;
+          textureCount > 0
+            ? `${file.name} + ${textureCount} texture${textureCount === 1 ? '' : 's'}`
+            : file.name;
 
         // Stage 1: Validate
         setProgress('validating', 10, { fileName: uploadDisplayName, warning: null });
@@ -407,7 +423,9 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
         if (userId && !metadata.id.startsWith('starter:')) {
           void syncAssetToCloud(metadata.id, { userId }).catch((cloudError) => {
             console.warn('[useModelUpload] Cloud upload failed; keeping local copy:', cloudError);
-            setLastError('Model saved locally, but cloud sync failed. It will sync automatically on next launch.');
+            setLastError(
+              'Model saved locally, but cloud sync failed. It will sync automatically on next launch.'
+            );
           });
         }
 
@@ -465,6 +483,7 @@ export function useModelUpload(options: UseModelUploadOptions = {}): UseModelUpl
           existingObjects,
           asset.metrics,
           asset.children,
+          asset.importDiagnostics,
           true // skipProgressUpdates - recent asset cards handle their own feedback
         );
       } catch (error) {

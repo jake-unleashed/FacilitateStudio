@@ -76,6 +76,37 @@ export interface ModelMetrics {
 }
 
 // =============================================================================
+// Import Diagnostics
+// =============================================================================
+
+export type ImportWarningCode =
+  | 'missing-normals-repaired'
+  | 'invalid-normals-repaired'
+  | 'missing-texture-data'
+  | 'fbx-black-material-fallback'
+  | 'fbx-material-compatibility'
+  | 'obj-material-sidecar-unsupported';
+
+export interface ImportWarning {
+  code: string;
+  severity: 'info' | 'warning';
+  message: string;
+}
+
+export interface ImportDiagnostics {
+  /** Source file type used for import heuristics. */
+  fileType: ModelFileType;
+  /** User-safe warnings that can be surfaced in the asset library. */
+  warnings: ImportWarning[];
+  /** Number of meshes whose normals were regenerated during preprocessing. */
+  repairedNormalsMeshCount: number;
+  /** Number of suspicious materials detected during compatibility processing. */
+  suspiciousMaterialCount: number;
+  /** Number of texture references that did not resolve to image data. */
+  missingTextureDataCount: number;
+}
+
+// =============================================================================
 // Asset Metadata
 // =============================================================================
 
@@ -111,6 +142,8 @@ export interface AssetMetadata {
    * Used to determine if thumbnail needs regeneration (e.g., after app updates).
    */
   thumbnailUpdatedAt?: string;
+  /** Structured import diagnostics and non-blocking warnings. */
+  importDiagnostics?: ImportDiagnostics;
 }
 
 // =============================================================================
@@ -234,7 +267,9 @@ export function formatFileSize(bytes: number): string {
  * Resolve the active max upload size based on validation options.
  */
 export function getModelMaxFileSize(options?: ModelValidationOptions): number {
-  return options?.extendedSizeLimit ? STORAGE_CONFIG.EXTENDED_MAX_FILE_SIZE : STORAGE_CONFIG.MAX_FILE_SIZE;
+  return options?.extendedSizeLimit
+    ? STORAGE_CONFIG.EXTENDED_MAX_FILE_SIZE
+    : STORAGE_CONFIG.MAX_FILE_SIZE;
 }
 
 /**

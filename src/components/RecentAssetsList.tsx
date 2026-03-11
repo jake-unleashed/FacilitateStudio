@@ -8,7 +8,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Clock, Package, CheckCircle2, MoreHorizontal, Trash2 } from 'lucide-react';
+import { AlertTriangle, Clock, Package, CheckCircle2, MoreHorizontal, Trash2 } from 'lucide-react';
 import { AssetMetadata } from '../types/model';
 import { formatRelativeDate } from '../utils/formatRelativeDate';
 
@@ -280,6 +280,7 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
   const displayName = stripFileExtension(asset.name);
   const relativeDate = formatRelativeDate(asset.uploadDate);
   const [thumbnail, setThumbnail] = useState<string | null>(asset.thumbnail || null);
+  const importWarnings = asset.importDiagnostics?.warnings ?? [];
 
   useEffect(() => {
     if (asset.thumbnail && asset.thumbnail !== thumbnail) {
@@ -294,7 +295,8 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
 
     (async () => {
       try {
-        const { ensureAssetThumbnail } = await import('../utils/assetThumbnails/ensureAssetThumbnail');
+        const { ensureAssetThumbnail } =
+          await import('../utils/assetThumbnails/ensureAssetThumbnail');
         const thumb = await ensureAssetThumbnail(asset.id);
         if (!cancelled && thumb) {
           setThumbnail(thumb);
@@ -304,7 +306,9 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [asset.id, thumbnail, isAdded]);
 
   /** Handle click on the card */
@@ -380,6 +384,24 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onAdd, onRemove, isAdded =
           </div>
         </div>
       </button>
+
+      {importWarnings.length > 0 && !isAdded ? (
+        <div className="mt-3 rounded-[14px] border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs text-amber-800">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="font-semibold">Import note</p>
+              <p className="mt-0.5 leading-relaxed">{importWarnings[0].message}</p>
+              {importWarnings.length > 1 ? (
+                <p className="mt-1 text-amber-700">
+                  {importWarnings.length - 1} more import warning
+                  {importWarnings.length - 1 === 1 ? '' : 's'} recorded for this asset.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

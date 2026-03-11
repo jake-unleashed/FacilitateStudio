@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import * as THREE from 'three';
 import { useModelUpload } from './useModelUpload';
-import type { AssetMetadata } from '../types/model';
+import type { AssetMetadata, ImportDiagnostics } from '../types/model';
 import type { ModelMetrics, PreprocessedModel } from '../utils/modelPreprocessing';
 
 // Mock dependencies
@@ -112,10 +112,19 @@ describe('useModelUpload', () => {
   }
 
   function createMockPreprocessedModel(): PreprocessedModel {
+    const importDiagnostics: ImportDiagnostics = {
+      fileType: 'obj',
+      warnings: [],
+      repairedNormalsMeshCount: 0,
+      suspiciousMaterialCount: 0,
+      missingTextureDataCount: 0,
+    };
+
     return {
       model: new THREE.Group(),
       metrics: createMockMetrics(),
       originalScale: 1,
+      importDiagnostics,
     };
   }
 
@@ -538,6 +547,7 @@ describe('useModelUpload', () => {
       expect(loadAndPreprocessModelFromArrayBuffer).not.toHaveBeenCalled();
       expect(updateAssetMetadata).toHaveBeenCalledWith(metadata.id, {
         children: expect.any(Array),
+        importDiagnostics: undefined,
       });
     });
 

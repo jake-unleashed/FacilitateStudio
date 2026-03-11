@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { AssetMetadata, ModelFileType } from '../types/model';
+import type { AssetMetadata, ImportDiagnostics, ModelFileType } from '../types/model';
 import type { ModelMetrics } from '../types/model';
 import type { ChildMesh } from '../types';
 import { formatFileSize, getModelMaxFileSize } from '../types/model';
@@ -47,6 +47,7 @@ interface CloudAssetMetadataJson {
   children?: unknown;
   thumbnail?: unknown;
   thumbnail_updated_at?: unknown;
+  import_diagnostics?: unknown;
   [key: string]: unknown;
 }
 
@@ -72,7 +73,11 @@ function toChildMeshes(value: unknown): ChildMesh[] | undefined {
   const isChildMesh = (item: unknown): item is ChildMesh => {
     if (!item || typeof item !== 'object') return false;
     const obj = item as Record<string, unknown>;
-    return typeof obj.name === 'string' && Array.isArray(obj.path) && typeof obj.localTransform === 'object';
+    return (
+      typeof obj.name === 'string' &&
+      Array.isArray(obj.path) &&
+      typeof obj.localTransform === 'object'
+    );
   };
   const filtered = value.filter(isChildMesh);
   return filtered.length > 0 ? filtered : undefined;
@@ -86,6 +91,19 @@ function toModelMetrics(value: unknown): ModelMetrics | undefined {
   return value as ModelMetrics;
 }
 
+function toImportDiagnostics(value: unknown): ImportDiagnostics | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const obj = value as Record<string, unknown>;
+  if (
+    (obj.fileType !== 'glb' && obj.fileType !== 'fbx' && obj.fileType !== 'obj') ||
+    !Array.isArray(obj.warnings)
+  ) {
+    return undefined;
+  }
+
+  return value as ImportDiagnostics;
+}
+
 function toMimeType(fileType: ModelFileType): string {
   if (fileType === 'glb') return 'model/gltf-binary';
   if (fileType === 'fbx') return 'application/octet-stream';
@@ -95,7 +113,8 @@ function toMimeType(fileType: ModelFileType): string {
 function mapRowToCloudRecord(row: AssetRow): CloudAssetRecord {
   const metadata = (row.metadata ?? {}) as CloudAssetMetadataJson;
   const assetIdFromMetadata = toStringOrUndefined(metadata.asset_id);
-  const assetId = assetIdFromMetadata && assetIdFromMetadata.trim().length > 0 ? assetIdFromMetadata : row.id;
+  const assetId =
+    assetIdFromMetadata && assetIdFromMetadata.trim().length > 0 ? assetIdFromMetadata : row.id;
   const uploadDate = toIsoString(metadata.upload_date, row.created_at);
   const fileType =
     row.file_type === 'glb' || row.file_type === 'fbx' || row.file_type === 'obj'
@@ -116,16 +135,22 @@ function mapRowToCloudRecord(row: AssetRow): CloudAssetRecord {
       children: toChildMeshes(metadata.children),
       thumbnail: toStringOrUndefined(metadata.thumbnail),
       thumbnailUpdatedAt: toIsoString(metadata.thumbnail_updated_at, uploadDate),
+      importDiagnostics: toImportDiagnostics(metadata.import_diagnostics),
     },
   };
 }
 
-async function getExistingCloudRowByAssetId(assetId: string, userId: string): Promise<AssetRow | null> {
+async function getExistingCloudRowByAssetId(
+  assetId: string,
+  userId: string
+): Promise<AssetRow | null> {
   // Preferred path: if assetId is a UUID, we store it as the row PK for fast lookups.
   if (isUuid(assetId)) {
     const { data, error } = await supabase
       .from('assets')
-      .select('id, owner_id, project_id, storage_key, filename, file_type, file_size, metadata, created_at')
+      .select(
+        'id, owner_id, project_id, storage_key, filename, file_type, file_size, metadata, created_at'
+      )
       .eq('id', assetId)
       .eq('owner_id', userId)
       .maybeSingle();
@@ -137,7 +162,9 @@ async function getExistingCloudRowByAssetId(assetId: string, userId: string): Pr
 
   const { data, error } = await supabase
     .from('assets')
-    .select('id, owner_id, project_id, storage_key, filename, file_type, file_size, metadata, created_at')
+    .select(
+      'id, owner_id, project_id, storage_key, filename, file_type, file_size, metadata, created_at'
+    )
     .eq('owner_id', userId)
     .contains('metadata', { asset_id: assetId })
     .order('created_at', { ascending: false })
@@ -151,7 +178,12 @@ async function getExistingCloudRowByAssetId(assetId: string, userId: string): Pr
   return (data as AssetRow | null) ?? null;
 }
 
-function buildStorageKey(args: { userId: string; projectId?: string; assetId: string; filename: string }): string {
+function buildStorageKey(args: {
+  userId: string;
+  projectId?: string;
+  assetId: string;
+  filename: string;
+}): string {
   const safeFilename = sanitizeFilename(args.filename);
   const projectSegment = args.projectId ? args.projectId : FALLBACK_PROJECT_SEGMENT;
   return `${args.userId}/${projectSegment}/${args.assetId}/${safeFilename}`;
@@ -209,7 +241,9 @@ export async function uploadAssetToCloud(
 
   // If this is a UUID asset id, we can do a direct upsert on PK.
   if (isUuid(assetId)) {
-    const { error: upsertError } = await supabase.from('assets').upsert(rowPayload, { onConflict: 'id' });
+    const { error: upsertError } = await supabase
+      .from('assets')
+      .upsert(rowPayload, { onConflict: 'id' });
     if (upsertError) {
       throw new StorageError(`Failed to save cloud asset metadata: ${upsertError.message}`);
     }
@@ -248,7 +282,9 @@ export async function getAssetSignedUrl(storageKey: string): Promise<string> {
     .from(USER_ASSETS_BUCKET)
     .createSignedUrl(storageKey, 60 * 60);
   if (error || !data?.signedUrl) {
-    throw new StorageError(`Failed to create asset signed URL: ${error?.message ?? 'Unknown error'}`);
+    throw new StorageError(
+      `Failed to create asset signed URL: ${error?.message ?? 'Unknown error'}`
+    );
   }
   return data.signedUrl;
 }
@@ -285,18 +321,24 @@ export async function deleteCloudAsset(
     throw new StorageError(`Failed to delete cloud asset metadata: ${rowDeleteError.message}`);
   }
 
-  const { error: storageError } = await supabase.storage.from(USER_ASSETS_BUCKET).remove([storageKey]);
+  const { error: storageError } = await supabase.storage
+    .from(USER_ASSETS_BUCKET)
+    .remove([storageKey]);
   if (storageError) {
     // Log but don't throw — the metadata is already gone, so the asset is logically deleted.
     // The orphaned storage object will not be referenced by any row.
-    logger.warn(`[cloudAssetStore] Orphaned storage object after metadata deletion: ${storageError.message}`);
+    logger.warn(
+      `[cloudAssetStore] Orphaned storage object after metadata deletion: ${storageError.message}`
+    );
   }
 }
 
 export async function listUserAssets(userId: string, limit = 100): Promise<CloudAssetRecord[]> {
   const { data, error } = await supabase
     .from('assets')
-    .select('id, owner_id, project_id, storage_key, filename, file_type, file_size, metadata, created_at')
+    .select(
+      'id, owner_id, project_id, storage_key, filename, file_type, file_size, metadata, created_at'
+    )
     .eq('owner_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);

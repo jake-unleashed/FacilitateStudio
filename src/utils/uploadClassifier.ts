@@ -7,6 +7,7 @@ export interface ClassifiedUpload {
 }
 
 const MODEL_EXTENSIONS = new Set(['obj', 'fbx', 'glb']);
+const MATERIAL_SIDECAR_EXTENSIONS = new Set(['mtl']);
 const TEXTURE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'tga', 'bmp', 'tif', 'tiff', 'webp']);
 
 function getFileExtension(fileName: string): string {
@@ -21,11 +22,17 @@ export function classifyUploadFiles(files: Iterable<File>): ClassifiedUpload {
   const modelCandidates: File[] = [];
   const textureFiles: File[] = [];
   const ignoredFiles: File[] = [];
+  const sidecarMaterialFiles: File[] = [];
 
   for (const file of files) {
     const ext = getFileExtension(file.name);
     if (MODEL_EXTENSIONS.has(ext)) {
       modelCandidates.push(file);
+      continue;
+    }
+    if (MATERIAL_SIDECAR_EXTENSIONS.has(ext)) {
+      ignoredFiles.push(file);
+      sidecarMaterialFiles.push(file);
       continue;
     }
     if (TEXTURE_EXTENSIONS.has(ext)) {
@@ -41,9 +48,15 @@ export function classifyUploadFiles(files: Iterable<File>): ClassifiedUpload {
   if (modelCandidates.length > 1) {
     warnings.push('Only one model can be uploaded at a time. Additional model files were ignored.');
   }
-  if (ignoredFiles.length > 0) {
+  if (sidecarMaterialFiles.length > 0) {
     warnings.push(
-      `${ignoredFiles.length} unsupported file${ignoredFiles.length === 1 ? '' : 's'} were skipped.`
+      '.mtl material files are not imported. Upload image textures directly, or use GLB for the most reliable materials.'
+    );
+  }
+  const genericIgnoredCount = ignoredFiles.length - sidecarMaterialFiles.length;
+  if (genericIgnoredCount > 0) {
+    warnings.push(
+      `${genericIgnoredCount} unsupported file${genericIgnoredCount === 1 ? '' : 's'} were skipped.`
     );
   }
 

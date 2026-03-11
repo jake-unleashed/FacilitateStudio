@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { ImportDiagnostics } from '../types/model';
 import {
   normalizeMaterialProperties,
   optimizeMaterialsForScene,
@@ -202,6 +203,77 @@ describe('materialOptimization', () => {
 
       // Material should only be counted once
       expect(result.fallbackMaterials).toBe(1);
+    });
+
+    it('tracks suspicious black FBX materials in diagnostics', () => {
+      const diagnostics: ImportDiagnostics = {
+        fileType: 'fbx',
+        warnings: [],
+        repairedNormalsMeshCount: 0,
+        suspiciousMaterialCount: 0,
+        missingTextureDataCount: 0,
+      };
+      testMaterial.color.set(0x000000);
+
+      const result = optimizeMaterialsForScene(testGroup, {
+        fileType: 'fbx',
+        diagnostics,
+      });
+
+      expect(result.suspiciousMaterials).toBe(1);
+      expect(diagnostics.suspiciousMaterialCount).toBe(1);
+      expect(
+        diagnostics.warnings.some((warning) => warning.code === 'fbx-black-material-fallback')
+      ).toBe(true);
+    });
+
+    it('applies stronger fallback for black FBX materials with unusable texture objects', () => {
+      const diagnostics: ImportDiagnostics = {
+        fileType: 'fbx',
+        warnings: [],
+        repairedNormalsMeshCount: 0,
+        suspiciousMaterialCount: 0,
+        missingTextureDataCount: 0,
+      };
+
+      testMaterial.color.set(0x000000);
+      testMaterial.map = new THREE.Texture();
+
+      const result = optimizeMaterialsForScene(testGroup, {
+        fileType: 'fbx',
+        diagnostics,
+      });
+
+      expect(result.suspiciousMaterials).toBe(1);
+      expect(result.fallbackMaterials).toBe(1);
+      expect(testMaterial.map).toBeNull();
+      expect(testMaterial.color.getHex()).not.toBe(0x000000);
+      expect(
+        diagnostics.warnings.some((warning) => warning.code === 'fbx-material-compatibility')
+      ).toBe(true);
+    });
+
+    it('counts fallback materials for non-standard FBX material compatibility rescues', () => {
+      const diagnostics: ImportDiagnostics = {
+        fileType: 'fbx',
+        warnings: [],
+        repairedNormalsMeshCount: 0,
+        suspiciousMaterialCount: 0,
+        missingTextureDataCount: 0,
+      };
+      const phongMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+      phongMaterial.map = new THREE.Texture();
+      testMesh.material = phongMaterial;
+
+      const result = optimizeMaterialsForScene(testGroup, {
+        fileType: 'fbx',
+        diagnostics,
+      });
+
+      expect(result.suspiciousMaterials).toBe(1);
+      expect(result.fallbackMaterials).toBe(1);
+      expect(phongMaterial.map).toBeNull();
+      expect(phongMaterial.color.getHex()).toBe(0x808080);
     });
   });
 

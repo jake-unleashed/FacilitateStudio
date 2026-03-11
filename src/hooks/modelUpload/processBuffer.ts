@@ -1,8 +1,11 @@
 import type { SceneObject, ChildMesh } from '../../types';
-import type { AssetMetadata, ModelMetrics } from '../../types/model';
+import type { AssetMetadata, ImportDiagnostics, ModelMetrics } from '../../types/model';
 import type { AssetTextureMap } from '../../utils/modelAssetStore';
 import { updateAssetMetadata } from '../../utils/modelAssetStore';
-import { loadAndPreprocessModelFromArrayBuffer, extractChildMeshes } from '../../utils/modelLoaders';
+import {
+  loadAndPreprocessModelFromArrayBuffer,
+  extractChildMeshes,
+} from '../../utils/modelLoaders';
 import { cachePreprocessedModel } from '../../utils/modelCache';
 import { calculateOptimalPosition, generateUniqueName } from './positioning';
 import { createSceneObject } from './sceneObject';
@@ -22,6 +25,7 @@ export interface ProcessModelBufferResult {
   metrics: ModelMetrics;
   children: ChildMesh[];
   sceneObject: SceneObject;
+  importDiagnostics: ImportDiagnostics;
 }
 
 /**
@@ -38,11 +42,12 @@ export async function processModelBuffer(
   );
   const metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
   const children = extractChildMeshes(preprocessed.model);
+  const { importDiagnostics } = preprocessed;
 
-  cachePreprocessedModel(input.assetId, preprocessed.model, metrics);
+  cachePreprocessedModel(input.assetId, preprocessed.model, metrics, importDiagnostics);
 
   if (input.persistMetadata !== false) {
-    await updateAssetMetadata(input.assetId, { metrics, children });
+    await updateAssetMetadata(input.assetId, { metrics, children, importDiagnostics });
   }
 
   if (import.meta.env.DEV) {
@@ -57,5 +62,5 @@ export async function processModelBuffer(
   const uniqueName = generateUniqueName(input.assetName, input.existingObjects);
   const sceneObject = createSceneObject(input.assetId, uniqueName, position, metrics, children);
 
-  return { metrics, children, sceneObject };
+  return { metrics, children, sceneObject, importDiagnostics };
 }

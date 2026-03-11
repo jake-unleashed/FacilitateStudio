@@ -147,6 +147,32 @@ describe('RecentAssetsList', () => {
       const button = screen.getByRole('button', { name: /add test to scene/i });
       expect(button).toBeInTheDocument();
     });
+
+    it('shows inline import warnings for assets with diagnostics', () => {
+      const asset = createMockAsset('warning', {
+        name: 'warning-model.fbx',
+        fileType: 'fbx',
+        importDiagnostics: {
+          fileType: 'fbx',
+          repairedNormalsMeshCount: 1,
+          suspiciousMaterialCount: 1,
+          missingTextureDataCount: 0,
+          warnings: [
+            {
+              code: 'fbx-black-material-fallback',
+              severity: 'warning',
+              message:
+                'Some FBX materials imported as pure black without textures. The app applied a compatibility fallback so the model stays visible.',
+            },
+          ],
+        },
+      });
+
+      render(<RecentAssetsList assets={[asset]} onAddAsset={mockOnAddAsset} />);
+
+      expect(screen.getByText('Import note')).toBeInTheDocument();
+      expect(screen.getByText(/compatibility fallback/i)).toBeInTheDocument();
+    });
   });
 
   // ===========================================================================

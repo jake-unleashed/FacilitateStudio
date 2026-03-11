@@ -221,10 +221,7 @@ export async function saveAssetWithTextures(
  * Best-effort cloud sync for a locally stored asset.
  * Local persistence remains the source of truth for immediate UX.
  */
-export async function syncAssetToCloud(
-  assetId: string,
-  options: CloudAssetOptions
-): Promise<void> {
+export async function syncAssetToCloud(assetId: string, options: CloudAssetOptions): Promise<void> {
   const userId = options.userId;
   if (!userId || isStarterAsset(assetId)) {
     return;
@@ -245,6 +242,7 @@ export async function syncAssetToCloud(
       children: localAsset.metadata.children,
       thumbnail: localAsset.metadata.thumbnail,
       thumbnail_updated_at: localAsset.metadata.thumbnailUpdatedAt,
+      import_diagnostics: localAsset.metadata.importDiagnostics,
     },
   });
 }
@@ -349,6 +347,7 @@ export async function getAsset(
         children: cloudAsset.metadata.children,
         thumbnail: cloudAsset.metadata.thumbnail,
         thumbnailUpdatedAt: cloudAsset.metadata.thumbnailUpdatedAt,
+        importDiagnostics: cloudAsset.metadata.importDiagnostics,
       },
     });
 
@@ -427,7 +426,10 @@ export async function deleteAsset(assetId: string, options?: CloudAssetOptions):
  *
  * @param limit - Maximum number of assets to return
  */
-export async function getRecentAssets(limit = 20, options?: CloudAssetOptions): Promise<AssetMetadata[]> {
+export async function getRecentAssets(
+  limit = 20,
+  options?: CloudAssetOptions
+): Promise<AssetMetadata[]> {
   const db = await getDB();
   const localAssets = (await db.getAll('assets')).map((a) => a.metadata);
   const userId = options?.userId;
@@ -454,7 +456,10 @@ export async function getRecentAssets(limit = 20, options?: CloudAssetOptions): 
       .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
       .slice(0, limit);
   } catch (error) {
-    logger.warn('[modelAssetStore] Failed to load cloud recent assets, using local cache only:', error);
+    logger.warn(
+      '[modelAssetStore] Failed to load cloud recent assets, using local cache only:',
+      error
+    );
     return localAssets
       .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
       .slice(0, limit);
@@ -485,7 +490,10 @@ export async function getAllAssets(options?: CloudAssetOptions): Promise<AssetMe
     }
     return Array.from(merged.values());
   } catch (error) {
-    logger.warn('[modelAssetStore] Failed to load cloud asset list, using local cache only:', error);
+    logger.warn(
+      '[modelAssetStore] Failed to load cloud asset list, using local cache only:',
+      error
+    );
     return localAssets;
   }
 }

@@ -17,7 +17,9 @@
  */
 
 import * as THREE from 'three';
+import type { ImportDiagnostics, ModelFileType } from '../types/model';
 import { enhanceMaterial, guessMaterialCategory, MaterialCategory } from './smartMaterialFallback';
+import { addImportWarning } from './importDiagnostics';
 import { logger } from './logger';
 
 // =============================================================================
@@ -61,6 +63,12 @@ const LINEAR_TEXTURE_PROPERTIES = [
 ] as const;
 type TextureProperty = (typeof TEXTURE_PROPERTIES)[number];
 type TextureLookupMaterial = Partial<Record<TextureProperty, unknown>>;
+
+function isVeryDarkColor(color: THREE.Color): boolean {
+  const hsl = { h: 0, s: 0, l: 0 };
+  color.getHSL(hsl);
+  return hsl.l <= 0.08;
+}
 
 function readTextureProperty(material: THREE.Material, prop: TextureProperty): unknown {
   return (material as TextureLookupMaterial)[prop];
@@ -143,15 +151,132 @@ function getTextureTypes(material: THREE.Material): string[] {
   return types;
 }
 
+function clearTextureReferences(material: THREE.Material): void {
+  for (const prop of TEXTURE_PROPERTIES) {
+    const texture = readTextureProperty(material, prop);
+    if (texture instanceof THREE.Texture) {
+      (material as TextureLookupMaterial)[prop] = null;
+    }
+  }
+  material.needsUpdate = true;
+}
+
 // =============================================================================
 // Material Property Normalization
 // =============================================================================
+
+interface MaterialNormalizationOptions {
+  fileType?: ModelFileType;
+  diagnostics?: ImportDiagnostics;
+}
+
+interface MaterialNormalizationResult {
+  usedFallback: boolean;
+  flaggedSuspicious: boolean;
+}
+
+interface TextureState {
+  hasTextureObjects: boolean;
+  hasLoadedTextures: boolean;
+}
+
+const FBX_BROKEN_TEXTURE_FALLBACK_MESSAGE =
+  'Some FBX materials referenced unusable texture data, so the app applied a stronger compatibility fallback.';
+const FBX_GENERIC_COMPATIBILITY_MESSAGE =
+  'Some FBX materials needed compatibility fallback handling. Colors may differ slightly from the source model.';
+
+function flagSuspiciousMaterial(
+  diagnostics: ImportDiagnostics | undefined,
+  code: 'fbx-black-material-fallback' | 'fbx-material-compatibility',
+  message: string
+): void {
+  if (!diagnostics) return;
+  diagnostics.suspiciousMaterialCount += 1;
+  addImportWarning(diagnostics, {
+    code,
+    severity: 'warning',
+    message,
+  });
+}
+
+function shouldUseBrokenTextureFallback(
+  material: THREE.Material,
+  options: MaterialNormalizationOptions,
+  hasTextureObjects: boolean,
+  hasLoadedTextures: boolean
+): boolean {
+  if (options.fileType !== 'fbx') return false;
+  if (!hasTextureObjects || hasLoadedTextures) return false;
+
+  if (material instanceof THREE.MeshStandardMaterial) {
+    return isVeryDarkColor(material.color);
+  }
+
+  if (
+    material instanceof THREE.MeshBasicMaterial ||
+    material instanceof THREE.MeshPhongMaterial ||
+    material instanceof THREE.MeshLambertMaterial
+  ) {
+    return isVeryDarkColor(material.color);
+  }
+
+  return false;
+}
+
+function getTextureState(material: THREE.Material): TextureState {
+  return {
+    hasTextureObjects: hasAnyTextures(material),
+    hasLoadedTextures: hasValidTextures(material),
+  };
+}
+
+function applyNonStandardFbxFallback(
+  material: THREE.MeshBasicMaterial | THREE.MeshPhongMaterial | THREE.MeshLambertMaterial,
+  options: MaterialNormalizationOptions
+): MaterialNormalizationResult {
+  const { hasTextureObjects, hasLoadedTextures } = getTextureState(material);
+
+  if (shouldUseBrokenTextureFallback(material, options, hasTextureObjects, hasLoadedTextures)) {
+    clearTextureReferences(material);
+    material.color.setHex(0x808080);
+    flagSuspiciousMaterial(
+      options.diagnostics,
+      'fbx-material-compatibility',
+      FBX_BROKEN_TEXTURE_FALLBACK_MESSAGE
+    );
+    return {
+      usedFallback: true,
+      flaggedSuspicious: true,
+    };
+  }
+
+  if (options.fileType === 'fbx' && material.color.getHex() === 0x000000 && !material.map) {
+    flagSuspiciousMaterial(
+      options.diagnostics,
+      'fbx-material-compatibility',
+      FBX_GENERIC_COMPATIBILITY_MESSAGE
+    );
+    return {
+      usedFallback: false,
+      flaggedSuspicious: true,
+    };
+  }
+
+  return {
+    usedFallback: false,
+    flaggedSuspicious: false,
+  };
+}
 
 /**
  * Normalize material properties for consistent appearance.
  * Preserves textures and only adjusts properties that need fixing.
  */
-export function normalizeMaterialProperties(material: THREE.Material, meshName?: string): void {
+export function normalizeMaterialProperties(
+  material: THREE.Material,
+  meshName?: string,
+  options: MaterialNormalizationOptions = {}
+): MaterialNormalizationResult {
   // Ensure visibility
   material.visible = true;
 
@@ -162,10 +287,18 @@ export function normalizeMaterialProperties(material: THREE.Material, meshName?:
   // Fix texture colorSpace for all materials
   fixTextureColorSpace(material);
 
+  let usedFallback = false;
+  let flaggedSuspicious = false;
+
   if (material instanceof THREE.MeshStandardMaterial) {
     // Check for textures (use lenient check - texture object exists even if image pending)
-    const hasTextureObjects = hasAnyTextures(material);
-    const hasLoadedTextures = hasValidTextures(material);
+    const { hasTextureObjects, hasLoadedTextures } = getTextureState(material);
+    const shouldForceFallback = shouldUseBrokenTextureFallback(
+      material,
+      options,
+      hasTextureObjects,
+      hasLoadedTextures
+    );
     const materialName = material.name || meshName || '';
 
     // Log texture status in dev mode
@@ -181,22 +314,57 @@ export function normalizeMaterialProperties(material: THREE.Material, meshName?:
     }
 
     // If material has texture objects (even if images pending), preserve them
-    if (hasTextureObjects) {
+    if (shouldForceFallback) {
+      flaggedSuspicious = true;
+      clearTextureReferences(material);
+      flagSuspiciousMaterial(
+        options.diagnostics,
+        'fbx-material-compatibility',
+        FBX_BROKEN_TEXTURE_FALLBACK_MESSAGE
+      );
+      const category = guessMaterialCategory(materialName);
+      applySmartFallback(material, category, materialName);
+      usedFallback = true;
+    } else if (hasTextureObjects) {
       // Only fix critical issues - don't overwrite colors/textures
       fixCriticalIssues(material);
     } else {
+      if (options.fileType === 'fbx' && material.color.getHex() === 0x000000) {
+        flaggedSuspicious = true;
+        flagSuspiciousMaterial(
+          options.diagnostics,
+          'fbx-black-material-fallback',
+          'Some FBX materials imported as pure black without textures. The app applied a compatibility fallback so the model stays visible.'
+        );
+      }
+
       // No textures at all - apply smart fallbacks
       const category = guessMaterialCategory(materialName);
       applySmartFallback(material, category, materialName);
+      usedFallback = true;
     }
   } else if (material instanceof THREE.MeshBasicMaterial) {
     // Basic materials - just ensure visibility
+    const normalization = applyNonStandardFbxFallback(material, options);
+    usedFallback = normalization.usedFallback;
+    flaggedSuspicious = normalization.flaggedSuspicious;
     fixBasicMaterialIssues(material);
   } else if (material instanceof THREE.MeshPhongMaterial) {
+    const normalization = applyNonStandardFbxFallback(material, options);
+    usedFallback = normalization.usedFallback;
+    flaggedSuspicious = normalization.flaggedSuspicious;
     fixPhongMaterialIssues(material);
   } else if (material instanceof THREE.MeshLambertMaterial) {
+    const normalization = applyNonStandardFbxFallback(material, options);
+    usedFallback = normalization.usedFallback;
+    flaggedSuspicious = normalization.flaggedSuspicious;
     fixLambertMaterialIssues(material);
   }
+
+  return {
+    usedFallback,
+    flaggedSuspicious,
+  };
 }
 
 /**
@@ -336,6 +504,7 @@ export interface OptimizationResult {
   texturedMaterials: number;
   fallbackMaterials: number;
   fixedIssues: number;
+  suspiciousMaterials: number;
 }
 
 /**
@@ -345,12 +514,16 @@ export interface OptimizationResult {
  * @param model - The Three.js object to optimize
  * @returns Statistics about the optimization
  */
-export function optimizeMaterialsForScene(model: THREE.Group): OptimizationResult {
+export function optimizeMaterialsForScene(
+  model: THREE.Group,
+  options: MaterialNormalizationOptions = {}
+): OptimizationResult {
   const result: OptimizationResult = {
     totalMeshes: 0,
     texturedMaterials: 0,
     fallbackMaterials: 0,
     fixedIssues: 0,
+    suspiciousMaterials: 0,
   };
 
   const processedMaterials = new Set<THREE.Material>();
@@ -374,13 +547,19 @@ export function optimizeMaterialsForScene(model: THREE.Group): OptimizationResul
       const hadTextures = hasValidTextures(material);
 
       // Optimize the material
-      normalizeMaterialProperties(material, child.name);
+      const normalizationResult = normalizeMaterialProperties(material, child.name, options);
 
       // Update statistics
       if (hadTextures) {
         result.texturedMaterials++;
       } else {
-        result.fallbackMaterials++;
+        if (normalizationResult.usedFallback) {
+          result.fallbackMaterials++;
+        }
+      }
+
+      if (normalizationResult.flaggedSuspicious) {
+        result.suspiciousMaterials++;
       }
     }
   });
@@ -391,6 +570,7 @@ export function optimizeMaterialsForScene(model: THREE.Group): OptimizationResul
       meshes: result.totalMeshes,
       textured: result.texturedMaterials,
       fallback: result.fallbackMaterials,
+      suspicious: result.suspiciousMaterials,
     });
   }
 

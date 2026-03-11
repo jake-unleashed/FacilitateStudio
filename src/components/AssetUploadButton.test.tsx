@@ -44,6 +44,7 @@ describe('AssetUploadButton', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   // ===========================================================================
@@ -60,7 +61,9 @@ describe('AssetUploadButton', () => {
     it('shows supported formats hint', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      expect(screen.getByText(/drag model and texture files, or a folder/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/drag a glb, fbx, or obj with any textures\. glb is recommended\./i)
+      ).toBeInTheDocument();
     });
 
     it('renders with custom className', () => {
@@ -123,7 +126,7 @@ describe('AssetUploadButton', () => {
       const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
 
       uploadArea.focus();
-      fireEvent.keyDown(uploadArea, { key: 'Enter' });
+      await userEvent.keyboard('{Enter}');
 
       expect(clickSpy).toHaveBeenCalled();
     });
@@ -208,12 +211,32 @@ describe('AssetUploadButton', () => {
       });
     });
 
+    it('shows an explicit warning when .mtl files are included', async () => {
+      mockOnUpload.mockResolvedValue(undefined);
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const modelFile = createMockFile('model.obj');
+      const mtlFile = createMockFile('materials.mtl');
+
+      Object.defineProperty(input, 'files', {
+        value: [modelFile, mtlFile],
+        writable: false,
+      });
+
+      fireEvent.change(input);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/\.mtl material files are not imported/i)).toBeInTheDocument();
+    });
+
     it('passes extendedSizeLimit to validation when enabled', async () => {
       mockOnUpload.mockResolvedValue(undefined);
       const validateSpy = vi.spyOn(modelTypes, 'validateModelFile');
-      renderWithPopupProvider(
-        <AssetUploadButton onUpload={mockOnUpload} extendedFileSizeLimit />
-      );
+      renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} extendedFileSizeLimit />);
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = createMockFile('model.obj');
@@ -613,7 +636,9 @@ describe('AssetUploadButton', () => {
         <AssetUploadButton onUpload={mockOnUpload} uploadProgress={progress} />
       );
 
-      expect(screen.queryByText(/drag model and texture files, or a folder/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/drag model and texture files, or a folder/i)
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -763,11 +788,11 @@ describe('AssetUploadButton', () => {
       expect(input).toBeDisabled();
     });
 
-    it('sets aria-disabled attribute', () => {
+    it('uses the native disabled attribute on the upload button', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} disabled />);
 
       const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
-      expect(uploadArea).toHaveAttribute('aria-disabled', 'true');
+      expect(uploadArea).toBeDisabled();
     });
 
     it('removes hover effect when disabled', () => {
@@ -860,9 +885,7 @@ describe('AssetUploadButton', () => {
     it('shows file box icon when dragging', () => {
       renderWithPopupProvider(<AssetUploadButton onUpload={mockOnUpload} />);
 
-      const uploadArea = screen
-        .getByText('Upload 3D Model')
-        .closest('div[class*="cursor-pointer"]')!;
+      const uploadArea = screen.getByRole('button', { name: 'Upload asset' });
 
       fireEvent.dragEnter(uploadArea, {
         dataTransfer: { types: ['Files'] },

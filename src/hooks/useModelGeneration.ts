@@ -111,15 +111,12 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
     }
   }, []);
 
-  const updateGeneration = useCallback(
-    (generationId: string, updates: Partial<GenerationTask>) => {
-      if (!isMountedRef.current) return;
-      setGenerations((prev) =>
-        prev.map((task) => (task.id === generationId ? { ...task, ...updates } : task))
-      );
-    },
-    []
-  );
+  const updateGeneration = useCallback((generationId: string, updates: Partial<GenerationTask>) => {
+    if (!isMountedRef.current) return;
+    setGenerations((prev) =>
+      prev.map((task) => (task.id === generationId ? { ...task, ...updates } : task))
+    );
+  }, []);
 
   const persistGenerations = useCallback((nextGenerations: GenerationTask[]) => {
     try {
@@ -224,6 +221,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
           ...metadata,
           metrics: processed.metrics,
           children: processed.children,
+          importDiagnostics: processed.importDiagnostics,
         },
         sceneObject: processed.sceneObject,
         metrics: processed.metrics,
@@ -408,14 +406,17 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
     [requestTaskStart, setGenerationFailure, updateGeneration]
   );
 
-  const cancelGeneration = useCallback((generationId: string) => {
-    cancelledTaskIdsRef.current.add(generationId);
-    updateGeneration(generationId, {
-      stage: 'cancelled',
-      status: 'cancelled',
-      error: null,
-    });
-  }, [updateGeneration]);
+  const cancelGeneration = useCallback(
+    (generationId: string) => {
+      cancelledTaskIdsRef.current.add(generationId);
+      updateGeneration(generationId, {
+        stage: 'cancelled',
+        status: 'cancelled',
+        error: null,
+      });
+    },
+    [updateGeneration]
+  );
 
   const clearCompletedGenerations = useCallback(() => {
     setGenerations((prev) => prev.filter((task) => !isTerminalStage(task.stage)));

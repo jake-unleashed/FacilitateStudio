@@ -58,7 +58,12 @@ describe('ensureStarterAssetCached', () => {
     await Promise.all([ensureStarterAssetCached(starterModel), ensureStarterAssetCached(starterModel)]);
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(starterModel.publicUrl);
+    expect(fetch).toHaveBeenCalledWith(
+      starterModel.publicUrl,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      })
+    );
     expect(upsertAssetFromBlob).toHaveBeenCalledTimes(1);
     expect(upsertAssetFromBlob).toHaveBeenCalledWith(
       expect.objectContaining({

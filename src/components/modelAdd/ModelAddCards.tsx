@@ -51,7 +51,7 @@ export function ModelSourceOptions({
         </span>
         <span className="flex-1">
           <span className="text-sm font-semibold text-slate-800">Upload 3D Model</span>
-          <span className="mt-0.5 block text-xs font-medium text-slate-500">Import an OBJ, FBX, or GLB</span>
+          <span className="mt-0.5 block text-xs font-medium text-slate-500">Import a GLB, FBX, or OBJ</span>
         </span>
       </button>
 

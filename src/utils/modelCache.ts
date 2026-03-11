@@ -11,7 +11,7 @@
  */
 
 import * as THREE from 'three';
-import { ModelMetrics, STORAGE_CONFIG } from '../types/model';
+import { ImportDiagnostics, ModelMetrics, STORAGE_CONFIG } from '../types/model';
 import type { AssetMetadata } from '../types/model';
 import type { ModelFileType } from '../types/model';
 import { getAsset, updateAssetMetadata, blobToArrayBuffer } from './modelAssetStore';
@@ -55,6 +55,7 @@ export function clearAssetResolver(): void {
 interface CachedModel {
   model: THREE.Group;
   metrics: ModelMetrics;
+  importDiagnostics?: ImportDiagnostics;
   lastAccessed: number;
 }
 
@@ -84,7 +85,7 @@ const MODEL_FETCH_TIMEOUT_MS = 60_000;
  */
 export async function getOrLoadModel(
   assetId: string
-): Promise<{ model: THREE.Group; metrics: ModelMetrics }> {
+): Promise<{ model: THREE.Group; metrics: ModelMetrics; importDiagnostics?: ImportDiagnostics }> {
   // Check cache first
   const cached = cache.get(assetId);
   if (cached) {
@@ -94,6 +95,7 @@ export async function getOrLoadModel(
     return {
       model: clonedModel,
       metrics: cached.metrics,
+      importDiagnostics: cached.importDiagnostics,
     };
   }
 
@@ -104,6 +106,7 @@ export async function getOrLoadModel(
     return {
       model: deepCloneGroup(result.model),
       metrics: result.metrics,
+      importDiagnostics: result.importDiagnostics,
     };
   }
 
@@ -116,6 +119,7 @@ export async function getOrLoadModel(
     return {
       model: deepCloneGroup(result.model),
       metrics: result.metrics,
+      importDiagnostics: result.importDiagnostics,
     };
   } finally {
     pendingLoads.delete(assetId);
@@ -133,7 +137,8 @@ export async function getOrLoadModel(
 export function cachePreprocessedModel(
   assetId: string,
   model: THREE.Group,
-  metrics: ModelMetrics
+  metrics: ModelMetrics,
+  importDiagnostics?: ImportDiagnostics
 ): void {
   maybeCleanupCache();
 
@@ -141,6 +146,7 @@ export function cachePreprocessedModel(
     // Deep clone ensures cached model is independent from uploaded instance
     model: deepCloneGroup(model),
     metrics,
+    importDiagnostics,
     lastAccessed: Date.now(),
   });
 }
@@ -221,7 +227,10 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
     let resolved: AssetResolverResult = null;
     if (assetId.startsWith('starter:')) {
       const starter = await getStarterAssetById(assetId);
-      if (starter && (starter.fileType === 'glb' || starter.fileType === 'fbx' || starter.fileType === 'obj')) {
+      if (
+        starter &&
+        (starter.fileType === 'glb' || starter.fileType === 'fbx' || starter.fileType === 'obj')
+      ) {
         resolved = { url: starter.publicUrl, fileType: starter.fileType };
       }
     }
@@ -238,13 +247,14 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
       signal: AbortSignal.timeout(MODEL_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
-      throw new Error(
-        `Failed to fetch model from URL (${response.status} ${response.statusText})`
-      );
+      throw new Error(`Failed to fetch model from URL (${response.status} ${response.statusText})`);
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const preprocessed = await loadAndPreprocessModelFromArrayBuffer(arrayBuffer, resolved.fileType);
+    const preprocessed = await loadAndPreprocessModelFromArrayBuffer(
+      arrayBuffer,
+      resolved.fileType
+    );
     const metrics = serializeMetrics(preprocessed.metrics, preprocessed.originalScale);
 
     maybeCleanupCache();
@@ -252,6 +262,7 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
     const cachedModel: CachedModel = {
       model: deepCloneGroup(preprocessed.model),
       metrics,
+      importDiagnostics: preprocessed.importDiagnostics,
       lastAccessed: Date.now(),
     };
 
@@ -283,6 +294,9 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
   if (assetData.metadata.children === undefined) {
     metadataUpdates.children = extractChildMeshes(preprocessed.model);
   }
+  if (!assetData.metadata.importDiagnostics) {
+    metadataUpdates.importDiagnostics = preprocessed.importDiagnostics;
+  }
   if (Object.keys(metadataUpdates).length > 0) {
     await updateAssetMetadata(assetId, metadataUpdates);
   }
@@ -295,6 +309,7 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
   const cachedModel: CachedModel = {
     model: deepCloneGroup(preprocessed.model),
     metrics,
+    importDiagnostics: preprocessed.importDiagnostics,
     lastAccessed: Date.now(),
   };
 

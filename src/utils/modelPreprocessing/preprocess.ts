@@ -9,12 +9,18 @@ import { autoScaleModel } from './scale';
 import { alignModelToGround } from './ground';
 import { disableModelAnimations } from './animations';
 import { calculateModelMetrics } from './metrics';
+import { repairModelNormals } from './normals';
+import type { ImportDiagnostics } from '../../types/model';
 
 /**
  * Main preprocessing pipeline
  * Applies all normalization steps in the correct order
  */
-export function preprocessModel(model: THREE.Group, targetSize: number = MODEL_TARGET_SIZE): PreprocessedModel {
+export function preprocessModel(
+  model: THREE.Group,
+  targetSize: number = MODEL_TARGET_SIZE,
+  importDiagnostics: ImportDiagnostics
+): PreprocessedModel {
   if (IS_DEV) {
     console.group('[modelPreprocessing] ========== PREPROCESSING PIPELINE START ==========');
     console.log('Target size:', targetSize);
@@ -41,12 +47,15 @@ export function preprocessModel(model: THREE.Group, targetSize: number = MODEL_T
   if (IS_DEV) console.log('--- Step 2: Align to ground ---');
   alignModelToGround(processedModel);
 
-  // Step 3: Normalize orientation (skip for now - can cause unexpected rotations)
+  if (IS_DEV) console.log('--- Step 3: Repair normals ---');
+  repairModelNormals(processedModel, importDiagnostics);
+
+  // Step 4: Normalize orientation (skip for now - can cause unexpected rotations)
   // normalizeModelOrientation(processedModel);
 
   disableModelAnimations(processedModel);
 
-  if (IS_DEV) console.log('--- Step 3: Final metrics ---');
+  if (IS_DEV) console.log('--- Step 5: Final metrics ---');
   const metrics = calculateModelMetrics(processedModel);
 
   if (IS_DEV) {
@@ -68,6 +77,6 @@ export function preprocessModel(model: THREE.Group, targetSize: number = MODEL_T
     model: processedModel,
     metrics,
     originalScale,
+    importDiagnostics,
   };
 }
-
