@@ -10,6 +10,9 @@
    - `OPENAI_API_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_URL` (required in hosted/server environments, optional fallback in local dev)
+   - Optional private beta flags:
+     - `VITE_AUTH_DISABLE_SIGNUP=true` for invite-only pilots
+     - `VITE_BETA_ACCESS_CONTACT` to show the beta support contact on the sign-in screen
 4. Install dependencies: `npm ci`
 5. Start development: `npm run dev`
 
@@ -35,6 +38,13 @@ npm run build
 - Update docs (`README.md`, migration notes, or feature docs) when behavior/config changes.
 - Include a short test plan in the PR description.
 - Never commit secrets (`.env.local`, API keys, service role tokens).
+
+## Private beta auth
+
+- Prefer a separate staging/demo environment for customer editor pilots.
+- Disable public signup in the Supabase Auth dashboard before enabling `VITE_AUTH_DISABLE_SIGNUP=true`.
+- Provision one vendor-controlled tester account per person rather than sharing credentials.
+- Keep the provisioning/reset workflow documented in `docs/private-beta-access.md`.
 
 ## Branching and commits
 

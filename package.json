@@ -12,6 +12,7 @@
     "dev:api": "tsx watch ./dev-server/devApi.ts",
     "eval:sop": "node scripts/evalSopExtraction.mjs samples",
     "eval:sop:synthetic": "node scripts/evalSopExtraction.mjs --synthetic 8",
+    "beta:create-testers": "node scripts/createTesterAccounts.mjs",
     "build": "tsc && vite build",
     "build:analyze": "tsc && vite build --mode analyze",
     "preview": "vite preview",

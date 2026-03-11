@@ -7,13 +7,27 @@ const clientEnvSchema = z.object({
   VITE_SENTRY_DSN: z.string().trim().optional(),
 });
 
+const authUiEnvSchema = z.object({
+  VITE_AUTH_DISABLE_SIGNUP: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
+  VITE_BETA_ACCESS_CONTACT: z.string().trim().optional(),
+});
+
 export interface ClientEnv {
   supabaseUrl: string;
   supabaseAnonKey: string;
   sentryDsn?: string;
 }
 
+export interface AuthUiEnv {
+  isSignUpDisabled: boolean;
+  betaAccessContact?: string;
+}
+
 let cachedClientEnv: ClientEnv | null = null;
+let cachedAuthUiEnv: AuthUiEnv | null = null;
 
 function isTestRuntime(): boolean {
   return (
@@ -28,6 +42,9 @@ function formatIssueList(issues: string[]): string {
   )}. Copy .env.example to .env.local and fill in the required values.`;
 }
 
+/**
+ * Reads and validates client-safe runtime configuration for the browser bundle.
+ */
 export function getClientEnv(): ClientEnv {
   if (cachedClientEnv) return cachedClientEnv;
 
@@ -51,4 +68,27 @@ export function getClientEnv(): ClientEnv {
     sentryDsn: parsed.data.VITE_SENTRY_DSN || undefined,
   };
   return cachedClientEnv;
+}
+
+/**
+ * Reads browser-safe auth UI flags used to adapt the sign-in experience for private beta flows.
+ */
+export function getAuthUiEnv(): AuthUiEnv {
+  if (cachedAuthUiEnv && !isTestRuntime()) return cachedAuthUiEnv;
+
+  const parsed = authUiEnvSchema.safeParse(import.meta.env);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((issue) => issue.message);
+    throw new ValidationError(formatIssueList(issues), { issues });
+  }
+
+  const contact = parsed.data.VITE_BETA_ACCESS_CONTACT?.trim();
+  const authUiEnv = {
+    isSignUpDisabled: parsed.data.VITE_AUTH_DISABLE_SIGNUP,
+    betaAccessContact: contact ? contact : undefined,
+  };
+  if (!isTestRuntime()) {
+    cachedAuthUiEnv = authUiEnv;
+  }
+  return authUiEnv;
 }

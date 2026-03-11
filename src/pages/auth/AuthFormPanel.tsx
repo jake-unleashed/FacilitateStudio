@@ -1,5 +1,6 @@
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
+import { getClosedBetaSupportMessage } from './authCopy';
 import type { AuthMode } from './authTypes';
 
 interface AuthFormPanelProps {
@@ -9,6 +10,8 @@ interface AuthFormPanelProps {
   email: string;
   password: string;
   confirmPassword: string;
+  isClosedBeta: boolean;
+  betaAccessContact?: string;
   isSubmitting: boolean;
   successMessage: string | null;
   errorMessage: string | null;
@@ -33,6 +36,8 @@ export function AuthFormPanel({
   email,
   password,
   confirmPassword,
+  isClosedBeta,
+  betaAccessContact,
   isSubmitting,
   successMessage,
   errorMessage,
@@ -49,9 +54,11 @@ export function AuthFormPanel({
   footerActionLabel,
   onFooterToggle,
 }: AuthFormPanelProps): JSX.Element {
+  const closedBetaMessage = getClosedBetaSupportMessage(betaAccessContact);
+
   return (
     <>
-      {mode === 'sign-in' || mode === 'sign-up' ? (
+      {!isClosedBeta && (mode === 'sign-in' || mode === 'sign-up') ? (
         <div className="mb-6 flex items-center justify-center gap-2 rounded-[20px] border border-white/50 bg-white/40 p-1 shadow-sm">
           <button
             type="button"
@@ -86,11 +93,20 @@ export function AuthFormPanel({
 
       <h1 className="text-center text-lg font-bold tracking-tight text-slate-800">{title}</h1>
       <p className="mt-1 text-center text-sm text-slate-500">
-        {mode === 'sign-in' && 'Sign in to access your projects.'}
+        {mode === 'sign-in' &&
+          (isClosedBeta
+            ? 'Sign in with the tester account we provided to access the editor.'
+            : 'Sign in to access your projects.')}
         {mode === 'sign-up' && 'Create an account to start saving projects in the cloud.'}
         {mode === 'forgot-password' && 'Enter your email and we will send a reset link.'}
         {mode === 'reset-password' && 'Choose a secure password with at least 6 characters.'}
       </p>
+
+      {isClosedBeta && mode === 'sign-in' ? (
+        <p className="mt-4 rounded-[16px] border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
+          {closedBetaMessage}
+        </p>
+      ) : null}
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
         {(mode === 'sign-in' || mode === 'sign-up' || mode === 'forgot-password') && (
@@ -134,7 +150,7 @@ export function AuthFormPanel({
           />
         )}
 
-        {mode === 'sign-in' ? (
+        {mode === 'sign-in' && !isClosedBeta ? (
           <div className="-mt-2 flex justify-end">
             <button
               type="button"
@@ -187,7 +203,7 @@ export function AuthFormPanel({
         </Button>
       </form>
 
-      {mode === 'sign-in' || mode === 'sign-up' ? (
+      {!isClosedBeta && (mode === 'sign-in' || mode === 'sign-up') ? (
         <div className="mt-5 text-center text-xs font-medium text-slate-500">
           {footerMessage}{' '}
           <button
@@ -199,7 +215,7 @@ export function AuthFormPanel({
             {footerActionLabel}
           </button>
         </div>
-      ) : (
+      ) : mode === 'forgot-password' || mode === 'reset-password' ? (
         <div className="mt-5 text-center text-xs font-medium text-slate-500">
           Remembered your password?{' '}
           <button
@@ -211,7 +227,7 @@ export function AuthFormPanel({
             Back to sign in
           </button>
         </div>
-      )}
+      ) : null}
     </>
   );
 }

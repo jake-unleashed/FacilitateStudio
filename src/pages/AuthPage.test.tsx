@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -38,12 +38,31 @@ function renderAuth(options?: { initialEntries?: string[] }) {
 describe('AuthPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('renders sign in by default', () => {
     renderAuth();
     expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^sign up$/i })).toBeInTheDocument();
+  });
+
+  it('hides self-serve signup in closed beta mode', () => {
+    vi.stubEnv('VITE_AUTH_DISABLE_SIGNUP', 'true');
+    vi.stubEnv('VITE_BETA_ACCESS_CONTACT', 'beta@facilitate.test');
+
+    renderAuth();
+
+    expect(screen.getByRole('heading', { name: /private beta sign in/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^sign up$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /forgot password/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/access is limited to invited testers/i)).toBeInTheDocument();
+    expect(screen.getByText(/beta@facilitate.test/i)).toBeInTheDocument();
   });
 
   it('shows check-email screen when sign-up returns no session', async () => {

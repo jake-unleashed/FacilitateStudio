@@ -2,13 +2,16 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LoadingScreen } from '../components/ui/LoadingScreen';
 import { useAuth } from '../contexts/AuthContext';
+import { getAuthUiEnv } from '../env';
 import { AuthCheckEmailPanel } from './auth/AuthCheckEmailPanel';
+import { getClosedBetaRequestAccessMessage } from './auth/authCopy';
 import { AuthFormPanel } from './auth/AuthFormPanel';
 import { isEmailNotConfirmedError, toFriendlyAuthErrorMessage } from './auth/authErrors';
 import type { AuthMode, AuthSuccessState, PendingEmailState } from './auth/authTypes';
 import { logger } from '../utils/logger';
 
 export function AuthPage(): JSX.Element {
+  const authUiEnv = getAuthUiEnv();
   const location = useLocation();
   const navigate = useNavigate();
   const {
@@ -21,6 +24,8 @@ export function AuthPage(): JSX.Element {
     updatePassword,
   } = useAuth();
 
+  const isClosedBeta = authUiEnv.isSignUpDisabled;
+  const betaAccessContact = authUiEnv.betaAccessContact;
   const isResetPasswordRoute = location.pathname === '/auth/reset-password';
   const [mode, setMode] = useState<AuthMode>(isResetPasswordRoute ? 'reset-password' : 'sign-in');
   const [email, setEmail] = useState('');
@@ -68,18 +73,19 @@ export function AuthPage(): JSX.Element {
   }, [isLoading, mode, navigate, user]);
 
   const title = useMemo(() => {
+    if (isClosedBeta && mode === 'sign-in') return 'Private beta sign in';
     if (mode === 'sign-up') return 'Create your account';
     if (mode === 'forgot-password') return 'Reset your password';
     if (mode === 'reset-password') return 'Choose a new password';
     return 'Welcome back';
-  }, [mode]);
+  }, [isClosedBeta, mode]);
 
   const submitLabel = useMemo(() => {
-    if (mode === 'sign-up') return 'Sign Up';
+    if (mode === 'sign-up') return isClosedBeta ? 'Request access' : 'Sign Up';
     if (mode === 'forgot-password') return 'Send reset link';
     if (mode === 'reset-password') return 'Update password';
     return 'Sign In';
-  }, [mode]);
+  }, [isClosedBeta, mode]);
 
   const footerMessage = useMemo(
     () =>
@@ -90,27 +96,39 @@ export function AuthPage(): JSX.Element {
   );
 
   const footerActionLabel = mode === 'sign-in' ? 'Sign up' : 'Sign in';
+  const inviteOnlyMessage = useMemo(
+    () => getClosedBetaRequestAccessMessage(betaAccessContact),
+    [betaAccessContact]
+  );
 
-  const switchToSignIn = (): void => {
-    navigate('/auth', { replace: true, state: null });
-    setMode('sign-in');
+  const resetTransientState = (): void => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setPendingEmailState(null);
     setCanResendConfirmation(false);
+  };
+
+  const resetPasswords = (): void => {
     setPassword('');
     setConfirmPassword('');
   };
 
+  const switchToSignIn = (): void => {
+    navigate('/auth', { replace: true, state: null });
+    setMode('sign-in');
+    resetTransientState();
+    resetPasswords();
+  };
+
   const switchToSignUp = (): void => {
+    if (isClosedBeta) {
+      setErrorMessage(inviteOnlyMessage);
+      return;
+    }
     navigate('/auth', { replace: true, state: null });
     setMode('sign-up');
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setPendingEmailState(null);
-    setCanResendConfirmation(false);
-    setPassword('');
-    setConfirmPassword('');
+    resetTransientState();
+    resetPasswords();
   };
 
   const handleResendConfirmation = async (targetEmail: string): Promise<void> => {
@@ -169,6 +187,11 @@ export function AuthPage(): JSX.Element {
     const trimmedEmail = email.trim();
     const needsEmail = mode === 'sign-in' || mode === 'sign-up' || mode === 'forgot-password';
     const needsPassword = mode === 'sign-in' || mode === 'sign-up' || mode === 'reset-password';
+
+    if (isClosedBeta && mode === 'sign-up') {
+      setErrorMessage(inviteOnlyMessage);
+      return;
+    }
 
     if (needsEmail && !trimmedEmail) {
       setErrorMessage('Please enter your email address.');
@@ -295,6 +318,8 @@ export function AuthPage(): JSX.Element {
               email={email}
               password={password}
               confirmPassword={confirmPassword}
+              isClosedBeta={isClosedBeta}
+              betaAccessContact={betaAccessContact}
               isSubmitting={isSubmitting}
               successMessage={successMessage}
               errorMessage={errorMessage}
@@ -306,12 +331,12 @@ export function AuthPage(): JSX.Element {
               onSwitchToSignIn={switchToSignIn}
               onSwitchToSignUp={switchToSignUp}
               onForgotPassword={() => {
+                if (isClosedBeta) {
+                  return;
+                }
                 setMode('forgot-password');
-                setErrorMessage(null);
-                setSuccessMessage(null);
-                setCanResendConfirmation(false);
-                setPassword('');
-                setConfirmPassword('');
+                resetTransientState();
+                resetPasswords();
               }}
               onResendConfirmation={() => void handleResendConfirmation(resendTargetEmail || email)}
               footerMessage={footerMessage}
