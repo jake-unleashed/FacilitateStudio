@@ -1,8 +1,8 @@
 # Feature: vercel-deploy
 
 **Branch**: `mvp`  
-**Duration**: 3m  
-**Period**: 03/03/2026, 4:59:08 pm → 03/03/2026, 5:02:25 pm
+**Duration**: 6m  
+**Period**: 10/03/2026, 7:37:56 pm → 10/03/2026, 7:44:05 pm
 
 ## Summary
 
@@ -10,12 +10,12 @@
 
 Total: 1 commits
 
-- `7f1f890` feat: add debug toggle for extended 3D file upload limit (21 files, +386/-110)
+- `44fb45a` feat: move starter assets to a Supabase catalog (53 files, +1380/-894)
 
 ## Shipped
 
-- Pushed to `origin` at 03/03/2026, 5:02:25 pm
-  Range: `11bfa99..7f1f890`
+- Pushed to `origin` at 10/03/2026, 7:44:05 pm
+  Range: `7f1f890..44fb45a`
 
 ---
-*Generated from worklog events on 10/03/2026, 7:37:56 pm*
+*Generated from worklog events on 11/03/2026, 11:58:06 am*

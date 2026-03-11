@@ -8,6 +8,9 @@ import { preloadBackgroundTexture } from '../../utils/backgroundTextureCache';
 import { toStarterBackgroundStorageRef } from '../../utils/backgroundImageUpload';
 import { RotationSection } from '../rightSidebar/RotationSection';
 import { ScaleSection } from '../rightSidebar/ScaleSection';
+import { usePopup } from '../../contexts/PopupContext';
+import { getErrorMessage } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 
 interface ScenePanelProps {
   backgroundImage?: SceneBackgroundImage;
@@ -112,6 +115,7 @@ export function ScenePanel({
   const [isDragging, setIsDragging] = useState(false);
   const [isStarterSectionOpen, setIsStarterSectionOpen] = useState(true);
   const dragCounterRef = useRef(0);
+  const { showPopup } = usePopup();
 
   const effectivePhase = phase ?? (isUploading ? 'uploading' : isTextureLoading ? 'preparingScene' : 'idle');
   const isUploadingPhase = effectivePhase === 'optimizing' || effectivePhase === 'uploading';
@@ -144,22 +148,51 @@ export function ScenePanel({
     worldInputRef.current?.click();
   }, [isAnyLoading]);
 
+  const showOperationError = useCallback(
+    (title: string, error: unknown, fallbackMessage: string) => {
+      showPopup({
+        type: 'error',
+        title,
+        message: getErrorMessage(error, fallbackMessage),
+      });
+    },
+    [showPopup]
+  );
+
   const handleUploadBackgroundFile = useCallback(
     async (file: File | null) => {
       if (!file || isAnyLoading) return;
       if (!onUploadBackground) return;
-      await onUploadBackground(file);
+      try {
+        await onUploadBackground(file);
+      } catch (error) {
+        logger.error('[ScenePanel] Background upload failed:', error);
+        showOperationError(
+          'Background upload failed',
+          error,
+          'We could not upload that 360 background image.'
+        );
+      }
     },
-    [isAnyLoading, onUploadBackground]
+    [isAnyLoading, onUploadBackground, showOperationError]
   );
 
   const handleUploadWorldFile = useCallback(
     async (file: File | null) => {
       if (!file || isAnyLoading) return;
       if (!onGenerateWorldEnvironment) return;
-      await onGenerateWorldEnvironment(file);
+      try {
+        await onGenerateWorldEnvironment(file);
+      } catch (error) {
+        logger.error('[ScenePanel] World environment generation failed:', error);
+        showOperationError(
+          'Environment generation failed',
+          error,
+          'We could not start generating a 3D environment from that image.'
+        );
+      }
     },
-    [isAnyLoading, onGenerateWorldEnvironment]
+    [isAnyLoading, onGenerateWorldEnvironment, showOperationError]
   );
 
   const handleDragEnter = useCallback((event: DragEvent<HTMLButtonElement>) => {
@@ -369,7 +402,14 @@ export function ScenePanel({
                     type="button"
                     onClick={() => {
                       if (!onRemoveBackground) return;
-                      void onRemoveBackground();
+                      void onRemoveBackground().catch((error) => {
+                        logger.error('[ScenePanel] Removing background failed:', error);
+                        showOperationError(
+                          'Background removal failed',
+                          error,
+                          'We could not remove the current 360 background.'
+                        );
+                      });
                     }}
                     disabled={isBackgroundLoading}
                     className="inline-flex items-center gap-1 rounded-[10px] border border-red-100 bg-red-50/80 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100/70 disabled:cursor-not-allowed disabled:opacity-50"
@@ -470,7 +510,14 @@ export function ScenePanel({
                     type="button"
                     onClick={() => {
                       if (!onRemoveWorldEnvironment) return;
-                      void onRemoveWorldEnvironment();
+                      void onRemoveWorldEnvironment().catch((error) => {
+                        logger.error('[ScenePanel] Removing world environment failed:', error);
+                        showOperationError(
+                          'Environment removal failed',
+                          error,
+                          'We could not remove the current 3D environment.'
+                        );
+                      });
                     }}
                     disabled={isAnyLoading}
                     className="inline-flex items-center gap-1 rounded-[10px] border border-red-100 bg-red-50/80 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100/70 disabled:cursor-not-allowed disabled:opacity-50"
@@ -642,7 +689,14 @@ export function ScenePanel({
                       isDisabled={isAnyLoading || !onSelectStarterBackground}
                       onSelect={(selectedAsset) => {
                         if (!onSelectStarterBackground) return;
-                        void onSelectStarterBackground(selectedAsset);
+                        void Promise.resolve(onSelectStarterBackground(selectedAsset)).catch((error) => {
+                          logger.error('[ScenePanel] Selecting starter background failed:', error);
+                          showOperationError(
+                            'Starter background failed',
+                            error,
+                            'We could not apply that starter background.'
+                          );
+                        });
                       }}
                     />
                   );

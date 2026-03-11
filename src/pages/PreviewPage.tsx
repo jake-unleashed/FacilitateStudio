@@ -73,12 +73,11 @@ export function PreviewPage() {
       if (projectId) {
         try {
           const loadedProject = await getProject(projectId);
-          if (!loadedProject) {
-            navigate('/');
+          if (isCancelled) {
             return;
           }
-
-          if (isCancelled) {
+          if (!loadedProject) {
+            navigate('/');
             return;
           }
 
@@ -90,6 +89,9 @@ export function PreviewPage() {
           hasSettingsBaselineRef.current = false;
           setIsInitialized(true);
         } catch (error) {
+          if (isCancelled) {
+            return;
+          }
           console.error('[PreviewPage] Failed to load project:', error);
           showPopup({
             type: 'error',
@@ -102,6 +104,9 @@ export function PreviewPage() {
           navigate('/');
         }
       } else {
+        if (isCancelled) {
+          return;
+        }
         // No project ID, redirect to home
         navigate('/');
       }

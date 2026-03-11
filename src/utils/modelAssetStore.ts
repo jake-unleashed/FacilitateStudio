@@ -67,6 +67,42 @@ interface ModelAssetDB extends DBSchema {
 let dbInstance: IDBPDatabase<ModelAssetDB> | null = null;
 let dbPromise: Promise<IDBPDatabase<ModelAssetDB>> | null = null;
 
+function safeGetLocalStorageItem(key: string): string | null {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    logger.warn(`[modelAssetStore] Failed to read localStorage key "${key}":`, error);
+    return null;
+  }
+}
+
+function safeSetLocalStorageItem(key: string, value: string): boolean {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    logger.warn(`[modelAssetStore] Failed to write localStorage key "${key}":`, error);
+    return false;
+  }
+}
+
+function safeRemoveLocalStorageItem(key: string): void {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    logger.warn(`[modelAssetStore] Failed to remove localStorage key "${key}":`, error);
+  }
+}
+
 /**
  * Get or create the database connection.
  * Uses a singleton pattern to prevent multiple connections.
@@ -76,14 +112,27 @@ async function getDB(): Promise<IDBPDatabase<ModelAssetDB>> {
 
   if (!dbPromise) {
     dbPromise = openDB<ModelAssetDB>(STORAGE_CONFIG.DB_NAME, STORAGE_CONFIG.DB_VERSION, {
-      upgrade(db) {
-        const store = db.createObjectStore('assets', { keyPath: 'id' });
-        store.createIndex('by-date', 'metadata.uploadDate');
+      upgrade(db, _oldVersion, _newVersion, transaction) {
+        if (!db.objectStoreNames.contains('assets')) {
+          const store = db.createObjectStore('assets', { keyPath: 'id' });
+          store.createIndex('by-date', 'metadata.uploadDate');
+          return;
+        }
+        const store = transaction.objectStore('assets');
+        if (!store.indexNames.contains('by-date')) {
+          store.createIndex('by-date', 'metadata.uploadDate');
+        }
       },
-    }).then((db) => {
-      dbInstance = db;
-      return db;
-    });
+    })
+      .then((db) => {
+        dbInstance = db;
+        return db;
+      })
+      .catch((error) => {
+        dbPromise = null;
+        logger.error('[modelAssetStore] Failed to open IndexedDB:', error);
+        throw error;
+      });
   }
 
   return dbPromise;
@@ -543,17 +592,18 @@ const LEGACY_KEYS = {
  * Check if there are legacy assets in localStorage that need migration.
  */
 export function hasLegacyAssets(): boolean {
-  if (localStorage.getItem(LEGACY_KEYS.MIGRATION_COMPLETE)) {
+  if (safeGetLocalStorageItem(LEGACY_KEYS.MIGRATION_COMPLETE)) {
     return false;
   }
 
-  const metadata = localStorage.getItem(LEGACY_KEYS.METADATA);
+  const metadata = safeGetLocalStorageItem(LEGACY_KEYS.METADATA);
   if (!metadata) return false;
 
   try {
     const parsed = JSON.parse(metadata);
     return Array.isArray(parsed) && parsed.length > 0;
-  } catch {
+  } catch (error) {
+    logger.warn('[modelAssetStore] Failed to parse legacy asset metadata:', error);
     return false;
   }
 }
@@ -570,21 +620,34 @@ export async function migrateLegacyAssets(): Promise<number> {
   let migratedCount = 0;
 
   try {
-    const metadataJson = localStorage.getItem(LEGACY_KEYS.METADATA);
+    const metadataJson = safeGetLocalStorageItem(LEGACY_KEYS.METADATA);
     if (!metadataJson) return 0;
 
-    const oldMetadata: Array<{
+    let oldMetadata: Array<{
       id: string;
       name: string;
       fileType: ModelFileType;
       fileSize: number;
       uploadDate: string;
       metrics?: ModelMetrics;
-    }> = JSON.parse(metadataJson);
+    }>;
+    try {
+      oldMetadata = JSON.parse(metadataJson) as Array<{
+        id: string;
+        name: string;
+        fileType: ModelFileType;
+        fileSize: number;
+        uploadDate: string;
+        metrics?: ModelMetrics;
+      }>;
+    } catch (error) {
+      logger.error('[migration] Failed to parse legacy asset metadata:', error);
+      return 0;
+    }
 
     for (const meta of oldMetadata) {
       try {
-        const base64Data = localStorage.getItem(`${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`);
+        const base64Data = safeGetLocalStorageItem(`${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`);
         if (!base64Data) continue;
 
         // Convert base64 to blob
@@ -612,7 +675,7 @@ export async function migrateLegacyAssets(): Promise<number> {
         migratedCount++;
 
         // Remove from localStorage after successful migration
-        localStorage.removeItem(`${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`);
+        safeRemoveLocalStorageItem(`${LEGACY_KEYS.ASSET_PREFIX}${meta.id}`);
       } catch (error) {
         logger.error(`[migration] Failed to migrate asset ${meta.id}:`, error);
       }
@@ -620,10 +683,10 @@ export async function migrateLegacyAssets(): Promise<number> {
 
     // Clear old metadata if all assets migrated
     if (migratedCount === oldMetadata.length) {
-      localStorage.removeItem(LEGACY_KEYS.METADATA);
+      safeRemoveLocalStorageItem(LEGACY_KEYS.METADATA);
     }
 
-    localStorage.setItem(LEGACY_KEYS.MIGRATION_COMPLETE, 'true');
+    safeSetLocalStorageItem(LEGACY_KEYS.MIGRATION_COMPLETE, 'true');
     logger.log(`[migration] Migrated ${migratedCount}/${oldMetadata.length} assets`);
 
     return migratedCount;
@@ -639,13 +702,31 @@ export async function migrateLegacyAssets(): Promise<number> {
 export function clearLegacyStorage(): void {
   const keysToRemove: string[] = [];
 
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return;
+  }
+
+  let storageLength = 0;
+  try {
+    storageLength = window.localStorage.length;
+  } catch (error) {
+    logger.warn('[modelAssetStore] Failed to inspect localStorage during cleanup:', error);
+    return;
+  }
+
+  for (let i = 0; i < storageLength; i++) {
+    let key: string | null = null;
+    try {
+      key = window.localStorage.key(i);
+    } catch (error) {
+      logger.warn('[modelAssetStore] Failed to enumerate localStorage keys during cleanup:', error);
+      break;
+    }
     if (key?.startsWith(LEGACY_KEYS.ASSET_PREFIX)) {
       keysToRemove.push(key);
     }
   }
 
-  keysToRemove.forEach((key) => localStorage.removeItem(key));
-  localStorage.removeItem(LEGACY_KEYS.METADATA);
+  keysToRemove.forEach((key) => safeRemoveLocalStorageItem(key));
+  safeRemoveLocalStorageItem(LEGACY_KEYS.METADATA);
 }

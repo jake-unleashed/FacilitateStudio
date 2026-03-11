@@ -9,6 +9,8 @@ import {
 } from '../services/modelGenerationService';
 import { saveAsset, syncAssetToCloud } from '../utils/modelAssetStore';
 import { processModelBuffer } from './modelUpload/processBuffer';
+import { getErrorMessage } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 const STORAGE_KEY = 'facilitate:model-generation:tasks';
 const POLL_INTERVAL_MS = 5000;
@@ -68,6 +70,10 @@ function deriveModelName(imageName: string): string {
   return `${base}.glb`;
 }
 
+/**
+ * Submit model generations, resume polling for active tasks, and finalize
+ * successful results into saved assets plus scene objects.
+ */
 export function useModelGeneration(options: UseModelGenerationOptions): UseModelGenerationReturn {
   const { getExistingObjects, userId, onComplete, onError, refreshRecentAssets } = options;
   const [generations, setGenerations] = useState<GenerationTask[]>([]);
@@ -78,6 +84,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
   const onCompleteRef = useRef(onComplete);
   const onErrorRef = useRef(onError);
   const refreshRecentAssetsRef = useRef(refreshRecentAssets);
+  const isMountedRef = useRef(true);
 
   getExistingObjectsRef.current = getExistingObjects;
   onCompleteRef.current = onComplete;
@@ -85,8 +92,28 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
   refreshRecentAssetsRef.current = refreshRecentAssets;
   generationsRef.current = generations;
 
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const delayWithUnmountGuard = useCallback(async (ms: number) => {
+    const stepMs = 250;
+    let remainingMs = ms;
+    while (remainingMs > 0) {
+      if (!isMountedRef.current) {
+        throw new Error('Generation cancelled');
+      }
+      const currentDelay = Math.min(stepMs, remainingMs);
+      await new Promise((resolve) => setTimeout(resolve, currentDelay));
+      remainingMs -= currentDelay;
+    }
+  }, []);
+
   const updateGeneration = useCallback(
     (generationId: string, updates: Partial<GenerationTask>) => {
+      if (!isMountedRef.current) return;
       setGenerations((prev) =>
         prev.map((task) => (task.id === generationId ? { ...task, ...updates } : task))
       );
@@ -97,8 +124,8 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
   const persistGenerations = useCallback((nextGenerations: GenerationTask[]) => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextGenerations));
-    } catch {
-      // Non-critical; keep runtime state even if persistence fails.
+    } catch (error) {
+      logger.warn('[useModelGeneration] Failed to persist generation state:', error);
     }
   }, []);
 
@@ -114,8 +141,8 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       if (Array.isArray(parsed)) {
         setGenerations(parsed);
       }
-    } catch {
-      // Ignore malformed local storage payloads.
+    } catch (error) {
+      logger.warn('[useModelGeneration] Failed to restore generation state:', error);
     }
   }, []);
 
@@ -164,7 +191,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       }
       if (userId) {
         void syncAssetToCloud(metadata.id, { userId }).catch((cloudError) => {
-          console.warn(
+          logger.warn(
             '[useModelGeneration] Cloud upload failed; keeping local copy. ' +
               CLOUD_SYNC_PENDING_MESSAGE,
             cloudError
@@ -188,6 +215,9 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       }
 
       await refreshRecentAssetsRef.current?.();
+      if (!isMountedRef.current) {
+        throw new Error('Generation cancelled');
+      }
 
       const result: GenerationResult = {
         assetMetadata: {
@@ -198,7 +228,9 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
         sceneObject: processed.sceneObject,
         metrics: processed.metrics,
       };
-      onCompleteRef.current?.(result);
+      if (isMountedRef.current) {
+        onCompleteRef.current?.(result);
+      }
 
       updateGeneration(generation.id, {
         stage: 'complete',
@@ -231,6 +263,9 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       try {
         let keepPolling = true;
         while (keepPolling) {
+          if (!isMountedRef.current) {
+            throw new Error('Generation cancelled');
+          }
           if (cancelledTaskIdsRef.current.has(generation.id)) {
             updateGeneration(generation.id, {
               stage: 'cancelled',
@@ -241,6 +276,9 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
           }
 
           const status = await pollGenerationStatus(generation.taskId);
+          if (!isMountedRef.current) {
+            throw new Error('Generation cancelled');
+          }
           if (status.status === 'failed' || status.status === 'cancelled') {
             updateGeneration(generation.id, {
               stage: status.status === 'cancelled' ? 'cancelled' : 'failed',
@@ -272,11 +310,14 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
             error: null,
           });
 
-          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+          await delayWithUnmountGuard(POLL_INTERVAL_MS);
           keepPolling = !isTerminalStatus(status.status);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to generate model';
+        const message = getErrorMessage(error, 'Failed to generate model');
+        if (message === 'Generation cancelled') {
+          return;
+        }
         updateGeneration(generation.id, {
           stage: 'failed',
           status: 'failed',
@@ -287,7 +328,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
         pollingByGenerationIdRef.current.delete(generation.id);
       }
     },
-    [runCompletion, updateGeneration]
+    [delayWithUnmountGuard, runCompletion, updateGeneration]
   );
 
   const requestTaskStart = useCallback(
@@ -328,12 +369,13 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
         createdAt: new Date().toISOString(),
       };
 
+      if (!isMountedRef.current) return;
       setGenerations((prev) => [generation, ...prev]);
 
       try {
         await requestTaskStart(generation, imageFile.name);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to start model generation';
+        const message = getErrorMessage(error, 'Failed to start model generation');
         setGenerationFailure(generation.id, message);
       }
     },
@@ -359,7 +401,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       try {
         await requestTaskStart(existing, existing.name);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to restart model generation';
+        const message = getErrorMessage(error, 'Failed to restart model generation');
         setGenerationFailure(generationId, message);
       }
     },

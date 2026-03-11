@@ -58,12 +58,17 @@ export function useRecordingEndTransform({
   onSelectObject,
 }: UseRecordingEndTransformArgs): UseRecordingEndTransformResult {
   const [recordingPositionForStepId, setRecordingPositionForStepId] = useState<string | null>(null);
+  const recordingPositionForStepIdRef = useRef<string | null>(null);
 
   // Updated synchronously during drag (source of truth when stopping).
   const latestRecordingEndPositionRef = useRef<LatestRecordingEndTransformRefValue | null>(null);
 
   // Track the initial step state when recording starts (for command previousState).
   const recordingInitialStepRef = useRef<SimStep | null>(null);
+
+  useEffect(() => {
+    recordingPositionForStepIdRef.current = recordingPositionForStepId;
+  }, [recordingPositionForStepId]);
 
   const handleStartRecordingPosition = useCallback(
     (stepId: string) => {
@@ -249,7 +254,7 @@ export function useRecordingEndTransform({
   // (Best-effort: endBatch is idempotent in useUndoRedo.)
   useEffect(() => {
     return () => {
-      if (recordingPositionForStepId) {
+      if (recordingPositionForStepIdRef.current) {
         latestRecordingEndPositionRef.current = null;
         recordingInitialStepRef.current = null;
         endBatch();

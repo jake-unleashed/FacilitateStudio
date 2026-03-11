@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import type { SceneWorldEnvironment } from '../types/sceneSettings';
 import type { WorldEnvironmentFlowPhase } from '../types/worldEnvironment';
 import {
   fetchWorldEnvironmentStatus,
   startWorldEnvironmentGeneration,
 } from '../services/worldEnvironmentService';
+import { getErrorMessage } from '../utils/errors';
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -35,6 +36,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Manage the upload, polling, cancellation, and readiness lifecycle for
+ * generated 3D environments created from a source image.
+ */
 export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
   const [currentEnvironment, setCurrentEnvironment] = useState<SceneWorldEnvironment | null>(null);
   const [phase, setPhase] = useState<WorldEnvironmentFlowPhase>('idle');
@@ -44,25 +49,70 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
   const startedAtRef = useRef<number | null>(null);
   const pollTokenRef = useRef(0);
   const isRendererLoadingRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  const setCurrentEnvironmentSafe = useCallback(
+    (value: SetStateAction<SceneWorldEnvironment | null>) => {
+      if (!isMountedRef.current) return;
+      setCurrentEnvironment(value);
+    },
+    []
+  );
+  const setPhaseSafe = useCallback((value: WorldEnvironmentFlowPhase) => {
+    if (!isMountedRef.current) return;
+    setPhase(value);
+  }, []);
+  const setProgressSafe = useCallback((value: number | null) => {
+    if (!isMountedRef.current) return;
+    setProgress(value);
+  }, []);
+  const setErrorSafe = useCallback((value: string | null) => {
+    if (!isMountedRef.current) return;
+    setError(value);
+  }, []);
+  const setElapsedMsSafe = useCallback((value: number) => {
+    if (!isMountedRef.current) return;
+    setElapsedMs(value);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      pollTokenRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (phase !== 'generating') return;
     const interval = setInterval(() => {
       if (startedAtRef.current) {
-        setElapsedMs(Date.now() - startedAtRef.current);
+        setElapsedMsSafe(Date.now() - startedAtRef.current);
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [phase]);
+  }, [phase, setElapsedMsSafe]);
 
   const beginWork = useCallback((nextPhase: WorldEnvironmentFlowPhase) => {
-    setError(null);
-    setPhase(nextPhase);
-    setProgress(null);
+    setErrorSafe(null);
+    setPhaseSafe(nextPhase);
+    setProgressSafe(null);
     startedAtRef.current = Date.now();
-    setElapsedMs(0);
+    setElapsedMsSafe(0);
     pollTokenRef.current += 1;
     return pollTokenRef.current;
+  }, [setElapsedMsSafe, setErrorSafe, setPhaseSafe, setProgressSafe]);
+
+  const waitForNextPoll = useCallback(async (pollToken: number) => {
+    const stepMs = 500;
+    let remainingMs = POLL_INTERVAL_MS;
+    while (remainingMs > 0) {
+      if (!isMountedRef.current || pollTokenRef.current !== pollToken) {
+        throw new Error('Generation cancelled');
+      }
+      const currentDelay = Math.min(stepMs, remainingMs);
+      await delay(currentDelay);
+      remainingMs -= currentDelay;
+    }
   }, []);
 
   const pollUntilFinished = useCallback(
@@ -90,8 +140,8 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
 
         if (!status.done) {
           latestProgress = status.progress ?? latestProgress;
-          setProgress(latestProgress);
-          await delay(POLL_INTERVAL_MS);
+          setProgressSafe(latestProgress);
+          await waitForNextPoll(pollToken);
           continue;
         }
 
@@ -100,8 +150,8 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
         }
 
         isRendererLoadingRef.current = true;
-        setProgress(100);
-        setPhase('loading');
+        setProgressSafe(100);
+        setPhaseSafe('loading');
         const readyEnvironment: SceneWorldEnvironment = {
           worldId: status.result.worldId,
           operationId,
@@ -113,11 +163,11 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
           worldMarbleUrl: status.result.worldMarbleUrl,
           createdAt: new Date().toISOString(),
         };
-        setCurrentEnvironment(readyEnvironment);
+        setCurrentEnvironmentSafe(readyEnvironment);
         return readyEnvironment;
       }
     },
-    []
+    [setCurrentEnvironmentSafe, setPhaseSafe, setProgressSafe, waitForNextPoll]
   );
 
   const generateEnvironment = useCallback(
@@ -144,14 +194,17 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
           sourceImageFilename: file.name,
           createdAt: new Date().toISOString(),
         };
-        setCurrentEnvironment(pendingEnvironment);
+        setCurrentEnvironmentSafe(pendingEnvironment);
 
-        setPhase('generating');
-        setProgress(0);
+        setPhaseSafe('generating');
+        setProgressSafe(0);
         return await pollUntilFinished(created.operationId, file.name, pollToken);
       } catch (nextError) {
-        const message = nextError instanceof Error ? nextError.message : 'Failed to generate world environment';
-        setCurrentEnvironment((prev) =>
+        const message = getErrorMessage(nextError, 'Failed to generate world environment');
+        if (message === 'Generation cancelled') {
+          throw nextError instanceof Error ? nextError : new Error(message);
+        }
+        setCurrentEnvironmentSafe((prev) =>
           prev
             ? {
                 ...prev,
@@ -160,58 +213,60 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
               }
             : prev
         );
-        setError(message);
-        setPhase('error');
+        setErrorSafe(message);
+        setPhaseSafe('error');
         throw nextError instanceof Error ? nextError : new Error(message);
       }
     },
-    [beginWork, pollUntilFinished]
+    [beginWork, pollUntilFinished, setCurrentEnvironmentSafe, setErrorSafe, setPhaseSafe, setProgressSafe]
   );
 
   const resumePolling = useCallback(
     async (worldEnvironment: SceneWorldEnvironment): Promise<SceneWorldEnvironment | null> => {
       if (worldEnvironment.status !== 'generating') return null;
       const pollToken = beginWork('generating');
-      setCurrentEnvironment(worldEnvironment);
+      setCurrentEnvironmentSafe(worldEnvironment);
       try {
-        setProgress(0);
+        setProgressSafe(0);
         return await pollUntilFinished(
           worldEnvironment.operationId,
           worldEnvironment.sourceImageFilename,
           pollToken
         );
       } catch (nextError) {
-        const message =
-          nextError instanceof Error ? nextError.message : 'Failed to resume world environment generation';
+        const message = getErrorMessage(nextError, 'Failed to resume world environment generation');
         const erroredEnvironment = {
           ...worldEnvironment,
           status: 'error' as const,
           errorMessage: message,
         };
-        setCurrentEnvironment(erroredEnvironment);
-        setError(message);
-        setPhase('error');
+        if (message === 'Generation cancelled') {
+          return null;
+        }
+        setCurrentEnvironmentSafe(erroredEnvironment);
+        setErrorSafe(message);
+        setPhaseSafe('error');
         return erroredEnvironment;
       }
     },
-    [beginWork, pollUntilFinished]
+    [beginWork, pollUntilFinished, setCurrentEnvironmentSafe, setErrorSafe, setPhaseSafe, setProgressSafe]
   );
 
   const cancelGeneration = useCallback(() => {
     pollTokenRef.current += 1;
     isRendererLoadingRef.current = false;
-    setCurrentEnvironment(null);
-    setPhase('idle');
-    setProgress(null);
-    setElapsedMs(0);
+    setCurrentEnvironmentSafe(null);
+    setPhaseSafe('idle');
+    setProgressSafe(null);
+    setElapsedMsSafe(0);
     startedAtRef.current = null;
-  }, []);
+  }, [setCurrentEnvironmentSafe, setElapsedMsSafe, setPhaseSafe, setProgressSafe]);
 
   const markEnvironmentReady = useCallback((ready: boolean, errorMessage?: string) => {
     if (!isRendererLoadingRef.current) return;
     if (!ready) {
       if (errorMessage) {
-        setCurrentEnvironment((prev) =>
+        setCurrentEnvironmentSafe((prev) =>
           prev
             ? {
                 ...prev,
@@ -220,26 +275,26 @@ export function useWorldEnvironmentFlow(): UseWorldEnvironmentFlowResult {
               }
             : prev
         );
-        setError(errorMessage);
-        setPhase('error');
+        setErrorSafe(errorMessage);
+        setPhaseSafe('error');
         isRendererLoadingRef.current = false;
       } else {
-        setPhase('loading');
+        setPhaseSafe('loading');
       }
       return;
     }
 
     isRendererLoadingRef.current = false;
-    setCurrentEnvironment((prev) => (prev ? { ...prev, status: 'ready', errorMessage: undefined } : prev));
-    setPhase('ready');
-  }, []);
+    setCurrentEnvironmentSafe((prev) => (prev ? { ...prev, status: 'ready', errorMessage: undefined } : prev));
+    setPhaseSafe('ready');
+  }, [setCurrentEnvironmentSafe, setErrorSafe, setPhaseSafe]);
 
   const clearError = useCallback(() => {
-    setError(null);
+    setErrorSafe(null);
     if (phase === 'error') {
-      setPhase('idle');
+      setPhaseSafe('idle');
     }
-  }, [phase]);
+  }, [phase, setErrorSafe, setPhaseSafe]);
 
   const statusText = useMemo(() => {
     if (phase === 'uploading') return 'Uploading image...';

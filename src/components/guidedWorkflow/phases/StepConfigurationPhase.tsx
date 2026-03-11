@@ -295,6 +295,7 @@ function StepSetupStep({
   runContentTransition: (apply: () => void) => void;
 }): JSX.Element {
   const { state, actions } = useGuidedWorkflow();
+  const safeStopRecordingPosition = onStopRecordingPosition ?? (() => {});
 
   const handleFocusObject = useCallback(
     (object: SceneObject) => {
@@ -433,8 +434,14 @@ function StepSetupStep({
   ]);
 
   const hasMoveItemEndTransform = Boolean(step.endPosition || step.endRotation || step.endScale);
-  const hasMoveItemRequirements = Boolean(controller.effectiveTargetObjectId) && hasMoveItemEndTransform;
-  const hasIdentifyRequirements = Boolean(controller.effectiveTargetObjectId);
+  const hasResolvedTargetObject = controller.targetObject !== null;
+  const hasResolvedTargetChild =
+    !controller.effectiveTargetChildPath || controller.targetChild !== null;
+  const hasMoveItemRequirements =
+    hasResolvedTargetObject &&
+    hasResolvedTargetChild &&
+    hasMoveItemEndTransform;
+  const hasIdentifyRequirements = hasResolvedTargetObject && hasResolvedTargetChild;
   const canAdvance =
     controller.selectedType !== null &&
     (controller.selectedType === 'move-item'
@@ -462,7 +469,7 @@ function StepSetupStep({
         step={step}
         objects={objects}
         onUpdateObject={onUpdateObject}
-        onStopRecording={onStopRecordingPosition!}
+        onStopRecording={safeStopRecordingPosition}
         latestRecordingEndPositionRef={latestRecordingEndPositionRef}
       />
     );

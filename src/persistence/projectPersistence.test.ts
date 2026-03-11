@@ -252,7 +252,7 @@ describe('projectPersistence', () => {
       it('should handle invalid JSON gracefully', () => {
         mockLocalStorage[PROJECTS_STORAGE_KEY] = 'invalid json';
 
-        expect(() => persistence.loadProjects()).toThrow();
+        expect(persistence.loadProjects()).toEqual([]);
       });
     });
 

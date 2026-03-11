@@ -68,6 +68,7 @@ interface PendingLoad {
 
 const cache = new Map<string, CachedModel>();
 const pendingLoads = new Map<string, PendingLoad>();
+const MODEL_FETCH_TIMEOUT_MS = 60_000;
 
 // =============================================================================
 // Public API
@@ -233,7 +234,9 @@ async function loadModelInternal(assetId: string): Promise<CachedModel> {
       throw new Error(`Asset not found: ${assetId}`);
     }
 
-    const response = await fetch(resolved.url);
+    const response = await fetch(resolved.url, {
+      signal: AbortSignal.timeout(MODEL_FETCH_TIMEOUT_MS),
+    });
     if (!response.ok) {
       throw new Error(
         `Failed to fetch model from URL (${response.status} ${response.statusText})`

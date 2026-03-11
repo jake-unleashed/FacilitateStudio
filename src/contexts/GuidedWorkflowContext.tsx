@@ -131,6 +131,9 @@ export function GuidedWorkflowProvider({
 
   const nextPhase = useCallback(() => {
     setState((prev) => {
+      if (prev.currentPhase === 'welcome') {
+        return prev;
+      }
       const currentIndex = getPhaseIndex(prev.currentPhase);
       const nextIndex = Math.min(currentIndex + 1, phaseOrder.length - 1);
       if (currentIndex === nextIndex) return prev;
@@ -160,6 +163,9 @@ export function GuidedWorkflowProvider({
 
   const previousPhase = useCallback(() => {
     setState((prev) => {
+      if (prev.currentPhase === 'welcome') {
+        return prev;
+      }
       const currentIndex = getPhaseIndex(prev.currentPhase);
       const nextIndex = Math.max(currentIndex - 1, 0);
       if (currentIndex === nextIndex) return prev;

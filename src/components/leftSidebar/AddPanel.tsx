@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { AssetMetadata, UploadProgress } from '../../types/model';
 import type { GenerationTask } from '../../types/modelGeneration';
@@ -7,6 +7,9 @@ import { AssetLibraryPanel } from '../AssetLibraryPanel';
 import { GenerationStatusCard } from '../GenerationStatusCard';
 import { ModelAddEntryCard, ModelSourceOptions } from '../modelAdd/ModelAddCards';
 import { Button } from '../Button';
+import { logger } from '../../utils/logger';
+import { usePopup } from '../../contexts/PopupContext';
+import { getErrorMessage } from '../../utils/errors';
 
 type AddPanelView = 'main' | 'new-model';
 
@@ -40,18 +43,34 @@ export function AddPanel({
   const [view, setView] = useState<AddPanelView>('main');
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const uploadButtonRef = useRef<AssetUploadButtonHandle | null>(null);
+  const { showPopup } = usePopup();
 
-  const handleUpload = async (file: File, textureFiles?: File[]) => {
-    if (!onUploadAsset) return;
-    await onUploadAsset(file, textureFiles);
-    setView('main');
-  };
+  const handleUpload = useCallback(
+    async (file: File, textureFiles?: File[]) => {
+      if (!onUploadAsset) return;
+      await onUploadAsset(file, textureFiles);
+      setView('main');
+    },
+    [onUploadAsset]
+  );
 
-  const handleGenerateFromImage = (imageFile: File | null) => {
-    if (!imageFile || !onGenerateFromImage) return;
-    setView('main');
-    void onGenerateFromImage(imageFile);
-  };
+  const handleGenerateFromImage = useCallback(
+    async (imageFile: File | null) => {
+      if (!imageFile || !onGenerateFromImage) return;
+      try {
+        await onGenerateFromImage(imageFile);
+        setView('main');
+      } catch (error) {
+        logger.error('[AddPanel] Image generation request failed:', error);
+        showPopup({
+          type: 'error',
+          title: 'Image generation failed',
+          message: getErrorMessage(error, 'We could not start model generation from that image.'),
+        });
+      }
+    },
+    [onGenerateFromImage, showPopup]
+  );
 
   const renderMainView = () => (
     <>

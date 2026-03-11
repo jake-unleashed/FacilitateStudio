@@ -10,6 +10,8 @@ interface SubmitGenerationResponse {
   provider: SupportedGenerationProvider;
 }
 
+const API_TIMEOUT_MS = 30_000;
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -41,6 +43,7 @@ export async function submitGeneration(input: {
     method: 'POST',
     headers: await getAuthHeaders(),
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(await parseError(response));
@@ -52,6 +55,7 @@ export async function pollGenerationStatus(taskId: string): Promise<GenerationSt
   const response = await fetch(`/api/ai/generate-model/status?taskId=${encodeURIComponent(taskId)}`, {
     method: 'GET',
     headers: await getAuthHeaders(),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(await parseError(response));
@@ -63,6 +67,7 @@ export async function downloadGeneratedModel(taskId: string): Promise<ArrayBuffe
   const response = await fetch(`/api/ai/generate-model/download?taskId=${encodeURIComponent(taskId)}`, {
     method: 'GET',
     headers: await getAuthHeaders(),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(await parseError(response));

@@ -25,6 +25,16 @@ import { useImportedModelOpacityMaterials } from './importedModel/useImportedMod
 import { useImportedModelChildTransforms } from './importedModel/useImportedModelChildTransforms';
 import { useImportedModelInteractions } from './importedModel/useImportedModelInteractions';
 
+function disposeClonedModelMaterials(model: THREE.Group): void {
+  model.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      material?.dispose();
+    }
+  });
+}
+
 // =============================================================================
 // Main Component
 // =============================================================================
@@ -125,6 +135,15 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     });
 
   useImportedModelFadeIn({ model, loading, error, setOpacity });
+
+  useEffect(() => {
+    if (!model) return;
+    return () => {
+      // Cached model clones share geometry with the cache source, so only instance-specific
+      // materials are disposed here.
+      disposeClonedModelMaterials(model);
+    };
+  }, [model]);
 
   useImportedModelOpacityMaterials({
     model,

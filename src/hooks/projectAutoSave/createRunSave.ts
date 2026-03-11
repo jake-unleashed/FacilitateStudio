@@ -2,6 +2,7 @@ import type React from 'react';
 import type { Project } from '../../types/project';
 import type { SceneObject, SimStep } from '../../types';
 import { hasSerializedChanged, serializeSnapshot, toError, withTimeout, type SaveDataSnapshot, type SerializedSnapshot } from './utils';
+import { logger } from '../../utils/logger';
 
 export function createRunSave({
   latestRef,
@@ -110,7 +111,7 @@ export function createRunSave({
         }
       })
       .catch((error: unknown) => {
-        console.error('[createRunSave] Save promise chain failed:', error);
+        logger.error('[createRunSave] Save promise chain failed:', error);
       });
 
     return next;

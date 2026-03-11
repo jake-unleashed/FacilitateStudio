@@ -24,3 +24,22 @@ export class NotFoundError extends AppError {
   readonly code = 'NOT_FOUND';
   readonly retryable = false;
 }
+
+/**
+ * Convert unknown thrown values into a user-safe message.
+ */
+export function getErrorMessage(error: unknown, fallback = 'An unexpected error occurred.'): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  if (error && typeof error === 'object') {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
+      return maybeMessage;
+    }
+  }
+  return fallback;
+}

@@ -90,6 +90,9 @@ export function useGuidedWelcome(args: UseGuidedWelcomeArgs): UseGuidedWelcomeRe
     } else {
       delete document.body.dataset.guidedNavLock;
     }
+    return () => {
+      delete document.body.dataset.guidedNavLock;
+    };
   }, [shouldLockNavigation]);
 
   useEffect(() => {
@@ -120,10 +123,12 @@ export function useGuidedWelcome(args: UseGuidedWelcomeArgs): UseGuidedWelcomeRe
 
     const meshObjects = objects.filter((object) => object.type === 'mesh');
     if (meshObjects.length !== 1) return;
+    const [meshObject] = meshObjects;
+    if (!meshObject) return;
 
     hasAutoSelectedPositioningRef.current = true;
-    onSelectObject(meshObjects[0].id);
-    onFocusObject?.(meshObjects[0], undefined, 'full');
+    onSelectObject(meshObject.id);
+    onFocusObject?.(meshObject, undefined, 'full');
   }, [objects, onFocusObject, onSelectObject, state.currentPhase, state.isActive]);
 
   return {

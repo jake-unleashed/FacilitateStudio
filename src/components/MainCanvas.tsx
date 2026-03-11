@@ -9,6 +9,9 @@ import type { PreviewOutlineTarget } from './preview/types';
 import { PerformanceMonitorScene, type PerformanceStats } from './PerformanceMonitor';
 import { SceneContent } from './scene/SceneContent';
 import { hasCachedBackgroundTexture } from '../utils/backgroundTextureCache';
+import { Button } from './Button';
+import { ErrorBoundary } from './ErrorBoundary';
+import { logger } from '../utils/logger';
 
 // Check if we're in development mode (Vite provides this)
 const IS_DEV = import.meta.env.DEV ?? process.env.NODE_ENV === 'development';
@@ -144,6 +147,9 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
   const [isWorldEnvironmentReady, setIsWorldEnvironmentReady] = useState<boolean>(
     () => !worldEnvironmentUrl
   );
+  const [sceneInstanceKey, setSceneInstanceKey] = useState(0);
+  const [isContextLost, setIsContextLost] = useState(false);
+  const canvasListenerCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (previewStep?.type !== 'move-item') {
@@ -196,6 +202,23 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
     onPerformanceStats?.(null);
   }, [onPerformanceStats, showPerformanceMonitor]);
 
+  useEffect(() => {
+    return () => {
+      canvasListenerCleanupRef.current?.();
+      canvasListenerCleanupRef.current = null;
+    };
+  }, []);
+
+  const handleReloadScene = useCallback(() => {
+    canvasListenerCleanupRef.current?.();
+    canvasListenerCleanupRef.current = null;
+    hasNotifiedCanvasRef.current = false;
+    hasNotifiedFirstFrameRef.current = false;
+    setIsContextLost(false);
+    setPreviewOutlineTarget(null);
+    setSceneInstanceKey((current) => current + 1);
+  }, []);
+
   const handleCreated = useCallback(
     (state: RootState) => {
       // Prevent any opaque black clear from showing through during initialization.
@@ -206,8 +229,94 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
         hasNotifiedCanvasRef.current = true;
         onCanvasReady(state.gl.domElement);
       }
+
+      canvasListenerCleanupRef.current?.();
+
+      const canvas = state.gl.domElement;
+      const handleContextLost = (event: Event) => {
+        event.preventDefault();
+        logger.warn('[MainCanvas] WebGL context lost.');
+        setIsContextLost(true);
+        hasNotifiedFirstFrameRef.current = false;
+      };
+      const handleContextRestored = () => {
+        logger.warn('[MainCanvas] WebGL context restored.');
+        state.gl.setClearColor(0x000000, 0);
+        setIsContextLost(false);
+      };
+
+      canvas.addEventListener('webglcontextlost', handleContextLost as EventListener, false);
+      canvas.addEventListener('webglcontextrestored', handleContextRestored as EventListener, false);
+
+      canvasListenerCleanupRef.current = () => {
+        canvas.removeEventListener('webglcontextlost', handleContextLost as EventListener, false);
+        canvas.removeEventListener('webglcontextrestored', handleContextRestored as EventListener, false);
+      };
     },
     [onCanvasReady]
+  );
+
+  const renderCanvas = () => (
+    <Canvas
+      key={sceneInstanceKey}
+      shadows
+      className="h-full w-full"
+      onPointerMissed={() => onSelectObject(null)}
+      onCreated={handleCreated}
+      dpr={[1, 2]}
+      performance={{ min: 0.5 }}
+      gl={{
+        antialias: true,
+        powerPreference: 'high-performance',
+        stencil: false,
+        depth: true,
+        alpha: true,
+        preserveDrawingBuffer: !!onCanvasReady,
+      }}
+    >
+      <SceneContent
+        objects={objects}
+        selectedObjectId={selectedObjectId}
+        onSelectObject={onSelectObject}
+        onUpdateObject={onUpdateObject}
+        onFocusObject={onFocusObject}
+        onCameraControlsReady={onCameraControlsReady}
+        onSceneReady={onSceneReady}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        recordingPositionForStepId={recordingPositionForStepId}
+        steps={steps}
+        latestRecordingEndPositionRef={latestRecordingEndPositionRef}
+        previewMode={previewMode}
+        previewSettings={previewSettings}
+        previewStep={previewStep}
+        onPreviewObjectClick={onPreviewObjectClick}
+        onPreviewWrongClick={onPreviewWrongClick}
+        onPreviewTransformUpdate={onPreviewTransformUpdate}
+        onPreviewStepComplete={onPreviewStepComplete}
+        shouldAnimateMoveItem={shouldAnimateMoveItem}
+        previewOutlineTarget={previewOutlineTarget}
+        onPreviewOutlineTargetChange={setPreviewOutlineTarget}
+        backgroundImageUrl={backgroundImageUrl}
+        onBackgroundReadyChange={handleBackgroundReadyChange}
+        worldEnvironmentUrl={worldEnvironmentUrl}
+        worldEnvironmentTransform={worldEnvironmentTransform}
+        onWorldEnvironmentReadyChange={handleWorldEnvironmentReadyChange}
+      />
+
+      {onFirstFrame && (
+        <FirstFrameNotifier
+          onFirstFrame={onFirstFrame}
+          hasNotifiedFirstFrameRef={hasNotifiedFirstFrameRef}
+          isReadyToNotify={
+            !isContextLost &&
+            (!backgroundImageUrl || isPanoramicReady) &&
+            (!worldEnvironmentUrl || isWorldEnvironmentReady)
+          }
+        />
+      )}
+      {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}
+    </Canvas>
   );
 
   return (
@@ -215,61 +324,36 @@ export const MainCanvas: React.FC<MainCanvasProps> = ({
       <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,_#f8fafc_0%,_#cbd5e1_100%)]" />
 
       <div className="relative z-10 h-full w-full">
-        <Canvas
-          shadows
-          className="h-full w-full"
-          onPointerMissed={() => onSelectObject(null)}
-          onCreated={handleCreated}
-          dpr={[1, 2]}
-          performance={{ min: 0.5 }}
-          gl={{
-            antialias: true,
-            powerPreference: 'high-performance',
-            stencil: false,
-            depth: true,
-            alpha: true,
-            preserveDrawingBuffer: !!onCanvasReady,
-          }}
+        <ErrorBoundary
+          title="3D scene needs attention"
+          message="The 3D scene hit an unexpected error. Reload the scene to recover without leaving the page."
+          retryLabel="Reload scene"
+          showGoHome={false}
+          onTryAgain={handleReloadScene}
+          containerClassName="flex h-full w-full items-center justify-center p-6"
+          panelClassName="w-full max-w-lg rounded-[32px] border border-white/40 bg-white/85 p-6 shadow-glass backdrop-blur-xl"
         >
-          <SceneContent
-            objects={objects}
-            selectedObjectId={selectedObjectId}
-            onSelectObject={onSelectObject}
-            onUpdateObject={onUpdateObject}
-            onFocusObject={onFocusObject}
-            onCameraControlsReady={onCameraControlsReady}
-            onSceneReady={onSceneReady}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            recordingPositionForStepId={recordingPositionForStepId}
-            steps={steps}
-            latestRecordingEndPositionRef={latestRecordingEndPositionRef}
-            previewMode={previewMode}
-            previewSettings={previewSettings}
-            previewStep={previewStep}
-            onPreviewObjectClick={onPreviewObjectClick}
-            onPreviewWrongClick={onPreviewWrongClick}
-            onPreviewTransformUpdate={onPreviewTransformUpdate}
-            onPreviewStepComplete={onPreviewStepComplete}
-            shouldAnimateMoveItem={shouldAnimateMoveItem}
-            previewOutlineTarget={previewOutlineTarget}
-            onPreviewOutlineTargetChange={setPreviewOutlineTarget}
-            backgroundImageUrl={backgroundImageUrl}
-            onBackgroundReadyChange={handleBackgroundReadyChange}
-            worldEnvironmentUrl={worldEnvironmentUrl}
-            worldEnvironmentTransform={worldEnvironmentTransform}
-            onWorldEnvironmentReadyChange={handleWorldEnvironmentReadyChange}
-          />
+          {renderCanvas()}
+        </ErrorBoundary>
 
-          {onFirstFrame && (
-            <FirstFrameNotifier
-              onFirstFrame={onFirstFrame}
-              hasNotifiedFirstFrameRef={hasNotifiedFirstFrameRef}
-              isReadyToNotify={(!backgroundImageUrl || isPanoramicReady) && (!worldEnvironmentUrl || isWorldEnvironmentReady)}
-            />
-          )}
-          {showPerformanceMonitor && <PerformanceMonitorScene onStats={handlePerfStats} />}
-        </Canvas>
+        {isContextLost ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-slate-950/20 p-6 backdrop-blur-sm">
+            <div className="pointer-events-auto w-full max-w-md rounded-[28px] border border-white/40 bg-white/85 p-5 text-center shadow-glass backdrop-blur-xl">
+              <h2 className="text-base font-semibold tracking-tight text-slate-900">
+                3D rendering was interrupted
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                The browser lost the graphics context. We&apos;re waiting for it to recover, or you
+                can reload just the scene now.
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <Button variant="secondary" size="md" onClick={handleReloadScene}>
+                  Reload scene
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

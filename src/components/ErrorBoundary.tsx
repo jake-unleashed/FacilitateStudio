@@ -4,6 +4,15 @@ import { Button } from './Button';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
+  title?: string;
+  message?: string;
+  retryLabel?: string;
+  reloadLabel?: string;
+  goHomeLabel?: string;
+  showGoHome?: boolean;
+  onTryAgain?: () => void;
+  containerClassName?: string;
+  panelClassName?: string;
 }
 
 interface ErrorBoundaryState {
@@ -17,6 +26,14 @@ interface ErrorBoundaryState {
  * or return home.
  */
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  static defaultProps = {
+    title: 'Something went wrong',
+    retryLabel: 'Try again',
+    reloadLabel: 'Reload',
+    goHomeLabel: 'Go home',
+    showGoHome: true,
+  };
+
   state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -41,6 +58,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   };
 
   private handleTryAgain = () => {
+    this.props.onTryAgain?.();
     this.setState({ error: null });
   };
 
@@ -48,14 +66,32 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (!this.state.error) return this.props.children;
 
     const message =
-      this.state.error?.message?.trim() || 'Something went wrong while rendering this page.';
+      this.props.message ||
+      this.state.error?.message?.trim() ||
+      'Something went wrong while rendering this page.';
+    const {
+      title,
+      retryLabel,
+      reloadLabel,
+      goHomeLabel,
+      showGoHome,
+      containerClassName,
+      panelClassName,
+    } = this.props;
 
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-100 px-6">
-        <div className="w-full max-w-xl rounded-[32px] border border-white/40 bg-white/80 p-6 shadow-glass backdrop-blur-xl">
-          <h1 className="text-base font-bold tracking-tight text-slate-900">
-            Something went wrong
-          </h1>
+      <div
+        className={
+          containerClassName ?? 'flex h-screen w-full items-center justify-center bg-slate-100 px-6'
+        }
+      >
+        <div
+          className={
+            panelClassName ??
+            'w-full max-w-xl rounded-[32px] border border-white/40 bg-white/80 p-6 shadow-glass backdrop-blur-xl'
+          }
+        >
+          <h1 className="text-base font-bold tracking-tight text-slate-900">{title}</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">{message}</p>
 
           <details className="mt-4 rounded-[20px] border border-white/50 bg-white/60 p-4">
@@ -69,13 +105,15 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
             <Button variant="secondary" size="md" onClick={this.handleTryAgain}>
-              Try again
+              {retryLabel}
             </Button>
-            <Button variant="secondary" size="md" onClick={this.handleGoHome}>
-              Go home
-            </Button>
+            {showGoHome ? (
+              <Button variant="secondary" size="md" onClick={this.handleGoHome}>
+                {goHomeLabel}
+              </Button>
+            ) : null}
             <Button variant="primary" size="md" onClick={this.handleReload}>
-              Reload
+              {reloadLabel}
             </Button>
           </div>
         </div>

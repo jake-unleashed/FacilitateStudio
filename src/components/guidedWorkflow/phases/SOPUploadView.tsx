@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { UploadCloud, FileText, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '../../Button';
 import {
@@ -35,23 +35,37 @@ export function SOPUploadView({ onStepsExtracted, onBack }: SOPUploadViewProps):
   const [viewState, setViewState] = useState<ViewState>({ kind: 'idle' });
   // Keep a ref to the last file so we can retry without re-picking.
   const lastFileRef = useRef<File | null>(null);
+  const isMountedRef = useRef(true);
+  const activeRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      activeRequestIdRef.current += 1;
+    };
+  }, []);
 
   // ---- Core processing ----
   const processFile = useCallback(
     async (file: File) => {
+      const requestId = activeRequestIdRef.current + 1;
+      activeRequestIdRef.current = requestId;
       lastFileRef.current = file;
       setViewState({ kind: 'processing', message: 'Extracting text from document\u2026', fileName: file.name });
 
       const onProgress = (progress: SOPProcessingProgress) => {
+        if (!isMountedRef.current || activeRequestIdRef.current !== requestId) return;
         if (progress.stage === 'error') return; // handled via catch
         setViewState({ kind: 'processing', message: progress.message, fileName: file.name });
       };
 
       try {
         const result = await extractStepsFromFile(file, onProgress);
+        if (!isMountedRef.current || activeRequestIdRef.current !== requestId) return;
         // Success - hand off the steps
         onStepsExtracted(result.steps);
       } catch (error) {
+        if (!isMountedRef.current || activeRequestIdRef.current !== requestId) return;
         logger.error('[SOPUploadView] Failed to extract SOP steps:', error);
         const message =
           error instanceof SOPServiceError
@@ -115,6 +129,7 @@ export function SOPUploadView({ onStepsExtracted, onBack }: SOPUploadViewProps):
   }, [processFile]);
 
   const handlePickDifferent = useCallback(() => {
+    activeRequestIdRef.current += 1;
     setViewState({ kind: 'idle' });
     lastFileRef.current = null;
   }, []);

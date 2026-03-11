@@ -9,6 +9,7 @@ import { Button } from '../../Button';
 import { GenerationStatusCard } from '../../GenerationStatusCard';
 import { ModelAddEntryCard, ModelSourceOptions } from '../../modelAdd/ModelAddCards';
 import { usePopup } from '../../../contexts/PopupContext';
+import { getErrorMessage } from '../../../utils/errors';
 
 interface ModelUploadPhaseProps {
   objects: SceneObject[];
@@ -89,12 +90,20 @@ export function ModelUploadPhase({
   );
 
   const handleGenerateFromImage = useCallback(
-    (imageFile: File | null) => {
+    async (imageFile: File | null) => {
       if (!imageFile || !onGenerateFromImage) return;
-      setSideView('main');
-      void onGenerateFromImage(imageFile);
+      try {
+        await onGenerateFromImage(imageFile);
+        setSideView('main');
+      } catch (error) {
+        showPopup({
+          type: 'error',
+          title: 'Image generation failed',
+          message: getErrorMessage(error, 'We could not start model generation from that image.'),
+        });
+      }
     },
-    [onGenerateFromImage]
+    [onGenerateFromImage, showPopup]
   );
 
   const showEmptyState = uploadedObjects.length === 0 && generations.length === 0;
@@ -125,7 +134,7 @@ export function ModelUploadPhase({
             <AssetLibraryPanel
               starterAssets={starterAssets ?? []}
               recentAssets={recentAssets ?? []}
-              onAddAsset={onAddRecentAsset!}
+              onAddAsset={onAddRecentAsset ?? (() => {})}
             />
           </div>
         ) : emptyMode === 'new-model' ? (
@@ -320,7 +329,7 @@ export function ModelUploadPhase({
         <AssetLibraryPanel
           starterAssets={starterAssets ?? []}
           recentAssets={recentAssets ?? []}
-          onAddAsset={onAddRecentAsset}
+          onAddAsset={onAddRecentAsset ?? (() => {})}
         />
       ) : null}
 

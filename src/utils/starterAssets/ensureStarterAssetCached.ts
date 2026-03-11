@@ -4,6 +4,7 @@ import { getAsset, upsertAssetFromBlob } from '../modelAssetStore';
 import { emitStarterAssetsUpdated } from './starterAssetEvents';
 
 const inFlightStarterAssetCaches = new Map<string, Promise<void>>();
+const STARTER_ASSET_FETCH_TIMEOUT_MS = 30_000;
 
 function toModelFileType(fileType: string): ModelFileType | null {
   if (fileType === 'glb' || fileType === 'fbx' || fileType === 'obj') {
@@ -35,7 +36,20 @@ export async function ensureStarterAssetCached(asset: StarterAssetCatalogEntry):
       throw new Error(`Unsupported starter model type: ${asset.fileType}`);
     }
 
-    const response = await fetch(asset.publicUrl);
+    let response: Response;
+    try {
+      response = await fetch(asset.publicUrl, {
+        signal: AbortSignal.timeout(STARTER_ASSET_FETCH_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        (error.name === 'TimeoutError' || error.name === 'AbortError')
+      ) {
+        throw new Error(`Timed out while downloading starter asset "${asset.name}".`);
+      }
+      throw error;
+    }
     if (!response.ok) {
       throw new Error(`Failed to fetch starter asset: ${response.status} ${response.statusText}`);
     }

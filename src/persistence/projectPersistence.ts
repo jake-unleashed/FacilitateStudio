@@ -1,6 +1,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import type { Project } from '../types/project';
 import { SupabaseProjectPersistence } from './supabasePersistence';
+import { logger } from '../utils/logger';
 
 export const PROJECTS_STORAGE_KEY = 'facilitate-studio-projects';
 const PROJECTS_DB_NAME = 'facilitate-studio-projects-db';
@@ -69,6 +70,42 @@ function sortByMostRecentlyUpdated(projects: Project[]): Project[] {
   return [...projects].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
+}
+
+function safeGetLocalStorageItem(key: string): string | null {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    logger.warn(`[projectPersistence] Failed to read localStorage key "${key}":`, error);
+    return null;
+  }
+}
+
+function safeSetLocalStorageItem(key: string, value: string): boolean {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    logger.warn(`[projectPersistence] Failed to write localStorage key "${key}":`, error);
+    return false;
+  }
+}
+
+function safeRemoveLocalStorageItem(key: string): void {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    logger.warn(`[projectPersistence] Failed to remove localStorage key "${key}":`, error);
+  }
 }
 
 /**
@@ -160,15 +197,16 @@ async function getDB(): Promise<IDBPDatabase<ProjectStoreDB>> {
  * Check if there are projects in localStorage that need migration.
  */
 function hasLegacyProjects(): boolean {
-  if (localStorage.getItem(MIGRATION_COMPLETE_KEY)) {
+  if (safeGetLocalStorageItem(MIGRATION_COMPLETE_KEY)) {
     return false;
   }
-  const stored = localStorage.getItem(PROJECTS_STORAGE_KEY);
+  const stored = safeGetLocalStorageItem(PROJECTS_STORAGE_KEY);
   if (!stored) return false;
   try {
     const parsed = JSON.parse(stored);
     return Array.isArray(parsed) && parsed.length > 0;
-  } catch {
+  } catch (error) {
+    logger.warn('[projectPersistence] Failed to parse legacy projects metadata:', error);
     return false;
   }
 }
@@ -180,7 +218,7 @@ function hasLegacyProjects(): boolean {
 async function migrateLegacyProjects(): Promise<number> {
   if (!hasLegacyProjects()) {
     // Mark as complete even if no projects to migrate
-    localStorage.setItem(MIGRATION_COMPLETE_KEY, 'true');
+    safeSetLocalStorageItem(MIGRATION_COMPLETE_KEY, 'true');
     return 0;
   }
 
@@ -188,33 +226,39 @@ async function migrateLegacyProjects(): Promise<number> {
   let migratedCount = 0;
 
   try {
-    const stored = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    const stored = safeGetLocalStorageItem(PROJECTS_STORAGE_KEY);
     if (!stored) return 0;
 
-    const projects: Project[] = JSON.parse(stored);
+    let projects: Project[];
+    try {
+      projects = JSON.parse(stored) as Project[];
+    } catch (error) {
+      logger.error('[projectPersistence] Failed to parse legacy projects for migration:', error);
+      return 0;
+    }
 
     for (const project of projects) {
       try {
         await db.put('projects', project);
         migratedCount++;
       } catch (error) {
-        console.error(`[projectPersistence] Failed to migrate project ${project.id}:`, error);
+        logger.error(`[projectPersistence] Failed to migrate project ${project.id}:`, error);
       }
     }
 
     // Clear localStorage after successful migration
     if (migratedCount === projects.length) {
-      localStorage.removeItem(PROJECTS_STORAGE_KEY);
+      safeRemoveLocalStorageItem(PROJECTS_STORAGE_KEY);
     }
 
-    localStorage.setItem(MIGRATION_COMPLETE_KEY, 'true');
-    console.log(
+    safeSetLocalStorageItem(MIGRATION_COMPLETE_KEY, 'true');
+    logger.log(
       `[projectPersistence] Migrated ${migratedCount}/${projects.length} projects to IndexedDB`
     );
 
     return migratedCount;
   } catch (error) {
-    console.error('[projectPersistence] Migration failed:', error);
+    logger.error('[projectPersistence] Migration failed:', error);
     return migratedCount;
   }
 }
@@ -319,15 +363,22 @@ export class IndexedDBProjectPersistence implements AsyncProjectPersistence {
 
 export class LocalStorageProjectPersistence implements ProjectPersistence {
   loadProjects(): Project[] {
-    const stored = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    const stored = safeGetLocalStorageItem(PROJECTS_STORAGE_KEY);
     if (!stored) return [];
-    const parsed = JSON.parse(stored) as Project[];
-    return sortByMostRecentlyUpdated(parsed);
+    try {
+      const parsed = JSON.parse(stored) as Project[];
+      return sortByMostRecentlyUpdated(parsed);
+    } catch (error) {
+      logger.error('[projectPersistence] Failed to parse local projects:', error);
+      return [];
+    }
   }
 
   saveProjects(projects: Project[]): void {
     // Let errors bubble so callers can present a UI.
-    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+    if (!safeSetLocalStorageItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects))) {
+      throw new Error('Failed to persist projects to local storage');
+    }
   }
 }
 

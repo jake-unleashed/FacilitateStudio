@@ -72,7 +72,7 @@ export function useImportedModelInteractions({
 
       if (deeperMatches.length === 0) return null;
       deeperMatches.sort((a, b) => a.depth - b.depth);
-      return deeperMatches[0].pathStr;
+      return deeperMatches[0]?.pathStr ?? null;
     },
     [model, obj.children, childPathToMesh]
   );
@@ -101,7 +101,7 @@ export function useImportedModelInteractions({
 
       if (matches.length === 0) return null;
       matches.sort((a, b) => a.depth - b.depth);
-      return matches[0].pathStr;
+      return matches[0]?.pathStr ?? null;
     },
     [model, obj.children, childPathToMesh]
   );
@@ -154,7 +154,7 @@ export function useImportedModelInteractions({
       const shallowerMatch = matchingPaths.find((m) => m.depth <= currentDepth);
       if (shallowerMatch) return shallowerMatch.path;
 
-      return matchingPaths[0].path;
+      return matchingPaths[0]?.path ?? null;
     },
     [model, obj.children, childPathToMesh]
   );

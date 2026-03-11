@@ -1,7 +1,10 @@
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { SceneBackgroundImage } from '../../types/sceneSettings';
 import type { StarterAssetCatalogEntry } from '../../services/starterAssetService';
+import { PopupProvider } from '../../contexts/PopupContext';
+import { GlobalPopup } from '../GlobalPopup';
 import { ScenePanel } from './ScenePanel';
 
 const mockBackgroundImage: SceneBackgroundImage = {
@@ -26,23 +29,34 @@ const starterBackgrounds: StarterAssetCatalogEntry[] = [
   },
 ];
 
+function renderScenePanel(component: ReactElement) {
+  return render(
+    <PopupProvider>
+      {component}
+      <GlobalPopup />
+    </PopupProvider>
+  );
+}
+
 describe('ScenePanel', () => {
   it('shows only 360 upload by default when world environment is disabled', () => {
-    render(<ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} />);
+    renderScenePanel(<ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} />);
 
     expect(screen.getByText('Upload 360 Image')).toBeInTheDocument();
     expect(screen.queryByText('Generate 3D Environment')).not.toBeInTheDocument();
   });
 
   it('shows both environment entry options when world environment is enabled', () => {
-    render(<ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} worldEnvironmentEnabled />);
+    renderScenePanel(
+      <ScenePanel onUploadBackground={vi.fn()} onRemoveBackground={vi.fn()} worldEnvironmentEnabled />
+    );
 
     expect(screen.getByText('Upload 360 Image')).toBeInTheDocument();
     expect(screen.getByText('Generate 3D Environment')).toBeInTheDocument();
   });
 
   it('shows statusText when uploading', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -56,7 +70,7 @@ describe('ScenePanel', () => {
   });
 
   it('supports phase-driven loading state without legacy booleans', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -71,7 +85,7 @@ describe('ScenePanel', () => {
   });
 
   it('falls back to default uploading text when statusText is missing', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -85,7 +99,7 @@ describe('ScenePanel', () => {
 
   it('calls onUploadBackground when user picks a file', () => {
     const onUploadBackground = vi.fn().mockResolvedValue(undefined);
-    render(<ScenePanel onUploadBackground={onUploadBackground} onRemoveBackground={vi.fn()} />);
+    renderScenePanel(<ScenePanel onUploadBackground={onUploadBackground} onRemoveBackground={vi.fn()} />);
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['x'], 'background.jpg', { type: 'image/jpeg' });
@@ -95,7 +109,7 @@ describe('ScenePanel', () => {
   });
 
   it('shows thumbnail spinner and statusText while uploading a replacement image', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -110,7 +124,7 @@ describe('ScenePanel', () => {
   });
 
   it('shows Preparing scene... subtext while texture is loading after upload', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -123,7 +137,7 @@ describe('ScenePanel', () => {
   });
 
   it('does not show file size in idle state', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -137,7 +151,7 @@ describe('ScenePanel', () => {
   });
 
   it('disables Replace and Remove buttons while texture is loading', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         onUploadBackground={vi.fn()}
         onRemoveBackground={vi.fn()}
@@ -151,7 +165,7 @@ describe('ScenePanel', () => {
   });
 
   it('keeps starter backgrounds visible when a background is already applied', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         backgroundImage={mockBackgroundImage}
         starterBackgrounds={starterBackgrounds}
@@ -166,7 +180,7 @@ describe('ScenePanel', () => {
   });
 
   it('renders starter background cards as title-only buttons', () => {
-    render(
+    renderScenePanel(
       <ScenePanel
         starterBackgrounds={starterBackgrounds}
         onUploadBackground={vi.fn()}
@@ -177,5 +191,20 @@ describe('ScenePanel', () => {
 
     expect(screen.getByText('Desert Test')).toBeInTheDocument();
     expect(screen.queryByAltText('Desert Test')).not.toBeInTheDocument();
+  });
+
+  it('shows a popup when background upload fails', async () => {
+    const onUploadBackground = vi.fn().mockRejectedValue(new Error('Upload exploded'));
+    renderScenePanel(<ScenePanel onUploadBackground={onUploadBackground} onRemoveBackground={vi.fn()} />);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['x'], 'background.jpg', { type: 'image/jpeg' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Background upload failed')).toBeInTheDocument();
+      expect(screen.getByText('Upload exploded')).toBeInTheDocument();
+    });
   });
 });

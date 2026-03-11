@@ -91,8 +91,8 @@ export default defineConfig(({ mode }) => {
     // ESBuild options for faster builds
     // ============================================================================
     esbuild: {
-      // Remove console.log in production
-      drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+      drop: process.env.NODE_ENV === 'production' ? ['debugger'] : [],
+      pure: process.env.NODE_ENV === 'production' ? ['console.log'] : [],
     },
   };
 });

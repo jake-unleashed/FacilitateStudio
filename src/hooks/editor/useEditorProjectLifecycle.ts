@@ -47,13 +47,12 @@ export function useEditorProjectLifecycle({
       if (projectId) {
         try {
           const project = await getProject(projectId);
+          if (isCancelled) {
+            return;
+          }
           if (!project) {
             onLoadError?.(new Error('Project not found.'));
             navigate('/');
-            return;
-          }
-
-          if (isCancelled) {
             return;
           }
 
@@ -66,6 +65,9 @@ export function useEditorProjectLifecycle({
           setIsInitialized(true);
           return;
         } catch (error) {
+          if (isCancelled) {
+            return;
+          }
           console.error('[useEditorProjectLifecycle] Failed to load project:', error);
           onLoadError?.(error);
           navigate('/');

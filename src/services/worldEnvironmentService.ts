@@ -4,6 +4,8 @@ import type {
   WorldEnvironmentStatusResponse,
 } from '../types/worldEnvironment';
 
+const API_TIMEOUT_MS = 30_000;
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -34,6 +36,7 @@ export async function startWorldEnvironmentGeneration(input: {
     method: 'POST',
     headers: await getAuthHeaders(),
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(await parseError(response));
@@ -47,6 +50,7 @@ export async function fetchWorldEnvironmentStatus(
   const response = await fetch(`/api/ai/world-environment/status?operationId=${encodeURIComponent(operationId)}`, {
     method: 'GET',
     headers: await getAuthHeaders(),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(await parseError(response));

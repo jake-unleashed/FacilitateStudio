@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GROUND_PLANE_EXTENT } from '../../constants';
 import { getCachedBackgroundTexture, loadBackgroundTexture } from '../../utils/backgroundTextureCache';
+import { logger } from '../../utils/logger';
 
 interface PanoramicBackgroundProps {
   imageUrl: string;
@@ -43,6 +44,7 @@ export function PanoramicBackground({ imageUrl, onReadyChange }: PanoramicBackgr
     }
 
     let cancelled = false;
+    setTexture(null);
     onReadyChange?.(false, imageUrl);
 
     loadBackgroundTexture(imageUrl)
@@ -53,6 +55,8 @@ export function PanoramicBackground({ imageUrl, onReadyChange }: PanoramicBackgr
       })
       .catch(() => {
         if (cancelled) return;
+        setTexture(null);
+        logger.warn('[PanoramicBackground] Failed to load panoramic background:', imageUrl);
         // We treat failed loads as "done" so the app remains usable, but surface
         // an error message upstream so the UI can inform the user.
         onReadyChange?.(true, imageUrl, 'Failed to load the 360 background image. Please try replacing it.');

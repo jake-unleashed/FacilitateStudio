@@ -7,6 +7,7 @@ import type { SimulationSettings } from '../types/simulationSettings';
 import { toSimulationSettings } from '../types/simulationSettings';
 import { hasSerializedChanged, serializeSnapshot, type SaveDataSnapshot, type SerializedSnapshot } from './projectAutoSave/utils';
 import { createRunSave } from './projectAutoSave/createRunSave';
+import { logger } from '../utils/logger';
 
 export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
@@ -200,11 +201,11 @@ export function useProjectAutoSave({
     try {
       const updated = buildProject(base, currentData, base.thumbnail);
       // Best-effort only; cannot await in unload handlers.
-      void saveProjectRef.current(updated).catch(() => {});
-      lastSavedDataRef.current = currentData;
-      lastSavedSerializedRef.current = serialized;
-    } catch {
-      // Best-effort only
+      void saveProjectRef.current(updated).catch((error: unknown) => {
+        logger.error('[useProjectAutoSave] Best-effort unload save failed:', error);
+      });
+    } catch (error) {
+      logger.error('[useProjectAutoSave] Failed to queue unload save:', error);
     }
   }, [buildProject, cancelScheduledSave]);
 
@@ -245,7 +246,7 @@ export function useProjectAutoSave({
     timeoutRef.current = setTimeout(() => {
       // Never allow unhandled rejections from background autosave
       void runSave({ includeThumbnail: true }).catch((error: unknown) => {
-        console.error('[useProjectAutoSave] Background autosave failed:', error);
+        logger.error('[useProjectAutoSave] Background autosave failed:', error);
       });
     }, debounceMs);
 

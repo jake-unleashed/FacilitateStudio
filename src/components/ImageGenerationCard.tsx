@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import { ImagePlus, Sparkles } from 'lucide-react';
+import { logger } from '../utils/logger';
+import { usePopup } from '../contexts/PopupContext';
+import { getErrorMessage } from '../utils/errors';
 
 interface ImageGenerationCardProps {
   onGenerate: (imageFile: File) => Promise<void> | void;
@@ -10,6 +13,7 @@ export function ImageGenerationCard({ onGenerate, disabled = false }: ImageGener
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedImageName, setSelectedImageName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showPopup } = usePopup();
 
   const handleFile = async (file: File | null) => {
     if (!file) return;
@@ -17,6 +21,13 @@ export function ImageGenerationCard({ onGenerate, disabled = false }: ImageGener
     setIsSubmitting(true);
     try {
       await onGenerate(file);
+    } catch (error) {
+      logger.error('[ImageGenerationCard] Failed to start image generation:', error);
+      showPopup({
+        type: 'error',
+        title: 'Image generation failed',
+        message: getErrorMessage(error, 'We could not start model generation from that image.'),
+      });
     } finally {
       setIsSubmitting(false);
     }

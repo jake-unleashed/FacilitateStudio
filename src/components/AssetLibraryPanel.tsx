@@ -10,6 +10,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { AssetMetadata } from '../types/model';
 import { RecentAssetsList } from './RecentAssetsList';
 import { HelpIcon } from './HelpIcon';
+import { logger } from '../utils/logger';
 
 interface AssetLibraryPanelProps {
   /** Starter assets (seeded from app) */
@@ -33,8 +34,13 @@ const STARTER_SECTION_OPEN_KEY = 'facilitate-starter-section-open';
  */
 function getStarterSectionOpen(): boolean {
   if (typeof localStorage === 'undefined') return true;
-  const stored = localStorage.getItem(STARTER_SECTION_OPEN_KEY);
-  return stored === null ? true : stored === 'true';
+  try {
+    const stored = localStorage.getItem(STARTER_SECTION_OPEN_KEY);
+    return stored === null ? true : stored === 'true';
+  } catch (error) {
+    logger.warn('[AssetLibraryPanel] Failed to read starter section state:', error);
+    return true;
+  }
 }
 
 /**
@@ -42,7 +48,11 @@ function getStarterSectionOpen(): boolean {
  */
 function setStarterSectionOpen(open: boolean): void {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STARTER_SECTION_OPEN_KEY, String(open));
+  try {
+    localStorage.setItem(STARTER_SECTION_OPEN_KEY, String(open));
+  } catch (error) {
+    logger.warn('[AssetLibraryPanel] Failed to persist starter section state:', error);
+  }
 }
 
 /**
