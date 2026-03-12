@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssetMetadata } from '../../types/model';
 import type { SceneObject } from '../../types';
+import type { GenerationTask } from '../../types/modelGeneration';
 import { PopupProvider } from '../../contexts/PopupContext';
 import { GlobalPopup } from '../GlobalPopup';
 import { GuidedWorkflowProvider } from '../../contexts/GuidedWorkflowContext';
@@ -66,6 +68,51 @@ describe('Guided model upload flow', () => {
     const continueBtn = screen.getByRole('button', { name: 'Continue' });
     expect(continueBtn).toBeInTheDocument();
     expect(continueBtn).toBeDisabled(); // requires at least 1 model
+  });
+
+  it('returns to the main upload view and shows generating state after selecting an image', async () => {
+    function Harness(): JSX.Element {
+      const [generations, setGenerations] = useState<GenerationTask[]>([]);
+
+      return (
+        <GuidedWorkflowOverlay
+          {...baseProps}
+          generations={generations}
+          onGenerateFromImage={async (file) => {
+            setGenerations([
+              {
+                id: 'gen-1',
+                taskId: 'task-1',
+                name: file.name,
+                imagePreviewDataUrl: 'data:image/png;base64,abc',
+                provider: 'meshy',
+                stage: 'generating',
+                progress: 25,
+                status: 'processing',
+                error: null,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          }}
+        />
+      );
+    }
+
+    render(<Harness />, {
+      wrapper: ({ children }) => <TestWrapper projectId={projectId}>{children}</TestWrapper>,
+    });
+
+    await userEvent.click(screen.getByText('Add New 3D Model'));
+
+    const input = document.querySelector('input[type="file"]:not([multiple])') as HTMLInputElement;
+    const file = new File(['image'], 'reference.png', { type: 'image/png' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Generating (1)')).toBeInTheDocument();
+      expect(screen.getByText('reference.png')).toBeInTheDocument();
+      expect(screen.queryByText('How would you like to add your 3D model?')).not.toBeInTheDocument();
+    });
   });
 
   it('hides overlay Back/Continue when library submenu is open', async () => {

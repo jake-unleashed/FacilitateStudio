@@ -6,6 +6,7 @@ import { AssetUploadButton, type AssetUploadButtonHandle } from '../AssetUploadB
 import { AssetLibraryPanel } from '../AssetLibraryPanel';
 import { GenerationStatusCard } from '../GenerationStatusCard';
 import { ModelAddEntryCard, ModelSourceOptions } from '../modelAdd/ModelAddCards';
+import { usePendingImageGeneration } from '../modelAdd/usePendingImageGeneration';
 import { Button } from '../Button';
 import { logger } from '../../utils/logger';
 import { usePopup } from '../../contexts/PopupContext';
@@ -44,6 +45,8 @@ export function AddPanel({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const uploadButtonRef = useRef<AssetUploadButtonHandle | null>(null);
   const { showPopup } = usePopup();
+  const { displayGenerations, queuePendingImageGeneration, clearPendingImageGeneration } =
+    usePendingImageGeneration(generations);
 
   const handleUpload = useCallback(
     async (file: File, textureFiles?: File[]) => {
@@ -57,10 +60,12 @@ export function AddPanel({
   const handleGenerateFromImage = useCallback(
     async (imageFile: File | null) => {
       if (!imageFile || !onGenerateFromImage) return;
+      queuePendingImageGeneration(imageFile);
+      setView('main');
       try {
         await onGenerateFromImage(imageFile);
-        setView('main');
       } catch (error) {
+        clearPendingImageGeneration();
         logger.error('[AddPanel] Image generation request failed:', error);
         showPopup({
           type: 'error',
@@ -69,7 +74,7 @@ export function AddPanel({
         });
       }
     },
-    [onGenerateFromImage, showPopup]
+    [clearPendingImageGeneration, onGenerateFromImage, queuePendingImageGeneration, showPopup]
   );
 
   const renderMainView = () => (
@@ -80,13 +85,13 @@ export function AddPanel({
         onClick={() => setView('new-model')}
       />
 
-      {generations.length > 0 ? (
+      {displayGenerations.length > 0 ? (
         <div className="space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-            Active generations ({generations.length})
+            Active generations ({displayGenerations.length})
           </p>
           <div className="space-y-2">
-            {generations.map((generation) => (
+            {displayGenerations.map((generation) => (
               <GenerationStatusCard
                 key={generation.id}
                 task={generation}

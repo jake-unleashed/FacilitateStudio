@@ -40,6 +40,10 @@ interface UseModelGenerationReturn {
   clearCompletedGenerations: () => void;
 }
 
+type GenerationStateUpdater =
+  | GenerationTask[]
+  | ((prev: GenerationTask[]) => GenerationTask[]);
+
 function createGenerationId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -70,6 +74,22 @@ function deriveModelName(imageName: string): string {
   return `${base}.glb`;
 }
 
+function mergeGenerationSnapshots(
+  primary: GenerationTask[],
+  secondary: GenerationTask[]
+): GenerationTask[] {
+  const seen = new Set<string>();
+  const merged: GenerationTask[] = [];
+
+  for (const task of [...primary, ...secondary]) {
+    if (seen.has(task.id)) continue;
+    seen.add(task.id);
+    merged.push(task);
+  }
+
+  return merged;
+}
+
 /**
  * Submit model generations, resume polling for active tasks, and finalize
  * successful results into saved assets plus scene objects.
@@ -93,6 +113,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
   generationsRef.current = generations;
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
@@ -111,13 +132,6 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
     }
   }, []);
 
-  const updateGeneration = useCallback((generationId: string, updates: Partial<GenerationTask>) => {
-    if (!isMountedRef.current) return;
-    setGenerations((prev) =>
-      prev.map((task) => (task.id === generationId ? { ...task, ...updates } : task))
-    );
-  }, []);
-
   const persistGenerations = useCallback((nextGenerations: GenerationTask[]) => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextGenerations));
@@ -126,9 +140,29 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
     }
   }, []);
 
-  useEffect(() => {
-    persistGenerations(generations);
-  }, [generations, persistGenerations]);
+  const setGenerationsState = useCallback(
+    (updater: GenerationStateUpdater) => {
+      if (!isMountedRef.current) return;
+      setGenerations((prev) => {
+        const next =
+          typeof updater === 'function'
+            ? (updater as (prev: GenerationTask[]) => GenerationTask[])(prev)
+            : updater;
+        persistGenerations(next);
+        return next;
+      });
+    },
+    [persistGenerations]
+  );
+
+  const updateGeneration = useCallback(
+    (generationId: string, updates: Partial<GenerationTask>) => {
+      setGenerationsState((prev) =>
+        prev.map((task) => (task.id === generationId ? { ...task, ...updates } : task))
+      );
+    },
+    [setGenerationsState]
+  );
 
   useEffect(() => {
     try {
@@ -136,12 +170,12 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       if (!raw) return;
       const parsed = JSON.parse(raw) as GenerationTask[];
       if (Array.isArray(parsed)) {
-        setGenerations(parsed);
+        setGenerationsState((prev) => mergeGenerationSnapshots(prev, parsed));
       }
     } catch (error) {
       logger.warn('[useModelGeneration] Failed to restore generation state:', error);
     }
-  }, []);
+  }, [setGenerationsState]);
 
   const runCompletion = useCallback(
     async (generation: GenerationTask, imageName: string) => {
@@ -368,7 +402,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
       };
 
       if (!isMountedRef.current) return;
-      setGenerations((prev) => [generation, ...prev]);
+      setGenerationsState((prev) => mergeGenerationSnapshots([generation], prev));
 
       try {
         await requestTaskStart(generation, imageFile.name);
@@ -377,7 +411,7 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
         setGenerationFailure(generation.id, message);
       }
     },
-    [requestTaskStart, setGenerationFailure]
+    [requestTaskStart, setGenerationFailure, setGenerationsState]
   );
 
   const retryGeneration = useCallback(
@@ -419,8 +453,8 @@ export function useModelGeneration(options: UseModelGenerationOptions): UseModel
   );
 
   const clearCompletedGenerations = useCallback(() => {
-    setGenerations((prev) => prev.filter((task) => !isTerminalStage(task.stage)));
-  }, []);
+    setGenerationsState((prev) => prev.filter((task) => !isTerminalStage(task.stage)));
+  }, [setGenerationsState]);
 
   useEffect(() => {
     generations.forEach((generation) => {

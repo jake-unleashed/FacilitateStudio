@@ -8,6 +8,7 @@ import { AssetLibraryPanel } from '../../AssetLibraryPanel';
 import { Button } from '../../Button';
 import { GenerationStatusCard } from '../../GenerationStatusCard';
 import { ModelAddEntryCard, ModelSourceOptions } from '../../modelAdd/ModelAddCards';
+import { usePendingImageGeneration } from '../../modelAdd/usePendingImageGeneration';
 import { usePopup } from '../../../contexts/PopupContext';
 import { getErrorMessage } from '../../../utils/errors';
 
@@ -71,6 +72,8 @@ export function ModelUploadPhase({
         "To request a 3D model, please contact the Facilitate team. We'll work with you to create the perfect model for your needs.",
     });
   }, [showPopup]);
+  const { displayGenerations, queuePendingImageGeneration, clearPendingImageGeneration } =
+    usePendingImageGeneration(generations);
 
   useEffect(() => {
     if (uploadedObjects.length === 0) return;
@@ -92,10 +95,13 @@ export function ModelUploadPhase({
   const handleGenerateFromImage = useCallback(
     async (imageFile: File | null) => {
       if (!imageFile || !onGenerateFromImage) return;
+      queuePendingImageGeneration(imageFile);
+      setEmptyModeAndNotify('main');
+      setSideView('main');
       try {
         await onGenerateFromImage(imageFile);
-        setSideView('main');
       } catch (error) {
+        clearPendingImageGeneration();
         showPopup({
           type: 'error',
           title: 'Image generation failed',
@@ -103,10 +109,16 @@ export function ModelUploadPhase({
         });
       }
     },
-    [onGenerateFromImage, showPopup]
+    [
+      clearPendingImageGeneration,
+      onGenerateFromImage,
+      queuePendingImageGeneration,
+      setEmptyModeAndNotify,
+      showPopup,
+    ]
   );
 
-  const showEmptyState = uploadedObjects.length === 0 && generations.length === 0;
+  const showEmptyState = uploadedObjects.length === 0 && displayGenerations.length === 0;
 
   if (showEmptyState) {
     return (
@@ -187,9 +199,9 @@ export function ModelUploadPhase({
               onClick={() => setEmptyModeAndNotify('new-model')}
             />
 
-            {generations.length > 0 ? (
+            {displayGenerations.length > 0 ? (
               <div className="space-y-2">
-                {generations.map((generation) => (
+                {displayGenerations.map((generation) => (
                   <GenerationStatusCard
                     key={generation.id}
                     task={generation}
@@ -234,7 +246,7 @@ export function ModelUploadPhase({
       </div>
 
       {/* In scene + active generations — shown at the top */}
-      {(uploadedObjects.length > 0 || generations.length > 0) && (
+      {(uploadedObjects.length > 0 || displayGenerations.length > 0) && (
         <div className="space-y-4">
           {uploadedObjects.length > 0 && (
             <div className="space-y-2">
@@ -274,12 +286,12 @@ export function ModelUploadPhase({
             </div>
           )}
 
-          {generations.length > 0 && (
+          {displayGenerations.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                Generating ({generations.length})
+                Generating ({displayGenerations.length})
               </p>
-              {generations.map((generation) => (
+              {displayGenerations.map((generation) => (
                 <GenerationStatusCard
                   key={generation.id}
                   task={generation}
