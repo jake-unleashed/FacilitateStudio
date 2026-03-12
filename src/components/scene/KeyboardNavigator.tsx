@@ -78,7 +78,7 @@ export const KeyboardNavigator: React.FC<KeyboardNavigatorProps> = ({
       // Focus on selected object (F key) - delegates to onFocusObject for unified focus behavior
       // Passes childPath if a child is selected, enabling focus on child mesh bounds
       if (key === 'f' && selectedObject && onFocusObject) {
-        onFocusObject(selectedObject, selectedChildPath ?? undefined);
+        onFocusObject(selectedObject, selectedChildPath ?? undefined, 'explicit');
         e.preventDefault();
       }
 

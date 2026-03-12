@@ -72,6 +72,8 @@ export function useTransformGizmoFrame(args: {
   const smoothedOffsetDistanceRef = useRef(0);
   const tempPositionRef = useRef(new THREE.Vector3());
   const positionsInitializedRef = useRef(false);
+  const cachedObjectGroupRef = useRef<THREE.Object3D | null>(null);
+  const cachedObjectIdRef = useRef<string | null>(null);
 
   const selectedChild = selectedChildPath ? findChildDataByPath(object.children, selectedChildPath) : null;
 
@@ -80,7 +82,20 @@ export function useTransformGizmoFrame(args: {
     const effectiveSourceFactor = isBeingDragged ? 1.0 : 1 - Math.pow(1 - SOURCE_SMOOTHING_FACTOR, delta * 60);
     const effectivePositionFactor = isBeingDragged ? 1.0 : 1 - Math.pow(1 - POSITION_LERP_FACTOR, delta * 60);
 
-    const objectGroup = findObjectGroupInScene(scene, object.id);
+    if (cachedObjectIdRef.current !== object.id) {
+      cachedObjectIdRef.current = object.id;
+      cachedObjectGroupRef.current = null;
+    }
+
+    let objectGroup = cachedObjectGroupRef.current;
+    if (
+      !objectGroup ||
+      objectGroup.userData?.objectId !== object.id ||
+      (objectGroup.parent === null && objectGroup !== scene)
+    ) {
+      objectGroup = findObjectGroupInScene(scene, object.id);
+      cachedObjectGroupRef.current = objectGroup;
+    }
 
     if (!objectGroup) {
       const centerX = object.transform.x / INTERNAL_TO_WORLD;

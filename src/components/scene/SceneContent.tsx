@@ -141,6 +141,14 @@ export function SceneContent({
 
   const hasNotifiedRef = useRef(false);
 
+  const scheduleSelectionFocus = useCallback(
+    (object: SceneObject, childPath?: string) => {
+      if (!onFocusObject) return;
+      void onFocusObject(object, childPath, 'assist');
+    },
+    [onFocusObject]
+  );
+
   useFrame(() => {
     if (controlsRef.current && onCameraControlsReady && !hasNotifiedRef.current) {
       hasNotifiedRef.current = true;
@@ -314,12 +322,12 @@ export function SceneContent({
         if (dragState.pendingChildPath) {
           const childSelectionId = createChildSelectionId(dragState.objectId, dragState.pendingChildPath);
           onSelectObject(childSelectionId);
-          onFocusObject?.(dragState.object, dragState.pendingChildPath, 'soft');
+          scheduleSelectionFocus(dragState.object, dragState.pendingChildPath);
         } else if (dragState.childPath) {
           // Keep selection stable.
         } else {
           onSelectObject(dragState.objectId);
-          onFocusObject?.(dragState.object, undefined, 'soft');
+          scheduleSelectionFocus(dragState.object);
         }
       }
 
@@ -336,7 +344,7 @@ export function SceneContent({
         }, 50);
       }
     },
-    [dragState, onSelectObject, onDragEnd, onFocusObject]
+    [dragState, onSelectObject, onDragEnd, scheduleSelectionFocus]
   );
 
   const handleMarkAsDrag = useCallback(() => {

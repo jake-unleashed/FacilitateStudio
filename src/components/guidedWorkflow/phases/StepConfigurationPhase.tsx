@@ -299,7 +299,7 @@ function StepSetupStep({
 
   const handleFocusObject = useCallback(
     (object: SceneObject) => {
-      onFocusObject?.(object, undefined, 'full');
+      onFocusObject?.(object, undefined, 'explicit');
     },
     [onFocusObject]
   );

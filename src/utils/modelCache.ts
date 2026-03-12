@@ -20,7 +20,7 @@ import {
   loadAndPreprocessModelFromArrayBuffer,
   PreprocessedModel,
 } from './modelLoaders';
-import { deepCloneGroup } from './deepCloneModel';
+import { cloneGroupHierarchy, deepCloneGroup } from './deepCloneModel';
 import { supabase } from '../lib/supabase';
 import { logger } from './logger';
 import { getStarterAssetById } from '../services/starterAssetService';
@@ -118,6 +118,50 @@ export async function getOrLoadModel(
     const result = await loadPromise;
     return {
       model: deepCloneGroup(result.model),
+      metrics: result.metrics,
+      importDiagnostics: result.importDiagnostics,
+    };
+  } finally {
+    pendingLoads.delete(assetId);
+  }
+}
+
+/**
+ * Get a model clone for read-only computations.
+ *
+ * Unlike `getOrLoadModel`, this reuses shared materials/textures because the caller only needs an
+ * independent transform hierarchy, not independent material state.
+ */
+export async function getOrLoadModelForComputation(
+  assetId: string
+): Promise<{ model: THREE.Group; metrics: ModelMetrics; importDiagnostics?: ImportDiagnostics }> {
+  const cached = cache.get(assetId);
+  if (cached) {
+    cached.lastAccessed = Date.now();
+    return {
+      model: cloneGroupHierarchy(cached.model),
+      metrics: cached.metrics,
+      importDiagnostics: cached.importDiagnostics,
+    };
+  }
+
+  const pending = pendingLoads.get(assetId);
+  if (pending) {
+    const result = await pending.promise;
+    return {
+      model: cloneGroupHierarchy(result.model),
+      metrics: result.metrics,
+      importDiagnostics: result.importDiagnostics,
+    };
+  }
+
+  const loadPromise = loadModelInternal(assetId);
+  pendingLoads.set(assetId, { promise: loadPromise });
+
+  try {
+    const result = await loadPromise;
+    return {
+      model: cloneGroupHierarchy(result.model),
       metrics: result.metrics,
       importDiagnostics: result.importDiagnostics,
     };

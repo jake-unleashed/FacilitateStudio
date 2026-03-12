@@ -1,5 +1,4 @@
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 import {
@@ -11,6 +10,53 @@ import {
   SELECTION_INTENSITY,
 } from './constants';
 
+interface MaterialHighlightState {
+  signature: string;
+  originalEmissive: THREE.Color;
+}
+
+function getMeshStandardMaterials(mesh: THREE.Mesh): THREE.MeshStandardMaterial[] {
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return materials.filter((material): material is THREE.MeshStandardMaterial => {
+    return material instanceof THREE.MeshStandardMaterial;
+  });
+}
+
+function applyMaterialHighlight(
+  material: THREE.MeshStandardMaterial,
+  highlight: { color: string; intensity: number }
+): void {
+  material.emissive.set(highlight.color).multiplyScalar(highlight.intensity);
+}
+
+function restoreMaterialHighlight(
+  material: THREE.MeshStandardMaterial,
+  originalEmissive: THREE.Color
+): void {
+  material.emissive.copy(originalEmissive);
+}
+
+function addObjectHighlight(
+  highlightedMaterials: Map<THREE.MeshStandardMaterial, string>,
+  object: THREE.Object3D | null | undefined,
+  color: string,
+  intensity: number
+): void {
+  if (!object) return;
+
+  const signature = `${color}|${intensity}`;
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    for (const material of getMeshStandardMaterials(child)) {
+      highlightedMaterials.set(material, signature);
+    }
+  });
+}
+
+/**
+ * Applies emissive-based selection feedback to imported-model materials while preserving each
+ * material's original emissive color so selection state never leaks into the resting appearance.
+ */
 export function useImportedModelSelectionEffects({
   model,
   isSelected,
@@ -30,108 +76,86 @@ export function useImportedModelSelectionEffects({
   childPathToMesh: Map<string, { mesh: THREE.Object3D }>;
   isGhost: boolean;
 }): void {
-  const prevSelectedRef = useRef(isSelected);
-  const prevHoveredRef = useRef(isHovered);
-  const prevSelectedChildPathRef = useRef(selectedChildPath);
-  const prevHoveredChildPathRef = useRef(hoveredChildPath);
+  const highlightedMaterialsRef = useRef<Map<THREE.MeshStandardMaterial, MaterialHighlightState>>(new Map());
 
-  useFrame(() => {
-    if (!model) return;
+  useEffect(() => {
+    return () => {
+      for (const [material, state] of highlightedMaterialsRef.current.entries()) {
+        restoreMaterialHighlight(material, state.originalEmissive);
+      }
+      highlightedMaterialsRef.current.clear();
+    };
+  }, []);
 
-    const selectionChanged = prevSelectedRef.current !== isSelected;
-    const hoverChanged = prevHoveredRef.current !== isHovered;
-    const childSelectionChanged = prevSelectedChildPathRef.current !== selectedChildPath;
-    const childHoverChanged = prevHoveredChildPathRef.current !== hoveredChildPath;
+  useEffect(() => {
+    const nextHighlights = new Map<THREE.MeshStandardMaterial, string>();
 
-    if (
-      selectionChanged ||
-      hoverChanged ||
-      childSelectionChanged ||
-      childHoverChanged ||
-      isSelected ||
-      isHovered ||
-      hasChildSelected ||
-      hoveredChildPath
-    ) {
-      model.traverse((child: THREE.Object3D) => {
-        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          child.material.emissive.set('#000000');
-        }
-      });
-
+    if (model) {
       if (hasChildSelected && selectedChildPath) {
-        const entry = childPathToMesh.get(selectedChildPath);
-        if (entry) {
-          const mesh = entry.mesh;
-          mesh.traverse((child: THREE.Object3D) => {
-            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-              child.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY);
-            }
-          });
-          if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
-            mesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY);
-          }
-        }
+        addObjectHighlight(nextHighlights, childPathToMesh.get(selectedChildPath)?.mesh, CHILD_SELECTION_COLOR, SELECTION_INTENSITY);
 
         if (hoveredChildPath && hoveredChildPath !== selectedChildPath) {
-          const hoverEntry = childPathToMesh.get(hoveredChildPath);
-          if (hoverEntry) {
-            const hoverMesh = hoverEntry.mesh;
-            hoverMesh.traverse((childMesh: THREE.Object3D) => {
-              if (childMesh instanceof THREE.Mesh && childMesh.material instanceof THREE.MeshStandardMaterial) {
-                childMesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY * 2);
-              }
-            });
-            if (hoverMesh instanceof THREE.Mesh && hoverMesh.material instanceof THREE.MeshStandardMaterial) {
-              hoverMesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY * 2);
-            }
-          }
+          addObjectHighlight(
+            nextHighlights,
+            childPathToMesh.get(hoveredChildPath)?.mesh,
+            CHILD_SELECTION_COLOR,
+            SELECTION_INTENSITY * 2
+          );
         }
       } else if (isSelected) {
-        model.traverse((child: THREE.Object3D) => {
-          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-            const highlightColor = isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR;
-            child.material.emissive.set(highlightColor).multiplyScalar(SELECTION_INTENSITY);
-          }
-        });
+        addObjectHighlight(
+          nextHighlights,
+          model,
+          isGhost ? SELECTION_COLOR_GHOST : SELECTION_COLOR,
+          SELECTION_INTENSITY
+        );
 
         if (hoveredChildPath) {
-          const entry = childPathToMesh.get(hoveredChildPath);
-          if (entry) {
-            const mesh = entry.mesh;
-            mesh.traverse((childMesh: THREE.Object3D) => {
-              if (childMesh instanceof THREE.Mesh && childMesh.material instanceof THREE.MeshStandardMaterial) {
-                childMesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY * 1.5);
-              }
-            });
-            if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
-              mesh.material.emissive.set(CHILD_SELECTION_COLOR).multiplyScalar(SELECTION_INTENSITY * 1.5);
-            }
-          }
+          addObjectHighlight(
+            nextHighlights,
+            childPathToMesh.get(hoveredChildPath)?.mesh,
+            CHILD_SELECTION_COLOR,
+            SELECTION_INTENSITY * 1.5
+          );
         }
       } else if (hoveredChildPath) {
-        const entry = childPathToMesh.get(hoveredChildPath);
-        if (entry) {
-          const mesh = entry.mesh;
-          mesh.traverse((child: THREE.Object3D) => {
-            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-              child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
-            }
-          });
-        }
+        addObjectHighlight(nextHighlights, childPathToMesh.get(hoveredChildPath)?.mesh, HOVER_COLOR, HOVER_INTENSITY);
       } else if (isHovered) {
-        model.traverse((child: THREE.Object3D) => {
-          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-            child.material.emissive.set(HOVER_COLOR).multiplyScalar(HOVER_INTENSITY);
-          }
-        });
+        addObjectHighlight(nextHighlights, model, HOVER_COLOR, HOVER_INTENSITY);
+      }
+    }
+
+    const previousHighlights = highlightedMaterialsRef.current;
+    const appliedHighlights = new Map<THREE.MeshStandardMaterial, MaterialHighlightState>();
+
+    for (const [material, previousState] of previousHighlights.entries()) {
+      if (!nextHighlights.has(material)) {
+        restoreMaterialHighlight(material, previousState.originalEmissive);
+      }
+    }
+
+    for (const [material, signature] of nextHighlights.entries()) {
+      const previousState = previousHighlights.get(material);
+      const originalEmissive = previousState?.originalEmissive ?? material.emissive.clone();
+
+      if (previousState?.signature !== signature) {
+        const [color, intensity] = signature.split('|');
+        applyMaterialHighlight(material, { color, intensity: Number(intensity) });
       }
 
-      prevSelectedRef.current = isSelected;
-      prevHoveredRef.current = isHovered;
-      prevSelectedChildPathRef.current = selectedChildPath;
-      prevHoveredChildPathRef.current = hoveredChildPath;
+      appliedHighlights.set(material, { signature, originalEmissive });
     }
-  });
+
+    highlightedMaterialsRef.current = appliedHighlights;
+  }, [
+    model,
+    isSelected,
+    isHovered,
+    hasChildSelected,
+    selectedChildPath,
+    hoveredChildPath,
+    childPathToMesh,
+    isGhost,
+  ]);
 }
 

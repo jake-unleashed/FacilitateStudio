@@ -17,6 +17,7 @@ const getOrLoadModelMock = vi.fn<(assetId: string) => Promise<ModelCacheResult>>
 
 vi.mock('./modelCache', () => ({
   getOrLoadModel: (assetId: string) => getOrLoadModelMock(assetId),
+  getOrLoadModelForComputation: (assetId: string) => getOrLoadModelMock(assetId),
 }));
 
 vi.mock('./modelLoaders', () => ({

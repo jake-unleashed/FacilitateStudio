@@ -128,7 +128,7 @@ export function useGuidedWelcome(args: UseGuidedWelcomeArgs): UseGuidedWelcomeRe
 
     hasAutoSelectedPositioningRef.current = true;
     onSelectObject(meshObject.id);
-    onFocusObject?.(meshObject, undefined, 'full');
+    onFocusObject?.(meshObject, undefined, 'explicit');
   }, [objects, onFocusObject, onSelectObject, state.currentPhase, state.isActive]);
 
   return {

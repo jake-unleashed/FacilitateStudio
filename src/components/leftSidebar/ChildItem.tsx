@@ -76,7 +76,7 @@ export const ChildItem = memo<ChildItemProps>(
         e.stopPropagation();
         const childSelectionId = createChildSelectionId(parentObj.id, childPathStr);
         onSelectObject(childSelectionId);
-        onFocusObject?.(parentObj, childPathStr);
+        onFocusObject?.(parentObj, childPathStr, 'explicit');
       },
       [parentObj, childPathStr, onSelectObject, onFocusObject]
     );

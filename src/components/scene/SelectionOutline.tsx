@@ -68,6 +68,23 @@ interface ChildSelectionContextType {
 }
 
 const ChildSelectionContext = createContext<ChildSelectionContextType | null>(null);
+const childOutlineMeshCache = new WeakMap<THREE.Object3D, THREE.Mesh[]>();
+
+function getCachedChildOutlineMeshes(object: THREE.Object3D): THREE.Mesh[] {
+  const cached = childOutlineMeshCache.get(object);
+  if (cached) {
+    return cached;
+  }
+
+  const meshes: THREE.Mesh[] = [];
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      meshes.push(child);
+    }
+  });
+  childOutlineMeshCache.set(object, meshes);
+  return meshes;
+}
 
 /**
  * Provider for child selection tracking.
@@ -127,13 +144,7 @@ export const SelectChildObject: React.FC<SelectChildObjectProps> = ({ object, en
     if (!object || !enabled) return;
 
     // Collect all meshes from the object
-    const meshes: THREE.Mesh[] = [];
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        meshes.push(child);
-      }
-    });
-
+    const meshes = getCachedChildOutlineMeshes(object);
     if (meshes.length === 0) return;
 
     meshesRef.current = meshes;

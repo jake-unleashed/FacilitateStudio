@@ -288,6 +288,32 @@ describe('calculateQuickFocusCamera', () => {
     expect(result.position).toBeDefined();
   });
 
+  it('treats descendant child tags as part of the selected child subtree', () => {
+    const scene = new THREE.Scene();
+    const target: FocusTarget = { targetX: 0, targetY: 0, targetZ: 0, boundsSize: 1 };
+
+    scene.add(
+      buildTaggedMesh({
+        geometry: new THREE.SphereGeometry(0.3, 12, 12),
+        position: new THREE.Vector3(0, 0, 0),
+        sceneObjectId: 'target',
+        childPath: 'a.b.c',
+      })
+    );
+    scene.updateMatrixWorld(true);
+
+    const result = calculateQuickFocusCamera({
+      target,
+      scene,
+      targetObjectId: 'target',
+      targetChildPath: 'a.b',
+      currentCameraPosition: new THREE.Vector3(1, 1, 1),
+    });
+
+    expect(result.shouldUseFastPath).toBe(true);
+    expect(result.position).toBeDefined();
+  });
+
   it('never returns a focus camera position below the ground plane', () => {
     const scene = new THREE.Scene();
     const target: FocusTarget = { targetX: 0, targetY: 0, targetZ: 0, boundsSize: 1 };

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { calculateFocusTargetForObject } from './focusTargetCalculator';
+import { calculateFocusTargetForObject, calculateFocusTargetFromScene } from './focusTargetCalculator';
 import type { SceneObject } from '../types';
 
 // -----------------------------------------------------------------------------
@@ -13,7 +13,7 @@ type ModelCacheResult = { model: THREE.Object3D; metrics: ModelMetrics };
 const getOrLoadModelMock = vi.fn<(assetId: string) => Promise<ModelCacheResult>>();
 
 vi.mock('./modelCache', () => ({
-  getOrLoadModel: (assetId: string) => getOrLoadModelMock(assetId),
+  getOrLoadModelForComputation: (assetId: string) => getOrLoadModelMock(assetId),
 }));
 
 vi.mock('./modelLoaders', () => ({
@@ -295,6 +295,41 @@ describe('calculateFocusTargetForObject', () => {
     expect(rotated.targetX).toBeCloseTo(expectedDelta.x, 6);
     expect(rotated.targetZ).toBeCloseTo(expectedDelta.z, 6);
     expect(rotated.targetY).toBeCloseTo(modelHeight / 2, 6);
+  });
+});
+
+describe('calculateFocusTargetFromScene', () => {
+  it('uses live scene meshes for subtree child focus', () => {
+    const scene = new THREE.Scene();
+    const objectRoot = new THREE.Group();
+    objectRoot.userData.objectId = 'obj-1';
+
+    const selectedMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
+    selectedMesh.position.set(4, 3, -2);
+    selectedMesh.userData.sceneObjectId = 'obj-1';
+    selectedMesh.userData.childPath = 'arm.segment.tip';
+    objectRoot.add(selectedMesh);
+
+    const otherMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
+    otherMesh.position.set(-10, 0, 0);
+    otherMesh.userData.sceneObjectId = 'obj-1';
+    otherMesh.userData.childPath = 'base';
+    objectRoot.add(otherMesh);
+
+    scene.add(objectRoot);
+    scene.updateMatrixWorld(true);
+
+    const result = calculateFocusTargetFromScene({
+      scene,
+      objectId: 'obj-1',
+      childPath: 'arm.segment',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.targetX).toBeCloseTo(4, 4);
+    expect(result!.targetY).toBeCloseTo(3, 4);
+    expect(result!.targetZ).toBeCloseTo(-2, 4);
+    expect(result!.boundsSize).toBeGreaterThan(0);
   });
 });
 

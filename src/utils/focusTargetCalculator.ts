@@ -14,8 +14,19 @@
 import * as THREE from 'three';
 import { SceneObject, Transform, stringToPath } from '../types';
 import { FocusTarget, sceneToWorldCoordinates } from './focusUtils';
-import { getOrLoadModel } from './modelCache';
+import { getOrLoadModelForComputation } from './modelCache';
 import { findChildByPath } from './modelLoaders';
+
+interface TaggedSceneUserData {
+  objectId?: unknown;
+  sceneObjectId?: unknown;
+  childPath?: unknown;
+}
+
+interface SceneFocusAnalysis {
+  visibleBox: THREE.Box3;
+  weightedCenter: THREE.Vector3;
+}
 
 function isDefaultLocalTransform(t: Transform): boolean {
   return (
@@ -151,6 +162,142 @@ function modelLocalPointToWorld(params: {
   return outerPos.add(delta);
 }
 
+function isRenderableMesh(mesh: THREE.Mesh): boolean {
+  const posAttr = mesh.geometry?.attributes.position;
+  return !!posAttr && posAttr.count > 0;
+}
+
+function isChildPathWithinSubtree(targetChildPath: string | undefined, hitChildPath: string | null): boolean {
+  if (!targetChildPath) return true;
+  if (!hitChildPath) return false;
+  return hitChildPath === targetChildPath || hitChildPath.startsWith(targetChildPath + '.');
+}
+
+function collectSceneFocusMeshes(
+  objectRoot: THREE.Object3D,
+  objectId: string,
+  childPath?: string
+): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
+
+  objectRoot.traverse((node) => {
+    if (!(node instanceof THREE.Mesh) || !isRenderableMesh(node)) return;
+    const userData = node.userData as TaggedSceneUserData | undefined;
+    if (userData?.sceneObjectId !== objectId) return;
+
+    const taggedChildPath = typeof userData.childPath === 'string' ? userData.childPath : null;
+    if (!isChildPathWithinSubtree(childPath, taggedChildPath)) return;
+
+    meshes.push(node);
+  });
+
+  return meshes;
+}
+
+function findObjectRootInScene(scene: THREE.Scene, objectId: string): THREE.Object3D | null {
+  let objectRoot: THREE.Object3D | null = null;
+
+  scene.traverse((node) => {
+    const userData = node.userData as TaggedSceneUserData | undefined;
+    if (userData?.objectId === objectId) {
+      objectRoot = node;
+    }
+  });
+
+  return objectRoot;
+}
+
+function getMeshBoundingBox(mesh: THREE.Mesh): THREE.Box3 | null {
+  if (!mesh.geometry.boundingBox) {
+    mesh.geometry.computeBoundingBox();
+  }
+  const geomBox = mesh.geometry.boundingBox;
+  return geomBox && !geomBox.isEmpty() ? geomBox : null;
+}
+
+function analyzeSceneFocusMeshes(meshes: THREE.Mesh[]): SceneFocusAnalysis {
+  const visibleBox = new THREE.Box3();
+  let totalVolume = 0;
+  const weightedSum = new THREE.Vector3();
+
+  for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true, false);
+    const box = getMeshBoundingBox(mesh);
+    if (box) {
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+
+      const worldBox = box.clone();
+      worldBox.applyMatrix4(mesh.matrixWorld);
+      visibleBox.union(worldBox);
+
+      center.applyMatrix4(mesh.matrixWorld);
+      const volume = Math.max(size.x * size.y * size.z, 0.0001);
+      weightedSum.addScaledVector(center, volume);
+      totalVolume += volume;
+    }
+  }
+
+  if (totalVolume > 0) {
+    weightedSum.divideScalar(totalVolume);
+  }
+
+  return {
+    visibleBox,
+    weightedCenter: weightedSum,
+  };
+}
+
+function calculateEffectiveBoundsSize(size: THREE.Vector3, fallback: number): number {
+  const dims = [size.x, size.y, size.z].sort((a, b) => b - a);
+  const largest = dims[0];
+  const secondLargest = dims[1];
+
+  if (largest > secondLargest * 2.5 && secondLargest > 0) {
+    return secondLargest * 1.5;
+  }
+
+  return Math.max(largest, fallback);
+}
+
+/**
+ * Derive a focus target directly from the live scene graph for an already-rendered object.
+ *
+ * This avoids model-cache cloning for the common editor path and respects child-subtree targeting
+ * via the `sceneObjectId` / `childPath` tags attached during model rendering.
+ */
+export function calculateFocusTargetFromScene(params: {
+  scene: THREE.Scene;
+  objectId: string;
+  childPath?: string;
+}): FocusTarget | null {
+  const { scene, objectId, childPath } = params;
+  const objectRoot = findObjectRootInScene(scene, objectId);
+
+  if (!objectRoot) return null;
+
+  objectRoot.updateWorldMatrix(true, true);
+  const meshes = collectSceneFocusMeshes(objectRoot, objectId, childPath);
+  if (meshes.length === 0) return null;
+
+  const { visibleBox, weightedCenter } = analyzeSceneFocusMeshes(meshes);
+  if (visibleBox.isEmpty()) return null;
+
+  const visibleSize = visibleBox.getSize(new THREE.Vector3());
+  if (!isFinite(weightedCenter.x) || !isFinite(weightedCenter.y) || !isFinite(weightedCenter.z)) {
+    return null;
+  }
+
+  return {
+    targetX: weightedCenter.x,
+    targetY: weightedCenter.y,
+    targetZ: weightedCenter.z,
+    boundsSize: calculateEffectiveBoundsSize(visibleSize, 1),
+  };
+}
+
 /**
  * Calculate focus target for an object (handles both imported models and primitives).
  * Determines the orbit center point and bounds size for camera positioning.
@@ -185,7 +332,7 @@ export async function calculateFocusTargetForObject(params: {
 
   try {
     // Load model from cache (fast - already loaded)
-    const { model, metrics } = await getOrLoadModel(object.properties.modelAssetId);
+    const { model, metrics } = await getOrLoadModelForComputation(object.properties.modelAssetId);
     const modelHeight = metrics.size.y;
     // IMPORTANT: Imported models are rendered with a two-group structure in `ImportedModel.tsx`:
     // - Outer group Y is placed at (groundY + modelHeight/2)
@@ -216,19 +363,10 @@ export async function calculateFocusTargetForObject(params: {
 
     // Calculate effective bounds size for camera distance
     // When one dimension is extremely elongated, use the second-largest dimension to avoid zooming out
-    const dims = [visibleSize.x, visibleSize.y, visibleSize.z].sort((a, b) => b - a);
-    const largest = dims[0];
-    const secondLargest = dims[1];
-
-    // If largest is more than 2.5x the second largest, the model has extreme outliers
-    // Use a capped value based on the second largest dimension
-    let effectiveMaxDim: number;
-    if (largest > secondLargest * 2.5 && secondLargest > 0) {
-      // Cap at 1.5x the second largest dimension
-      effectiveMaxDim = secondLargest * 1.5;
-    } else {
-      effectiveMaxDim = visibleMaxDim > 0 ? visibleMaxDim : metrics.maxDimension;
-    }
+    const effectiveMaxDim = calculateEffectiveBoundsSize(
+      visibleSize,
+      visibleMaxDim > 0 ? visibleMaxDim : metrics.maxDimension
+    );
 
     if (childPath) {
       // Child focus: find and compute bounds for specific child mesh
@@ -295,9 +433,8 @@ function calculateVisibleBounds(obj: THREE.Object3D): THREE.Box3 {
       const posAttr = child.geometry.attributes.position;
       // Only include meshes with actual vertices
       if (posAttr && posAttr.count > 0) {
-        child.geometry.computeBoundingBox();
-        const geomBox = child.geometry.boundingBox;
-        if (geomBox && !geomBox.isEmpty()) {
+        const geomBox = getMeshBoundingBox(child);
+        if (geomBox) {
           // Transform geometry bounding box to world space
           const worldBox = geomBox.clone();
           worldBox.applyMatrix4(child.matrixWorld);
@@ -324,9 +461,8 @@ function calculateWeightedCenter(obj: THREE.Object3D): THREE.Vector3 {
     if (child instanceof THREE.Mesh && child.geometry) {
       const posAttr = child.geometry.attributes.position;
       if (posAttr && posAttr.count > 0) {
-        child.geometry.computeBoundingBox();
-        const box = child.geometry.boundingBox;
-        if (box && !box.isEmpty()) {
+        const box = getMeshBoundingBox(child);
+        if (box) {
           const size = new THREE.Vector3();
           const center = new THREE.Vector3();
           box.getSize(size);

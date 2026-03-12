@@ -38,7 +38,7 @@ export const HierarchyItem = memo<HierarchyItemProps>(({ obj, selectedObjectId, 
 
   const handleParentClick = useCallback(() => {
     onSelectObject(obj.id);
-    onFocusObject?.(obj);
+    onFocusObject?.(obj, undefined, 'explicit');
   }, [obj, onSelectObject, onFocusObject]);
 
   const handleToggleExpand = useCallback(

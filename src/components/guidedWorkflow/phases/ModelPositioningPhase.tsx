@@ -108,7 +108,7 @@ export function ModelPositioningPhase({
 
   const handleSelect = useCallback((object: SceneObject) => {
     onSelectObject?.(object.id);
-    onFocusObject?.(object, undefined, 'full');
+    onFocusObject?.(object, undefined, 'explicit');
   }, [onFocusObject, onSelectObject]);
 
   return (

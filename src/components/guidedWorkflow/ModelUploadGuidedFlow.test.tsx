@@ -162,7 +162,7 @@ describe('Guided model upload flow', () => {
     await userEvent.click(screen.getByText('Chair'));
 
     expect(onFocusObject).toHaveBeenCalledTimes(1);
-    expect(onFocusObject).toHaveBeenCalledWith(objects[0], undefined, 'full');
+    expect(onFocusObject).toHaveBeenCalledWith(objects[0], undefined, 'explicit');
   });
 });
 

@@ -2,11 +2,11 @@ export type ToolType = 'select' | 'move' | 'rotate' | 'scale';
 
 /**
  * Focus mode for camera behavior when selecting objects.
- * - 'full': Move camera to ideal framing position (used for F key, sidebar clicks)
- * - 'soft': Adaptive focus - moves camera proportionally toward ideal based on how far off
- *           Always updates orbit center. Zooms in if too far, zooms out if too close.
+ * - 'recenterOnly': Update the orbit center only, without camera-angle solving
+ * - 'assist': Allow one cheap, view-preserving camera adjustment when confidence is high
+ * - 'explicit': Allow stronger reframing for intentional focus actions (F key, sidebar clicks)
  */
-export type FocusMode = 'full' | 'soft';
+export type FocusMode = 'recenterOnly' | 'assist' | 'explicit';
 
 export interface Transform {
   x: number;

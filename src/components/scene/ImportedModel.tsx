@@ -112,18 +112,20 @@ const ImportedModelInner: React.FC<ImportedModelProps> = ({
     [modelHeight]
   );
 
-  const { childPathToMesh, findChildPathForMesh } = useImportedModelChildIndex({
+  const { childPathToMesh, findChildPathForMesh, getSelectablePathsForMesh, getChildPathDepth } =
+    useImportedModelChildIndex({
     model,
     children: obj.children,
     sceneObjectId: obj.id,
-  });
+    });
 
   const { handlePointerDown, handleDoubleClick, handlePointerMove, handlePointerOut } =
     useImportedModelInteractions({
       model,
       obj,
-      childPathToMesh,
       findChildPathForMesh,
+      getSelectablePathsForMesh,
+      getChildPathDepth,
       isSelected,
       hasChildSelected,
       selectedChildPath,

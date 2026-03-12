@@ -2,12 +2,12 @@
  * Camera Focus Utilities
  *
  * Provides pure functions for calculating camera focus positions and behaviors.
- * These utilities power the "soft" and "full" focus modes when selecting objects.
+ * These utilities power the selection-assist and explicit-focus camera modes.
  *
  * Focus Modes:
- * - 'full': Move camera directly to ideal framing position (F key, sidebar clicks)
- * - 'soft': Adaptive focus - moves camera proportionally toward ideal based on distance.
- *           Always updates orbit center. Zooms in if too far, zooms out if too close.
+ * - 'recenterOnly': Update the orbit center only (no camera reposition)
+ * - 'assist': Adaptive focus - moves camera proportionally toward ideal based on distance.
+ * - 'explicit': Move camera directly to a resolved framing position when explicitly requested.
  *
  * The "comfort zone" defines a range of acceptable camera distances:
  * - Below COMFORT_MIN (0.6x ideal): Camera is too close, zoom out aggressively

@@ -22,6 +22,15 @@ export interface RaycastCameraCandidateScore {
 
 export type RaycastBreathingRoomMode = 'legacy' | 'strict';
 
+function isChildPathWithinTargetSubtree(
+  targetChildPath: string | undefined,
+  hitChildPath: string | null
+): boolean {
+  if (!targetChildPath) return true;
+  if (!hitChildPath) return false;
+  return hitChildPath === targetChildPath || hitChildPath.startsWith(targetChildPath + '.');
+}
+
 export interface RaycastProgressiveOptions {
   /** Yield after this many candidates are evaluated (best-effort). */
   yieldEveryCandidates?: number;
@@ -173,9 +182,8 @@ export function pickBestPreviewCameraCandidateByRaycastWithMetrics(params: {
   const isTargetHit = (hit: THREE.Intersection): boolean => {
     const hitObjectId = getSceneObjectId(hit.object);
     if (hitObjectId !== targetObjectId) return false;
-    if (!targetChildPath) return true;
     const hitChildPath = getChildPathTag(hit.object);
-    return hitChildPath === targetChildPath;
+    return isChildPathWithinTargetSubtree(targetChildPath, hitChildPath);
   };
 
   const scoreCandidate = (candidate: PreviewCameraCandidate): RaycastCameraCandidateScore => {
@@ -377,9 +385,8 @@ export async function pickBestPreviewCameraCandidateByRaycastWithMetricsAsync(pa
   const isTargetHit = (hit: THREE.Intersection): boolean => {
     const hitObjectId = getSceneObjectId(hit.object);
     if (hitObjectId !== targetObjectId) return false;
-    if (!targetChildPath) return true;
     const hitChildPath = getChildPathTag(hit.object);
-    return hitChildPath === targetChildPath;
+    return isChildPathWithinTargetSubtree(targetChildPath, hitChildPath);
   };
 
   /**
@@ -627,9 +634,8 @@ export function evaluateCameraVisibility(params: {
   const isTargetHit = (hit: THREE.Intersection): boolean => {
     const hitObjectId = getSceneObjectId(hit.object);
     if (hitObjectId !== targetObjectId) return false;
-    if (!targetChildPath) return true;
     const hitChildPath = getChildPathTag(hit.object);
-    return hitChildPath === targetChildPath;
+    return isChildPathWithinTargetSubtree(targetChildPath, hitChildPath);
   };
 
   let clearCount = 0;

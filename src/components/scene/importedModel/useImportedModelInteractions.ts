@@ -8,8 +8,9 @@ import { isWithinSubtree } from './transformUtils';
 export function useImportedModelInteractions({
   model,
   obj,
-  childPathToMesh,
   findChildPathForMesh,
+  getSelectablePathsForMesh,
+  getChildPathDepth,
   isSelected,
   hasChildSelected,
   selectedChildPath,
@@ -21,8 +22,9 @@ export function useImportedModelInteractions({
 }: {
   model: THREE.Group | null;
   obj: SceneObject;
-  childPathToMesh: Map<string, { mesh: THREE.Object3D }>;
   findChildPathForMesh: (clickedMesh: THREE.Object3D) => string | null;
+  getSelectablePathsForMesh: (clickedMesh: THREE.Object3D) => string[];
+  getChildPathDepth: (pathStr: string) => number;
   isSelected: boolean;
   hasChildSelected: boolean;
   selectedChildPath?: string | null;
@@ -46,117 +48,42 @@ export function useImportedModelInteractions({
     (currentChildPath: string, clickedMesh: THREE.Object3D): string | null => {
       if (!model || !obj.children || obj.children.length === 0) return null;
 
-      const currentDepth = currentChildPath.split('.').length;
-      const deeperMatches: { pathStr: string; depth: number }[] = [];
-
-      for (const [pathStr, { mesh }] of childPathToMesh) {
-        const pathDepth = pathStr.split('.').length;
-
-        if (pathDepth <= currentDepth) continue;
-        if (!pathStr.startsWith(currentChildPath + '.') && pathStr !== currentChildPath) continue;
-
-        if (mesh === clickedMesh) {
-          deeperMatches.push({ pathStr, depth: pathDepth });
-          continue;
-        }
-
-        let current: THREE.Object3D | null = clickedMesh;
-        while (current && current !== model) {
-          if (current === mesh) {
-            deeperMatches.push({ pathStr, depth: pathDepth });
-            break;
-          }
-          current = current.parent;
-        }
-      }
-
-      if (deeperMatches.length === 0) return null;
-      deeperMatches.sort((a, b) => a.depth - b.depth);
-      return deeperMatches[0]?.pathStr ?? null;
+      const currentDepth = getChildPathDepth(currentChildPath);
+      return (
+        getSelectablePathsForMesh(clickedMesh).find(
+          (pathStr) =>
+            pathStr !== currentChildPath &&
+            pathStr.startsWith(currentChildPath + '.') &&
+            getChildPathDepth(pathStr) > currentDepth
+        ) ?? null
+      );
     },
-    [model, obj.children, childPathToMesh]
+    [model, obj.children, getChildPathDepth, getSelectablePathsForMesh]
   );
 
   const findFirstLevelChild = useCallback(
     (clickedMesh: THREE.Object3D): string | null => {
       if (!model || !obj.children || obj.children.length === 0) return null;
 
-      const matches: { pathStr: string; depth: number }[] = [];
-
-      for (const [pathStr, { mesh }] of childPathToMesh) {
-        if (mesh === clickedMesh) {
-          matches.push({ pathStr, depth: pathStr.split('.').length });
-          continue;
-        }
-
-        let current: THREE.Object3D | null = clickedMesh;
-        while (current && current !== model) {
-          if (current === mesh) {
-            matches.push({ pathStr, depth: pathStr.split('.').length });
-            break;
-          }
-          current = current.parent;
-        }
-      }
-
-      if (matches.length === 0) return null;
-      matches.sort((a, b) => a.depth - b.depth);
-      return matches[0]?.pathStr ?? null;
+      return getSelectablePathsForMesh(clickedMesh)[0] ?? null;
     },
-    [model, obj.children, childPathToMesh]
+    [model, obj.children, getSelectablePathsForMesh]
   );
 
   const findSiblingAtSameLevel = useCallback(
     (clickedMesh: THREE.Object3D, currentSelectionPath: string): string | null => {
       if (!model || !obj.children || obj.children.length === 0) return null;
 
-      const currentDepth = currentSelectionPath.split('.').length;
-      const currentParentPath = currentSelectionPath.split('.').slice(0, -1).join('.');
-      const matchingPaths: { path: string; depth: number }[] = [];
-
-      for (const [pathStr, { mesh }] of childPathToMesh) {
-        let isMatch = false;
-
-        if (mesh === clickedMesh) {
-          isMatch = true;
-        } else {
-          let current = clickedMesh.parent;
-          while (current && current !== model) {
-            if (current === mesh) {
-              isMatch = true;
-              break;
-            }
-            current = current.parent;
-          }
-        }
-
-        if (isMatch) {
-          matchingPaths.push({
-            path: pathStr,
-            depth: pathStr.split('.').length,
-          });
-        }
-      }
-
+      const currentDepth = getChildPathDepth(currentSelectionPath);
+      const matchingPaths = getSelectablePathsForMesh(clickedMesh);
       if (matchingPaths.length === 0) return null;
-      matchingPaths.sort((a, b) => a.depth - b.depth);
 
-      const sameLevelMatch = matchingPaths.find((m) => m.depth === currentDepth);
-      if (sameLevelMatch) return sameLevelMatch.path;
+      const sameLevelMatch = matchingPaths.find((path) => getChildPathDepth(path) === currentDepth);
+      if (sameLevelMatch) return sameLevelMatch;
 
-      if (currentParentPath) {
-        const siblingMatch = matchingPaths.find(
-          (m) => m.path.startsWith(currentParentPath + '.') && m.depth === currentDepth
-        );
-        if (siblingMatch) return siblingMatch.path;
-      }
-
-      const shallowerMatch = matchingPaths.find((m) => m.depth <= currentDepth);
-      if (shallowerMatch) return shallowerMatch.path;
-
-      return matchingPaths[0]?.path ?? null;
+      return matchingPaths[0] ?? null;
     },
-    [model, obj.children, childPathToMesh]
+    [model, obj.children, getChildPathDepth, getSelectablePathsForMesh]
   );
 
   const handlePointerDown = useCallback(

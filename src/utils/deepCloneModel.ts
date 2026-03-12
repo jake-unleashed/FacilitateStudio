@@ -33,7 +33,7 @@ import * as THREE from 'three';
  */
 export function deepCloneModel(source: THREE.Object3D): THREE.Object3D {
   // Clone the object hierarchy
-  const cloned = source.clone(true);
+  const cloned = cloneObjectHierarchy(source);
 
   // Deep-clone all materials to prevent shared state issues
   cloned.traverse((child: THREE.Object3D) => {
@@ -92,4 +92,21 @@ function cloneSingleMaterial(material: THREE.Material): THREE.Material {
  */
 export function deepCloneGroup(source: THREE.Group): THREE.Group {
   return deepCloneModel(source) as THREE.Group;
+}
+
+/**
+ * Clone only the object hierarchy.
+ *
+ * Materials and textures remain shared, which is suitable for read-only computations like
+ * bounds and focus calculations where we mutate transforms but never mutate material state.
+ */
+export function cloneObjectHierarchy(source: THREE.Object3D): THREE.Object3D {
+  return source.clone(true);
+}
+
+/**
+ * Group-specific wrapper around `cloneObjectHierarchy` for convenience.
+ */
+export function cloneGroupHierarchy(source: THREE.Group): THREE.Group {
+  return cloneObjectHierarchy(source) as THREE.Group;
 }

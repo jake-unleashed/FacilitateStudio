@@ -248,7 +248,7 @@ export function ModelUploadPhase({
                 >
                   <button
                     type="button"
-                    onClick={() => onFocusObject?.(object, undefined, 'full')}
+                    onClick={() => onFocusObject?.(object, undefined, 'explicit')}
                     className="group flex flex-1 items-center gap-3 px-4 py-3 text-left transition-all duration-300 hover:bg-white/70 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
                   >
                     <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-white/70 text-slate-500 shadow-sm">
